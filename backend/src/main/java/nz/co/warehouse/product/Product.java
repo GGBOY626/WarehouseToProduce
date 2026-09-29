@@ -10,9 +10,10 @@ public class Product extends PersistentEntity {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
     @Column(nullable = false, length = 200) private String name;
+    @Column(name = "material_code", nullable = false, length = 100) private String materialCode;
     @Column(length = 100) private String sku;
     @Column(name = "default_units_per_carton") private Integer defaultUnitsPerCarton;
     @Column(name = "base_unit", nullable = false, length = 20) private String baseUnit = "个";
     @Column(nullable = false) private boolean active = true;
-    @Column(name = "active_name", insertable = false, updatable = false) private String activeName;
+    @Column(name = "active_identity", length = 302, insertable = false, updatable = false) private String activeIdentity;
 }

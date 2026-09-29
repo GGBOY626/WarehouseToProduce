@@ -13,7 +13,8 @@ public class ProductService {
 
     @Transactional(readOnly = true)
     public List<ProductDtos.Response> search(String q, boolean includeInactive) {
-        return repository.search(q == null ? "" : q.trim(), includeInactive).stream().map(ProductDtos.Response::from).toList();
+        return repository.search(q == null ? "" : q.trim(), includeInactive).stream()
+                .map(p->ProductDtos.Response.from(p,repository.countByNameIgnoreCaseAndActiveTrue(p.getName())>1)).toList();
     }
 
     @Transactional
@@ -28,7 +29,10 @@ public class ProductService {
 
     @Transactional
     public ProductDtos.Response setActive(long id, boolean active) {
-        Product p = get(id); p.setActive(active); return ProductDtos.Response.from(p);
+        Product p = get(id);
+        if(active&&repository.existsByNameIgnoreCaseAndMaterialCodeIgnoreCaseAndActiveTrueAndIdNot(p.getName(),p.getMaterialCode(),p.getId()))
+            throw new BusinessException("PRODUCT_DUPLICATE", "已有相同名称和物料编码的启用产品。", HttpStatus.CONFLICT);
+        p.setActive(active); return ProductDtos.Response.from(p);
     }
 
     public Product getActive(long id) {
@@ -40,7 +44,12 @@ public class ProductService {
 
     private Product get(long id) { return repository.findById(id).orElseThrow(() -> BusinessException.notFound("PRODUCT_NOT_FOUND", "找不到该产品。")); }
     private void apply(Product p, ProductDtos.Request r) {
-        p.setName(r.name().trim()); p.setSku(blankToNull(r.sku())); p.setDefaultUnitsPerCarton(r.defaultUnitsPerCarton()); p.setBaseUnit(r.baseUnit().trim());
+        String name=r.name().trim(), materialCode=r.materialCode().trim();
+        boolean duplicate=p.getId()==null
+                ?repository.existsByNameIgnoreCaseAndMaterialCodeIgnoreCaseAndActiveTrue(name,materialCode)
+                :repository.existsByNameIgnoreCaseAndMaterialCodeIgnoreCaseAndActiveTrueAndIdNot(name,materialCode,p.getId());
+        if(duplicate)throw new BusinessException("PRODUCT_DUPLICATE", "已有相同名称和物料编码的启用产品。", HttpStatus.CONFLICT);
+        p.setName(name);p.setMaterialCode(materialCode);p.setSku(blankToNull(r.sku()));p.setDefaultUnitsPerCarton(r.defaultUnitsPerCarton());p.setBaseUnit(r.baseUnit().trim());
     }
     private String blankToNull(String s) { return s == null || s.isBlank() ? null : s.trim(); }
 }

@@ -29,7 +29,7 @@ class MovementServiceIntegrationTest {
         String suffix=UUID.randomUUID().toString().substring(0,8);
         sender=persons.create(new PersonDtos.Request("仓库人员-"+suffix,null)).id();
         receiver=persons.create(new PersonDtos.Request("生产人员-"+suffix,null)).id();
-        product=products.create(new ProductDtos.Request("测试产品-"+suffix,"SKU-"+suffix,30,"个")).id();
+        product=products.create(new ProductDtos.Request("测试产品-"+suffix,"MAT-"+suffix,"SKU-"+suffix,30,"个")).id();
     }
 
     @Test void createsAndReturnsSameMovementForRepeatedIdempotencyKey(){

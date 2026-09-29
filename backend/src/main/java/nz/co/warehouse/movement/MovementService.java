@@ -79,7 +79,7 @@ public class MovementService {
         i.setCalculatedTotalUnits(calculated);i.setTotalUnits(r.totalUnits()!=null?r.totalUnits():calculated);i.setTotalUnitsOverridden(i.getTotalUnits()!=null&&!Objects.equals(i.getTotalUnits(),calculated));
         Set<MovementEnums.IssueType> seen=new HashSet<>();for(var issue:Optional.ofNullable(r.issues()).orElse(List.of())){if(!seen.add(issue.type()))throw BusinessException.badRequest("DUPLICATE_ISSUE","同一种异常不能重复选择。");if(issue.type()==MovementEnums.IssueType.OTHER&&(issue.description()==null||issue.description().isBlank()))throw BusinessException.badRequest("ISSUE_DESCRIPTION_REQUIRED","选择“其他”异常时必须填写说明。");MovementItemIssue entity=new MovementItemIssue();entity.setIssueType(issue.type());entity.setDescription(blank(issue.description()));i.addIssue(entity);}return i;
     }
-    private void validateDirection(MovementDtos.SaveRequest r){if(r.direction()==MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION&&(r.manufactureLot()==null||r.manufactureLot().isBlank()))throw BusinessException.badRequest("MANUFACTURE_LOT_REQUIRED","仓库送往生产车间时必须填写 Manufacture Lot。");}
+    private void validateDirection(MovementDtos.SaveRequest r){if(r.direction()==MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION&&(r.manufactureLot()==null||r.manufactureLot().isBlank()))throw BusinessException.badRequest("MANUFACTURE_LOT_REQUIRED","仓库送往生产车间时必须填写物料批次。");}
     private Movement getActiveDetail(long id){Movement m=repository.findDetailById(id).orElseThrow(()->BusinessException.notFound("MOVEMENT_NOT_FOUND","找不到该流转记录。"));if(m.getStatus()==MovementEnums.Status.VOID)throw new BusinessException("MOVEMENT_VOID","已作废记录不能修改。",HttpStatus.CONFLICT);return m;}
     private String blank(String value){return value==null||value.isBlank()?null:value.trim();}
 }
