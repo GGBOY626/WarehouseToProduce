@@ -1,0 +1,15 @@
+package nz.co.warehouse.product;
+
+import jakarta.validation.constraints.*;
+import java.time.Instant;
+
+public final class ProductDtos {
+    private ProductDtos() {}
+    public record Request(@NotBlank @Size(max=200) String name, @Size(max=100) String sku,
+                          @Positive Integer defaultUnitsPerCarton,
+                          @NotBlank @Size(max=20) String baseUnit) {}
+    public record Response(Long id, String name, String sku, Integer defaultUnitsPerCarton,
+                           String baseUnit, boolean active, Instant createdAt, Instant updatedAt) {
+        static Response from(Product p) { return new Response(p.getId(), p.getName(), p.getSku(), p.getDefaultUnitsPerCarton(), p.getBaseUnit(), p.isActive(), p.getCreatedAt(), p.getUpdatedAt()); }
+    }
+}

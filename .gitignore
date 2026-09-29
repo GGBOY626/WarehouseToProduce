@@ -1,0 +1,14 @@
+.env
+.idea/
+.vscode/
+backend/target/
+backend/data/
+frontend/node_modules/
+frontend/dist/
+frontend/*.tsbuildinfo
+*.log
+data/
+/home-375.png
+/form-375.png
+/form-430.png
+/detail-390.png

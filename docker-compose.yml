@@ -1,0 +1,53 @@
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${DB_NAME}
+      MYSQL_USER: ${DB_USERNAME}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      TZ: ${TZ:-Pacific/Auckland}
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_0900_ai_ci"]
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [internal]
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_NAME: ${DB_NAME}
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      UPLOAD_DIR: /data/uploads
+      BUSINESS_TIME_ZONE: Pacific/Auckland
+      TZ: Pacific/Auckland
+      PDF_FONT_PATH: /usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc
+    volumes:
+      - ${UPLOAD_HOST_DIR:-/opt/warehouse-system/data/uploads}:/data/uploads
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks: [internal]
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${HTTP_BIND_PORT:-8088}:80"
+    depends_on: [backend]
+    networks: [internal]
+
+volumes:
+  mysql_data:
+networks:
+  internal:
+    driver: bridge

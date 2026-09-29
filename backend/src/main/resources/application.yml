@@ -1,0 +1,27 @@
+spring:
+  application:
+    name: warehouse-system
+  datasource:
+    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:warehouse}?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC
+    username: ${DB_USERNAME:warehouse_app}
+    password: ${DB_PASSWORD:warehouse_dev_password}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate.jdbc.time_zone: UTC
+  flyway:
+    enabled: true
+  servlet:
+    multipart:
+      max-file-size: 12MB
+      max-request-size: 12MB
+server:
+  port: 8080
+  forward-headers-strategy: framework
+app:
+  business-zone: ${BUSINESS_TIME_ZONE:Pacific/Auckland}
+  upload-dir: ${UPLOAD_DIR:./data/uploads}
+  max-photo-bytes: ${MAX_PHOTO_BYTES:5242880}
+  pdf-font-path: ${PDF_FONT_PATH:}
