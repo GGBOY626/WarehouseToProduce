@@ -12,7 +12,7 @@ import java.util.*;
 public class Movement extends PersistentEntity {
     @Id @GeneratedValue(strategy=GenerationType.IDENTITY) private Long id;
     @Column(name="record_no",nullable=false,length=20) private String recordNo;
-    @Column(name="idempotency_key",nullable=false,length=36) private String idempotencyKey;
+    @Column(name="idempotency_key",nullable=false,length=36,columnDefinition="CHAR(36)") private String idempotencyKey;
     @Enumerated(EnumType.STRING) @Column(nullable=false,length=40) private MovementEnums.Direction direction;
     @Column(name="movement_time",nullable=false) private Instant movementTime;
     @ManyToOne(fetch=FetchType.LAZY,optional=false) @JoinColumn(name="sender_person_id") private Person senderPerson;
