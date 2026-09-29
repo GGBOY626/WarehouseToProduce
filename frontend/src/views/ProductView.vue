@@ -10,7 +10,7 @@ const rows = ref<Product[]>([]),
   form = ref({
     name: "",
     materialCode: "",
-    sku: "",
+    materialBatch: "",
     defaultUnitsPerCarton: undefined as number | undefined,
     baseUnit: "个",
   }),
@@ -25,14 +25,14 @@ function open(p?: Product) {
     ? {
         name: p.name,
         materialCode: p.materialCode,
-        sku: p.sku || "",
+        materialBatch: p.materialBatch || "",
         defaultUnitsPerCarton: p.defaultUnitsPerCarton,
         baseUnit: p.baseUnit,
       }
     : {
         name: "",
         materialCode: "",
-        sku: "",
+        materialBatch: "",
         defaultUnitsPerCarton: undefined,
         baseUnit: "个",
       };
@@ -66,7 +66,7 @@ onMounted(load);
       <input
         class="input grow"
         v-model="q"
-        placeholder="搜索产品、物料编码或 SKU"
+        placeholder="搜索产品、物料编码或物料批次"
         @keyup.enter="load"
       /><button class="btn btn-secondary" @click="load">搜索</button>
     </div>
@@ -87,7 +87,12 @@ onMounted(load);
         />
       </div>
       <div class="field">
-        <label>SKU</label><input class="input mono" v-model.trim="form.sku" />
+        <label>物料批次（可选）</label
+        ><input
+          class="input mono"
+          v-model.trim="form.materialBatch"
+          placeholder="例如 CA202607006"
+        />
       </div>
       <div class="grid-2">
         <div class="field">
@@ -121,12 +126,14 @@ onMounted(load);
         <div class="grow">
           <strong>{{ p.name }}</strong>
           <div class="material-code mono">物料编码：{{ p.materialCode }}</div>
+          <div v-if="p.materialBatch" class="hint mono">
+            物料批次：{{ p.materialBatch }}
+          </div>
           <div v-if="p.duplicateName" class="duplicate-warning">
             同名产品，请核对物料编码
           </div>
           <div class="hint">
-            <span v-if="p.sku" class="mono">SKU {{ p.sku }} · </span
-            >{{
+            {{
               p.defaultUnitsPerCarton
                 ? `${p.defaultUnitsPerCarton} ${p.baseUnit}/箱`
                 : "未设置箱规"

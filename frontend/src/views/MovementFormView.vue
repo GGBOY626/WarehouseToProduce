@@ -65,6 +65,12 @@ function selectProduct(item: ItemInput, p?: Product) {
   item.product = p;
   item.productId = p?.id;
   item.batchNo = p?.materialCode || "";
+  if (
+    p?.materialBatch &&
+    direction.value === "WAREHOUSE_TO_PRODUCTION" &&
+    !draft.value.manufactureLot
+  )
+    draft.value.manufactureLot = p.materialBatch;
   item.manualTotal = false;
   item.totalUnits = calculate(item);
 }
@@ -147,7 +153,13 @@ function payload() {
 }
 async function save() {
   message.value = validate();
-  if (message.value) return;
+  if (message.value) {
+    window.setTimeout(
+      () => document.querySelector(".sticky-alert")?.scrollIntoView({ block: "nearest" }),
+      0,
+    );
+    return;
+  }
   saving.value = true;
   try {
     const result = editId
@@ -237,7 +249,6 @@ onMounted(async () => {
           id: x.productId,
           name: x.productName,
           materialCode: x.batchNo,
-          sku: x.sku,
           defaultUnitsPerCarton: x.unitsPerCarton,
           baseUnit: x.baseUnit,
           active: true,
@@ -336,11 +347,11 @@ onBeforeUnmount(() => {
           <SearchPicker
             v-model="item.productId"
             label="产品"
-            placeholder="输入产品名、物料编码或 SKU"
+            placeholder="输入产品名、物料编码或物料批次"
             :load="(q) => productsApi.search(q)"
             :display="
               (p) =>
-                `${p.name} · 物料编码 ${p.materialCode}${p.duplicateName ? ' · ⚠ 同名产品，请核对编码' : ''}${p.sku ? ` · SKU ${p.sku}` : ''}`
+                `${p.name} · 物料编码 ${p.materialCode}${p.materialBatch ? ` · 批次 ${p.materialBatch}` : ''}${p.duplicateName ? ' · ⚠ 同名产品，请核对编码' : ''}`
             "
             @select="(p) => selectProduct(item, p)"
           />
@@ -510,6 +521,9 @@ onBeforeUnmount(() => {
       </div>
     </section>
     <div class="sticky-actions">
+      <div v-if="message" class="sticky-alert" role="alert">
+        {{ message }}
+      </div>
       <button
         v-if="savedId"
         class="btn btn-primary btn-block"
@@ -536,6 +550,16 @@ onBeforeUnmount(() => {
   padding: 12px;
   border-radius: 9px;
   margin-bottom: 14px;
+}
+.sticky-alert {
+  background: #fdeced;
+  color: #8f1d25;
+  border: 1px solid #f2c7ca;
+  border-radius: 8px;
+  padding: 9px 11px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 680;
 }
 .item-card {
   margin-bottom: 12px;

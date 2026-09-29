@@ -49,7 +49,7 @@ public class ProductService {
                 ?repository.existsByNameIgnoreCaseAndMaterialCodeIgnoreCaseAndActiveTrue(name,materialCode)
                 :repository.existsByNameIgnoreCaseAndMaterialCodeIgnoreCaseAndActiveTrueAndIdNot(name,materialCode,p.getId());
         if(duplicate)throw new BusinessException("PRODUCT_DUPLICATE", "已有相同名称和物料编码的启用产品。", HttpStatus.CONFLICT);
-        p.setName(name);p.setMaterialCode(materialCode);p.setSku(blankToNull(r.sku()));p.setDefaultUnitsPerCarton(r.defaultUnitsPerCarton());p.setBaseUnit(r.baseUnit().trim());
+        p.setName(name);p.setMaterialCode(materialCode);p.setMaterialBatch(blankToNull(r.materialBatch()));p.setDefaultUnitsPerCarton(r.defaultUnitsPerCarton());p.setBaseUnit(r.baseUnit().trim());
     }
     private String blankToNull(String s) { return s == null || s.isBlank() ? null : s.trim(); }
 }

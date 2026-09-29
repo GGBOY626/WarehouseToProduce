@@ -11,7 +11,7 @@ export interface Product {
   id: number;
   name: string;
   materialCode: string;
-  sku?: string;
+  materialBatch?: string;
   defaultUnitsPerCarton?: number;
   baseUnit: string;
   active: boolean;

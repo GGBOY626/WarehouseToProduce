@@ -68,7 +68,6 @@ function duplicate() {
           id: x.productId,
           name: x.productName,
           materialCode: x.batchNo,
-          sku: x.sku,
           defaultUnitsPerCarton: x.unitsPerCarton,
           baseUnit: x.baseUnit,
           active: true,
@@ -152,7 +151,6 @@ onMounted(load);
         >
           <div>
             <strong>{{ item.productName }}</strong>
-            <div v-if="item.sku" class="hint mono">SKU {{ item.sku }}</div>
           </div>
           <div class="batch mono">物料编码：{{ item.batchNo }}</div>
           <div
