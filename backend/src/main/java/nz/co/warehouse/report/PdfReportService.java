@@ -30,12 +30,12 @@ public class PdfReportService {
         ZoneId z=ZoneId.of(zone);List<Movement> rows=repository.findReportRows(from.atStartOfDay(z).toInstant(),to.plusDays(1).atStartOfDay(z).toInstant(),MovementEnums.Status.ACTIVE);
         try(ByteArrayOutputStream out=new ByteArrayOutputStream()){
             Path font=findFont();PdfRendererBuilder builder=new PdfRendererBuilder();builder.useFastMode();builder.useFont(font.toFile(),"WarehouseCN");builder.withHtmlContent(html(rows,from,to,z),null);builder.toStream(out);builder.run();return out.toByteArray();
-        }catch(Exception ex){log.error("PDF 生成失败 {} - {}",from,to,ex);throw new BusinessException("PDF_GENERATION_FAILED","PDF 生成失败，请联系管理员检查中文字体配置。",HttpStatus.INTERNAL_SERVER_ERROR);}
+        }catch(Exception ex){log.error("PDF 生成失败 {} - {}",from,to,ex);throw new BusinessException("PDF_GENERATION_FAILED","PDF 生成失败，请稍后重试或联系管理员。",HttpStatus.INTERNAL_SERVER_ERROR);}
     }
 
     private Path findFont(){
         List<String> candidates=new ArrayList<>();if(configuredFont!=null&&!configuredFont.isBlank())candidates.add(configuredFont);
-        candidates.addAll(List.of("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc","/usr/share/fonts/truetype/noto/NotoSansSC-Regular.ttf","C:/Windows/Fonts/msyh.ttc"));
+        candidates.addAll(List.of("/app/fonts/WenQuanYiZenHei.ttf","/usr/share/fonts/truetype/wqy/wqy-zenhei.ttf","C:/Windows/Fonts/msyh.ttf"));
         return candidates.stream().map(Path::of).filter(Files::isRegularFile).findFirst().orElseThrow(()->new IllegalStateException("未找到中文字体，请设置 PDF_FONT_PATH"));
     }
 

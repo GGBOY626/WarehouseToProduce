@@ -24,7 +24,7 @@ Flyway 会执行 `V1__init_schema.sql`。正式环境使用 `ddl-auto=validate`�
 
 将项目放入 compose 目录，创建 `.env`，然后运行 `docker compose up -d --build`。默认通过 `0.0.0.0:8088` 提供访问；如使用宿主机 nginx 提供 HTTPS，请将 `APP_BIND_ADDRESS` 改为 `127.0.0.1`。修改 `nginx/warehouse.conf` 中的域名和证书路径后启用配置。
 
-PDF 依赖中文字体。后端镜像安装 Noto CJK，并通过 `PDF_FONT_PATH` 指定；首次部署后应实际导出一份中文 PDF 验证字体兼容。如果当前发行版字体文件路径不同，请将一个开源中文 TTF/TTC 文件挂载到容器并更新变量。
+PDF 依赖中文字体。后端镜像会从开源文泉驿正黑字体集合中提取 PDFBox 可直接加载的 TrueType 字体，并通过 `PDF_FONT_PATH` 指定；首次部署后应实际导出一份中文 PDF 验证字体兼容。
 
 ## 备份
 
