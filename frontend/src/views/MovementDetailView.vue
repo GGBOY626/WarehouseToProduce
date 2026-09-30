@@ -23,13 +23,18 @@ async function load() {
 async function addPhoto(e: Event) {
   const files = Array.from((e.target as HTMLInputElement).files || []);
   uploading.value = true;
-  for (const f of files) {
-    try {
-      await movementsApi.uploadPhoto(id, f);
-    } catch (err) {
-      message.value = errorMessage(err);
+  let next = 0;
+  async function worker() {
+    while (next < files.length) {
+      const f = files[next++];
+      try {
+        await movementsApi.uploadPhoto(id, f);
+      } catch (err) {
+        message.value = errorMessage(err);
+      }
     }
   }
+  await Promise.all(Array.from({ length: Math.min(3, files.length) }, () => worker()));
   uploading.value = false;
   await load();
 }

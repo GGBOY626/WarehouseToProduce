@@ -185,22 +185,28 @@ async function save() {
   }
 }
 async function uploadPending() {
+  const pending = files.value.filter((x) => x.status !== "uploading");
+  let next = 0;
   let failed = 0;
-  for (const entry of files.value.filter((x) => x.status !== "uploading")) {
-    entry.status = "uploading";
-    try {
-      await movementsApi.uploadPhoto(
-        savedId.value!,
-        entry.file,
-        (p) => (entry.progress = p),
-      );
-      entry.status = "ready";
-      entry.progress = 100;
-    } catch {
-      entry.status = "failed";
-      failed++;
+  async function worker() {
+    while (next < pending.length) {
+      const entry = pending[next++];
+      entry.status = "uploading";
+      try {
+        await movementsApi.uploadPhoto(
+          savedId.value!,
+          entry.file,
+          (p) => (entry.progress = p),
+        );
+        entry.status = "ready";
+        entry.progress = 100;
+      } catch {
+        entry.status = "failed";
+        failed++;
+      }
     }
   }
+  await Promise.all(Array.from({ length: Math.min(3, pending.length) }, () => worker()));
   return failed;
 }
 async function retry() {

@@ -7,14 +7,14 @@ RUN mvn -q -DskipTests package
 
 FROM debian:bookworm-slim AS fonts
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends fonts-wqy-zenhei python3-fonttools \
-    && python3 -c "from fontTools.ttLib import TTCollection; collection=TTCollection('/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc'); collection.fonts[0].save('/tmp/WenQuanYiZenHei.ttf')" \
-    && test -s /tmp/WenQuanYiZenHei.ttf
+    && apt-get install -y --no-install-recommends fonts-droid-fallback \
+    && test -s /usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf \
+    && rm -rf /var/lib/apt/lists/*
 
 FROM eclipse-temurin:21-jre
 WORKDIR /app
 COPY --from=build /app/target/warehouse-backend-1.0.0.jar app.jar
-COPY --from=fonts /tmp/WenQuanYiZenHei.ttf /app/fonts/WenQuanYiZenHei.ttf
+COPY --from=fonts /usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf /app/fonts/DroidSansFallbackFull.ttf
 RUN mkdir -p /data/uploads
 EXPOSE 8080
 ENTRYPOINT ["java","-jar","/app/app.jar"]

@@ -35,8 +35,16 @@ public class PdfReportService {
 
     private Path findFont(){
         List<String> candidates=new ArrayList<>();if(configuredFont!=null&&!configuredFont.isBlank())candidates.add(configuredFont);
-        candidates.addAll(List.of("/app/fonts/WenQuanYiZenHei.ttf","/usr/share/fonts/truetype/wqy/wqy-zenhei.ttf","C:/Windows/Fonts/msyh.ttf"));
-        return candidates.stream().map(Path::of).filter(Files::isRegularFile).findFirst().orElseThrow(()->new IllegalStateException("未找到中文字体，请设置 PDF_FONT_PATH"));
+        candidates.addAll(List.of(
+                "/app/fonts/DroidSansFallbackFull.ttf",
+                "/app/fonts/WenQuanYiZenHei.ttf",
+                "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttf",
+                "C:/Windows/Fonts/msyh.ttf",
+                "C:/Windows/Fonts/simhei.ttf",
+                "C:/Windows/Fonts/Deng.ttf"));
+        Path font=candidates.stream().map(Path::of).filter(Files::isReadable).findFirst().orElseThrow(()->new IllegalStateException("未找到可读的中文字体，请设置 PDF_FONT_PATH；已检查: "+String.join(", ",candidates)));
+        log.debug("PDF 使用字体 {}",font);
+        return font;
     }
 
     private String html(List<Movement> rows,LocalDate from,LocalDate to,ZoneId z){
