@@ -1,5 +1,5 @@
-const MAX_EDGE = 1920;
-const TARGET_BYTES = 1_500_000;
+const MAX_EDGE = 1600;
+const TARGET_BYTES = 900_000;
 
 /** Shrink camera photos before they cross the network. Unsupported formats fall back unchanged. */
 export async function preparePhoto(file: File): Promise<File> {
@@ -24,13 +24,13 @@ export async function preparePhoto(file: File): Promise<File> {
     context.drawImage(bitmap, 0, 0, width, height);
 
     let blob: Blob | null = null;
-    for (const quality of [0.82, 0.72, 0.62]) {
+    for (const quality of [0.8, 0.7, 0.6, 0.52]) {
       blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
       if (!blob || blob.size <= TARGET_BYTES) break;
     }
     if (!blob || blob.size >= file.size) return file;
     const name = file.name.replace(/\.[^.]+$/, "") || "photo";
-    return new File([blob], `${name}.jpg`, { type: "image/jpeg", lastModified: file.lastModified });
+    return new File([blob], `${name}.optimized.jpg`, { type: "image/jpeg", lastModified: file.lastModified });
   } finally {
     bitmap.close();
   }

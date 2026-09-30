@@ -11,7 +11,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.io.*;
-import java.nio.file.*;
 import java.time.*;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -21,7 +20,7 @@ import java.util.stream.Collectors;
 public class PdfReportService {
     private final MovementRepository repository;
     @Value("${app.business-zone:Pacific/Auckland}") private String zone;
-    @Value("${app.pdf-font-path:}") private String configuredFont;
+    private static final String PDF_FONT="/fonts/DroidSansFallbackFull.ttf";
 
     @Transactional(readOnly=true)
     public byte[] generate(LocalDate from,LocalDate to){
@@ -29,21 +28,13 @@ public class PdfReportService {
         if(from.plusYears(1).isBefore(to))throw BusinessException.badRequest("DATE_RANGE_TOO_LARGE","单次导出日期范围不能超过一年。");
         ZoneId z=ZoneId.of(zone);List<Movement> rows=repository.findReportRows(from.atStartOfDay(z).toInstant(),to.plusDays(1).atStartOfDay(z).toInstant(),MovementEnums.Status.ACTIVE);
         try(ByteArrayOutputStream out=new ByteArrayOutputStream()){
-            Path font=findFont();PdfRendererBuilder builder=new PdfRendererBuilder();builder.useFastMode();builder.useFont(font.toFile(),"WarehouseCN");builder.withHtmlContent(html(rows,from,to,z),null);builder.toStream(out);builder.run();return out.toByteArray();
+            PdfRendererBuilder builder=new PdfRendererBuilder();builder.useFastMode();builder.useFont(this::openFont,"WarehouseCN");builder.withHtmlContent(html(rows,from,to,z),null);builder.toStream(out);builder.run();return out.toByteArray();
         }catch(Exception ex){log.error("PDF 生成失败 {} - {}",from,to,ex);throw new BusinessException("PDF_GENERATION_FAILED","PDF 生成失败，请稍后重试或联系管理员。",HttpStatus.INTERNAL_SERVER_ERROR);}
     }
 
-    private Path findFont(){
-        List<String> candidates=new ArrayList<>();if(configuredFont!=null&&!configuredFont.isBlank())candidates.add(configuredFont);
-        candidates.addAll(List.of(
-                "/app/fonts/DroidSansFallbackFull.ttf",
-                "/app/fonts/WenQuanYiZenHei.ttf",
-                "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttf",
-                "C:/Windows/Fonts/msyh.ttf",
-                "C:/Windows/Fonts/simhei.ttf",
-                "C:/Windows/Fonts/Deng.ttf"));
-        Path font=candidates.stream().map(Path::of).filter(Files::isReadable).findFirst().orElseThrow(()->new IllegalStateException("未找到可读的中文字体，请设置 PDF_FONT_PATH；已检查: "+String.join(", ",candidates)));
-        log.debug("PDF 使用字体 {}",font);
+    private InputStream openFont(){
+        InputStream font=PdfReportService.class.getResourceAsStream(PDF_FONT);
+        if(font==null)throw new IllegalStateException("JAR 中缺少 PDF 中文字体: "+PDF_FONT);
         return font;
     }
 

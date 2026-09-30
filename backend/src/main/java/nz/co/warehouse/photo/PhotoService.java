@@ -41,13 +41,24 @@ public class PhotoService {
             target=Path.of(uploadDir).toAbsolutePath().normalize().resolve(relative).normalize();
             if(!target.startsWith(Path.of(uploadDir).toAbsolutePath().normalize()))throw new SecurityException("非法图片路径");
             Files.createDirectories(target.getParent());
-            double quality=.88;
-            do {
-                Thumbnails.of(temp.toFile()).useExifOrientation(true).size(2000,2000).keepAspectRatio(true).outputFormat("jpg").outputQuality(quality).toFile(target.toFile());
-                quality-=.08;
-            } while(Files.size(target)>maxBytes&&quality>=.60);
+            String originalName=file.getOriginalFilename();
+            boolean browserOptimized=originalName!=null&&originalName.endsWith(".optimized.jpg")
+                    &&MediaType.IMAGE_JPEG_VALUE.equalsIgnoreCase(file.getContentType())
+                    &&source.getWidth()<=1600&&source.getHeight()<=1600&&file.getSize()<=900_000;
+            BufferedImage output;
+            if(browserOptimized){
+                Files.move(temp,target,StandardCopyOption.REPLACE_EXISTING);
+                temp=null;
+                output=source;
+            }else{
+                double quality=.88;
+                do {
+                    Thumbnails.of(temp.toFile()).useExifOrientation(true).size(2000,2000).keepAspectRatio(true).outputFormat("jpg").outputQuality(quality).toFile(target.toFile());
+                    quality-=.08;
+                } while(Files.size(target)>maxBytes&&quality>=.60);
+                output=ImageIO.read(target.toFile());
+            }
             if(Files.size(target)>maxBytes){Files.deleteIfExists(target);throw BusinessException.badRequest("PHOTO_TOO_LARGE","图片压缩后仍超过 5MB，请重新拍摄或选择较小图片。");}
-            BufferedImage output=ImageIO.read(target.toFile());
             return saveMetadata(movement,file.getOriginalFilename(),relative,target,output);
         } catch(BusinessException ex){throw ex;} catch(Exception ex){if(target!=null)try{Files.deleteIfExists(target);}catch(IOException ignored){}log.error("图片上传失败 movementId={}",movementId,ex);throw new BusinessException("PHOTO_UPLOAD_FAILED","图片处理失败，请重新选择后再试。",HttpStatus.INTERNAL_SERVER_ERROR);} finally {if(temp!=null)try{Files.deleteIfExists(temp);}catch(IOException ignored){}}
     }

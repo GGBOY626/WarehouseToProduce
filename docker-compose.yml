@@ -30,7 +30,6 @@ services:
       UPLOAD_DIR: /data/uploads
       BUSINESS_TIME_ZONE: Pacific/Auckland
       TZ: Pacific/Auckland
-      PDF_FONT_PATH: /app/fonts/DroidSansFallbackFull.ttf
     volumes:
       - ${UPLOAD_HOST_DIR:-/opt/warehouse-system/data/uploads}:/data/uploads
     depends_on:

@@ -24,4 +24,3 @@ app:
   business-zone: ${BUSINESS_TIME_ZONE:Pacific/Auckland}
   upload-dir: ${UPLOAD_DIR:./data/uploads}
   max-photo-bytes: ${MAX_PHOTO_BYTES:5242880}
-  pdf-font-path: ${PDF_FONT_PATH:}
