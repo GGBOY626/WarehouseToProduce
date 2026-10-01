@@ -30,7 +30,7 @@ public final class MovementDtos {
                                  String voidReason,Instant voidedAt,List<ItemResponse> items,List<PhotoResponse> photos,
                                  boolean hasIssues,boolean missingPhoto,Instant createdAt,Instant updatedAt) {}
     public record ListResponse(Long id,String recordNo,MovementEnums.Direction direction,Instant movementTime,
-                               String senderName,String receiverName,int totalCartons,MovementEnums.Status status,
+                               String senderName,String receiverName,int totalCartons,long totalQuantity,MovementEnums.Status status,
                                List<String> productNames,int itemCount,int photoCount,boolean hasIssues) {}
     public record PageResponse(List<ListResponse> content,int page,int size,long totalElements,int totalPages) {}
 
@@ -41,6 +41,7 @@ public final class MovementDtos {
         return new DetailResponse(m.getId(),m.getRecordNo(),m.getDirection(),m.getMovementTime(),m.getSenderPerson().getId(),m.getSenderNameSnapshot(),m.getReceiverPerson().getId(),m.getReceiverNameSnapshot(),m.getManufactureLot(),m.getTotalCartons(),m.getRemarks(),m.getStatus(),m.getVoidReason(),m.getVoidedAt(),items,photos,issues,photos.isEmpty(),m.getCreatedAt(),m.getUpdatedAt());
     }
     static ListResponse summary(Movement m) {
-        return new ListResponse(m.getId(),m.getRecordNo(),m.getDirection(),m.getMovementTime(),m.getSenderNameSnapshot(),m.getReceiverNameSnapshot(),m.getTotalCartons(),m.getStatus(),m.getItems().stream().map(MovementItem::getProductNameSnapshot).distinct().limit(3).toList(),m.getItems().size(),m.getPhotos().size(),m.getItems().stream().anyMatch(i->!i.getIssues().isEmpty()));
+        long totalQuantity=m.getItems().stream().map(MovementItem::getTotalUnits).filter(Objects::nonNull).mapToLong(Long::longValue).sum();
+        return new ListResponse(m.getId(),m.getRecordNo(),m.getDirection(),m.getMovementTime(),m.getSenderNameSnapshot(),m.getReceiverNameSnapshot(),m.getTotalCartons(),totalQuantity,m.getStatus(),m.getItems().stream().map(MovementItem::getProductNameSnapshot).distinct().limit(3).toList(),m.getItems().size(),m.getPhotos().size(),m.getItems().stream().anyMatch(i->!i.getIssues().isEmpty()));
     }
 }

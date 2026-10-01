@@ -103,6 +103,7 @@ export interface MovementSummary {
   senderName: string;
   receiverName: string;
   totalCartons: number;
+  totalQuantity: number;
   status: MovementStatus;
   productNames: string[];
   itemCount: number;

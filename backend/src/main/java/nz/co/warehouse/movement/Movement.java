@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import lombok.*;
 import nz.co.warehouse.common.PersistentEntity;
 import nz.co.warehouse.person.Person;
+import org.hibernate.annotations.BatchSize;
 import java.time.Instant;
 import java.util.*;
 
@@ -26,8 +27,10 @@ public class Movement extends PersistentEntity {
     @Column(name="void_reason",length=500) private String voidReason;
     @Column(name="voided_at") private Instant voidedAt;
     @OneToMany(mappedBy="movement",cascade=CascadeType.ALL,orphanRemoval=true)
+    @BatchSize(size=100)
     @OrderBy("sortOrder asc") private List<MovementItem> items=new ArrayList<>();
     @OneToMany(mappedBy="movement",cascade=CascadeType.ALL,orphanRemoval=true)
+    @BatchSize(size=100)
     @OrderBy("createdAt asc") private Set<MovementPhoto> photos=new LinkedHashSet<>();
     public void addItem(MovementItem item){items.add(item);item.setMovement(this);}
 }

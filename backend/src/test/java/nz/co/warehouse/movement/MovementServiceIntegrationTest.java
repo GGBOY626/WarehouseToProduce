@@ -9,6 +9,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.jdbc.Sql;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.*;
 import static org.assertj.core.api.Assertions.*;
 
@@ -55,6 +56,18 @@ class MovementServiceIntegrationTest {
         assertThat(saved.items()).hasSize(2);assertThat(saved.totalCartons()).isEqualTo(5);
         assertThat(saved.items().getFirst().totalUnits()).isEqualTo(64);assertThat(saved.items().getFirst().calculatedTotalUnits()).isEqualTo(65);assertThat(saved.items().getFirst().totalUnitsOverridden()).isTrue();
         assertThat(saved.items().get(1).batchNo()).isEqualTo("BATCH-B");
+    }
+
+    @Test void listSumsStoredTotalUnitsAcrossAllItems(){
+        var first=new MovementDtos.ItemRequest(product,"BATCH-A",2,5,64L,null,List.of());
+        var second=new MovementDtos.ItemRequest(product,"BATCH-B",3,0,null,null,List.of());
+        var request=new MovementDtos.SaveRequest(UUID.randomUUID().toString(),MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,Instant.parse("2026-09-28T01:00:00Z"),sender,receiver,"LOT-TOTAL",null,List.of(first,second));
+        var saved=movements.create(request);
+
+        var page=movements.search(LocalDate.of(2026,9,28),LocalDate.of(2026,9,28),null,null,null,null,"",0,20);
+
+        var summary=page.content().stream().filter(x->x.id().equals(saved.id())).findFirst().orElseThrow();
+        assertThat(summary.totalQuantity()).isEqualTo(154);
     }
 
     private MovementDtos.SaveRequest request(String key,MovementEnums.Direction direction,int cartons,long loose){

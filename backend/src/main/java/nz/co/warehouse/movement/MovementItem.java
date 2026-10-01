@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import lombok.*;
 import nz.co.warehouse.common.PersistentEntity;
 import nz.co.warehouse.product.Product;
+import org.hibernate.annotations.BatchSize;
 import java.util.*;
 
 @Getter @Setter @NoArgsConstructor
@@ -25,6 +26,7 @@ public class MovementItem extends PersistentEntity {
     @Column(length=1000) private String remarks;
     @Column(name="sort_order",nullable=false) private int sortOrder;
     @OneToMany(mappedBy="movementItem",cascade=CascadeType.ALL,orphanRemoval=true)
+    @BatchSize(size=100)
     private Set<MovementItemIssue> issues=new LinkedHashSet<>();
     public void addIssue(MovementItemIssue issue){issues.add(issue);issue.setMovementItem(this);}
 }
