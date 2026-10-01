@@ -355,10 +355,6 @@ onBeforeUnmount(() => {
             label="产品"
             placeholder="输入产品名、物料编码或物料批次"
             :load="(q) => productsApi.search(q)"
-            :display="
-              (p) =>
-                `${p.name} · 物料编码 ${p.materialCode}${p.materialBatch ? ` · 批次 ${p.materialBatch}` : ''}${p.duplicateName ? ' · ⚠ 同名产品，请核对编码' : ''}`
-            "
             @select="(p) => selectProduct(item, p)"
           />
           <div class="field">
