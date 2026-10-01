@@ -13,6 +13,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import javax.imageio.ImageIO;
+import javax.imageio.ImageReader;
+import javax.imageio.stream.ImageInputStream;
 import java.awt.image.BufferedImage;
 import java.io.*;
 import java.nio.file.*;
@@ -34,39 +36,51 @@ public class PhotoService {
         Path temp=null,target=null;
         try {
             temp=Files.createTempFile("warehouse-upload-",".tmp");file.transferTo(temp);
-            BufferedImage source=ImageIO.read(temp.toFile());
-            if(source==null)throw BusinessException.badRequest("PHOTO_FORMAT_UNSUPPORTED","当前图片格式暂不支持，请使用相机拍照或选择 JPEG/PNG 图片。");
             LocalDate date=LocalDate.now(ZoneId.of("Pacific/Auckland"));
             Path relative=Path.of("movements",String.valueOf(date.getYear()),String.format("%02d",date.getMonthValue()),String.valueOf(movementId),UUID.randomUUID()+".jpg");
             target=Path.of(uploadDir).toAbsolutePath().normalize().resolve(relative).normalize();
             if(!target.startsWith(Path.of(uploadDir).toAbsolutePath().normalize()))throw new SecurityException("非法图片路径");
             Files.createDirectories(target.getParent());
             String originalName=file.getOriginalFilename();
-            boolean browserOptimized=originalName!=null&&originalName.endsWith(".optimized.jpg")
-                    &&MediaType.IMAGE_JPEG_VALUE.equalsIgnoreCase(file.getContentType())
-                    &&source.getWidth()<=1600&&source.getHeight()<=1600&&file.getSize()<=900_000;
-            BufferedImage output;
+            int[] dimensions=null;
+            boolean optimizedCandidate=originalName!=null&&originalName.endsWith(".optimized.jpg")
+                    &&MediaType.IMAGE_JPEG_VALUE.equalsIgnoreCase(file.getContentType())&&file.getSize()<=280_000;
+            if(optimizedCandidate)dimensions=readDimensions(temp);
+            boolean browserOptimized=dimensions!=null&&dimensions[0]<=1280&&dimensions[1]<=1280;
             if(browserOptimized){
                 Files.move(temp,target,StandardCopyOption.REPLACE_EXISTING);
                 temp=null;
-                output=source;
             }else{
+                BufferedImage source=ImageIO.read(temp.toFile());
+                if(source==null)throw BusinessException.badRequest("PHOTO_FORMAT_UNSUPPORTED","当前图片格式暂不支持，请使用相机拍照或选择 JPEG/PNG 图片。");
                 double quality=.88;
                 do {
                     Thumbnails.of(temp.toFile()).useExifOrientation(true).size(2000,2000).keepAspectRatio(true).outputFormat("jpg").outputQuality(quality).toFile(target.toFile());
                     quality-=.08;
                 } while(Files.size(target)>maxBytes&&quality>=.60);
-                output=ImageIO.read(target.toFile());
+                BufferedImage output=ImageIO.read(target.toFile());
+                dimensions=new int[]{output.getWidth(),output.getHeight()};
             }
             if(Files.size(target)>maxBytes){Files.deleteIfExists(target);throw BusinessException.badRequest("PHOTO_TOO_LARGE","图片压缩后仍超过 5MB，请重新拍摄或选择较小图片。");}
-            return saveMetadata(movement,file.getOriginalFilename(),relative,target,output);
+            return saveMetadata(movement,file.getOriginalFilename(),relative,target,dimensions[0],dimensions[1]);
         } catch(BusinessException ex){throw ex;} catch(Exception ex){if(target!=null)try{Files.deleteIfExists(target);}catch(IOException ignored){}log.error("图片上传失败 movementId={}",movementId,ex);throw new BusinessException("PHOTO_UPLOAD_FAILED","图片处理失败，请重新选择后再试。",HttpStatus.INTERNAL_SERVER_ERROR);} finally {if(temp!=null)try{Files.deleteIfExists(temp);}catch(IOException ignored){}}
     }
 
     @Transactional
-    protected MovementDtos.PhotoResponse saveMetadata(Movement movement,String originalName,Path relative,Path target,BufferedImage image)throws IOException{
-        MovementPhoto p=new MovementPhoto();p.setMovement(movement);p.setFilePath(relative.toString().replace('\\','/'));p.setOriginalName(originalName==null?"照片.jpg":originalName);p.setMimeType(MediaType.IMAGE_JPEG_VALUE);p.setFileSize(Files.size(target));p.setWidth(image.getWidth());p.setHeight(image.getHeight());p=photos.save(p);
+    protected MovementDtos.PhotoResponse saveMetadata(Movement movement,String originalName,Path relative,Path target,int width,int height)throws IOException{
+        MovementPhoto p=new MovementPhoto();p.setMovement(movement);p.setFilePath(relative.toString().replace('\\','/'));p.setOriginalName(originalName==null?"照片.jpg":originalName);p.setMimeType(MediaType.IMAGE_JPEG_VALUE);p.setFileSize(Files.size(target));p.setWidth(width);p.setHeight(height);p=photos.save(p);
         return new MovementDtos.PhotoResponse(p.getId(),"/api/movements/"+movement.getId()+"/photos/"+p.getId()+"/content",p.getOriginalName(),p.getMimeType(),p.getFileSize(),p.getWidth(),p.getHeight(),p.getCreatedAt());
+    }
+
+    private int[] readDimensions(Path image)throws IOException{
+        try(ImageInputStream input=ImageIO.createImageInputStream(image.toFile())){
+            if(input==null)return null;
+            var readers=ImageIO.getImageReaders(input);
+            if(!readers.hasNext())return null;
+            ImageReader reader=readers.next();
+            try{reader.setInput(input,true,true);return new int[]{reader.getWidth(0),reader.getHeight(0)};}
+            finally{reader.dispose();}
+        }
     }
 
     @Transactional(readOnly=true)
