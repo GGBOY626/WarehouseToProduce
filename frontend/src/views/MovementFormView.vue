@@ -14,6 +14,7 @@ import type {
 import { issueLabels, directionLabel } from "../utils/labels";
 import { nowLocalInput, toInstant, toLocalInput } from "../utils/time";
 import { createUuid } from "../utils/uuid";
+import { queuePhotoUploads } from "../utils/photoUploadQueue";
 const route = useRoute(),
   router = useRouter();
 const editId = route.params.id ? Number(route.params.id) : undefined;
@@ -49,7 +50,6 @@ const files = ref<
 const saving = ref(false),
   dirty = ref(false),
   message = ref("");
-const savedId = ref<number>();
 const draftKey = computed(() => `movement-draft:${direction.value}`);
 const allIssues = Object.entries(issueLabels) as [IssueType, string][];
 function calculate(item: ItemInput) {
@@ -165,7 +165,6 @@ async function save() {
     const result = editId
       ? await movementsApi.update(editId, payload())
       : await movementsApi.create(payload());
-    savedId.value = result.id;
     localStorage.removeItem(draftKey.value);
     localStorage.setItem(
       `last-persons:${direction.value}`,
@@ -175,47 +174,12 @@ async function save() {
       }),
     );
     dirty.value = false;
-    const failed = await uploadPending();
-    if (!failed) await router.replace(`/movements/${result.id}`);
-    else message.value = "记录已保存，但有照片上传失败。请点击“重试上传”。";
+    await queuePhotoUploads(result.id, files.value.map((entry) => entry.file));
+    await router.replace(`/movements/${result.id}`);
   } catch (e) {
     message.value = errorMessage(e);
   } finally {
     saving.value = false;
-  }
-}
-async function uploadPending() {
-  const pending = files.value.filter((x) => x.status !== "uploading");
-  let next = 0;
-  let failed = 0;
-  async function worker() {
-    while (next < pending.length) {
-      const entry = pending[next++];
-      entry.status = "uploading";
-      try {
-        await movementsApi.uploadPhoto(
-          savedId.value!,
-          entry.file,
-          (p) => (entry.progress = p),
-        );
-        entry.status = "ready";
-        entry.progress = 100;
-      } catch {
-        entry.status = "failed";
-        failed++;
-      }
-    }
-  }
-  await Promise.all(Array.from({ length: Math.min(3, pending.length) }, () => worker()));
-  return failed;
-}
-async function retry() {
-  saving.value = true;
-  const failed = await uploadPending();
-  saving.value = false;
-  if (!failed) {
-    dirty.value = false;
-    await router.replace(`/movements/${savedId.value}`);
   }
 }
 function beforeUnload(e: BeforeUnloadEvent) {
@@ -527,14 +491,6 @@ onBeforeUnmount(() => {
         {{ message }}
       </div>
       <button
-        v-if="savedId"
-        class="btn btn-primary btn-block"
-        :disabled="saving"
-        @click="retry"
-      >
-        {{ saving ? "正在上传…" : "重试上传失败照片" }}</button
-      ><button
-        v-else
         class="btn btn-primary btn-block"
         :disabled="saving"
         @click="save"

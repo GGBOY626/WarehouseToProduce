@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { onBeforeUnmount, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { movementsApi } from "../api";
 import { errorMessage } from "../api/http";
@@ -7,6 +7,7 @@ import type { MovementDetail } from "../types";
 import { directionLabel, issueLabels } from "../utils/labels";
 import { showDateTime, nowLocalInput } from "../utils/time";
 import { createUuid } from "../utils/uuid";
+import { queuePhotoUploads } from "../utils/photoUploadQueue";
 const route = useRoute(),
   router = useRouter(),
   id = Number(route.params.id);
@@ -23,21 +24,10 @@ async function load() {
 async function addPhoto(e: Event) {
   const files = Array.from((e.target as HTMLInputElement).files || []);
   uploading.value = true;
-  let next = 0;
-  async function worker() {
-    while (next < files.length) {
-      const f = files[next++];
-      try {
-        await movementsApi.uploadPhoto(id, f);
-      } catch (err) {
-        message.value = errorMessage(err);
-      }
-    }
-  }
-  await Promise.all(Array.from({ length: Math.min(3, files.length) }, () => worker()));
+  await queuePhotoUploads(id, files);
   uploading.value = false;
-  await load();
 }
+function photoQueueChanged(event:Event){const detail=(event as CustomEvent).detail;if(detail.movementId===id&&detail.status==='complete')void load()}
 async function deletePhoto(photoId: number) {
   if (!confirm("确定删除这张照片？")) return;
   await movementsApi.deletePhoto(id, photoId);
@@ -90,7 +80,8 @@ function duplicate() {
     `/movements/new/${m.direction === "WAREHOUSE_TO_PRODUCTION" ? "warehouse-to-production" : "production-to-warehouse"}`,
   );
 }
-onMounted(load);
+onMounted(()=>{window.addEventListener('photo-upload-queue',photoQueueChanged);void load()});
+onBeforeUnmount(()=>window.removeEventListener('photo-upload-queue',photoQueueChanged));
 </script>
 <template>
   <div class="page">
