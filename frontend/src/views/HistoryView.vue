@@ -32,16 +32,23 @@ async function load() {
     loading.value = false;
   }
 }
-function preset(kind: "today" | "week") {
-  const d = new Date();
+function shiftDate(date: string, days: number) {
+  const [year, month, day] = date.split("-").map(Number);
+  const value = new Date(Date.UTC(year, month - 1, day));
+  value.setUTCDate(value.getUTCDate() + days);
+  return value.toISOString().slice(0, 10);
+}
+function preset(kind: "today" | "yesterday" | "week" | "twoWeeks") {
+  const current = today();
   if (kind === "today") {
-    from.value = to.value = today();
+    from.value = to.value = current;
+  } else if (kind === "yesterday") {
+    from.value = to.value = shiftDate(current, -1);
   } else {
-    const day = (d.getDay() + 6) % 7;
-    const monday = new Date(d);
-    monday.setDate(d.getDate() - day);
-    from.value = monday.toISOString().slice(0, 10);
-    to.value = today();
+    const currentDate = new Date(`${current}T00:00:00Z`);
+    const daysSinceMonday = (currentDate.getUTCDay() + 6) % 7;
+    from.value = shiftDate(current, kind === "week" ? -daysSinceMonday : -(daysSinceMonday + 7));
+    to.value = current;
   }
   load();
 }
@@ -54,7 +61,9 @@ onMounted(load);
     <section class="filters card card-pad">
       <div class="preset">
         <button class="btn btn-secondary" @click="preset('today')">今天</button
-        ><button class="btn btn-secondary" @click="preset('week')">本周</button>
+        ><button class="btn btn-secondary" @click="preset('yesterday')">昨天</button
+        ><button class="btn btn-secondary" @click="preset('week')">本周</button
+        ><button class="btn btn-secondary" @click="preset('twoWeeks')">这两周</button>
       </div>
       <div class="grid-2">
         <div class="field">
@@ -133,6 +142,7 @@ onMounted(load);
 }
 .preset {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
 }
 .preset .btn {
