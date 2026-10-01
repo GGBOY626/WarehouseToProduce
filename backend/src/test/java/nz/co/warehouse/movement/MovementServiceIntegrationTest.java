@@ -5,6 +5,7 @@ import nz.co.warehouse.product.*;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.jdbc.Sql;
 
@@ -24,6 +25,7 @@ class MovementServiceIntegrationTest {
     @Autowired MovementService movements;
     @Autowired ProductService products;
     @Autowired PersonService persons;
+    @Autowired JdbcTemplate jdbc;
     Long sender,receiver,product;
 
     @BeforeEach void setup(){
@@ -68,6 +70,21 @@ class MovementServiceIntegrationTest {
 
         var summary=page.content().stream().filter(x->x.id().equals(saved.id())).findFirst().orElseThrow();
         assertThat(summary.totalQuantity()).isEqualTo(154);
+    }
+
+    @Test void detailDoesNotDuplicateItemWhenMovementHasMultiplePhotos(){
+        var saved=movements.create(request(UUID.randomUUID().toString(),MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,1,0));
+        for(int i=1;i<=2;i++)jdbc.update("""
+                insert into movement_photo
+                    (movement_id,file_path,original_name,mime_type,file_size,width,height,created_at,updated_at)
+                values (?, ?, ?, 'image/jpeg', 100, 100, 100, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """,saved.id(),"test/photo-"+i+".jpg","photo-"+i+".jpg");
+
+        var detail=movements.detail(saved.id());
+
+        assertThat(detail.photos()).hasSize(2);
+        assertThat(detail.items()).hasSize(1);
+        assertThat(detail.items().getFirst().id()).isEqualTo(saved.items().getFirst().id());
     }
 
     private MovementDtos.SaveRequest request(String key,MovementEnums.Direction direction,int cartons,long loose){

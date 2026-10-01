@@ -26,7 +26,7 @@ public class MovementService {
 
     public MovementDtos.DetailResponse create(MovementDtos.SaveRequest request) {
         var existing=repository.findByIdempotencyKey(request.idempotencyKey());
-        if(existing.isPresent()){log.info("幂等重复请求: {}",request.idempotencyKey());return detail(existing.get().getId());}
+        if(existing.isPresent()){log.info("幂等重复请求: {}",request.idempotencyKey());return detailInTransaction(existing.get().getId());}
         try {
             return transactions.execute(status->{
                 Movement m=new Movement();
@@ -36,7 +36,7 @@ public class MovementService {
                 return MovementDtos.detail(repository.saveAndFlush(m));
             });
         } catch(DataIntegrityViolationException ex) {
-            return repository.findByIdempotencyKey(request.idempotencyKey()).map(x->detail(x.getId())).orElseThrow(()->ex);
+            return repository.findByIdempotencyKey(request.idempotencyKey()).map(x->detailInTransaction(x.getId())).orElseThrow(()->ex);
         }
     }
 
@@ -52,6 +52,8 @@ public class MovementService {
 
     @Transactional(readOnly=true)
     public MovementDtos.DetailResponse detail(long id){return MovementDtos.detail(repository.findDetailById(id).orElseThrow(()->BusinessException.notFound("MOVEMENT_NOT_FOUND","找不到该流转记录。")));}
+
+    private MovementDtos.DetailResponse detailInTransaction(long id){return transactions.execute(status->MovementDtos.detail(repository.findDetailById(id).orElseThrow(()->BusinessException.notFound("MOVEMENT_NOT_FOUND","找不到该流转记录。"))));}
 
     @Transactional(readOnly=true)
     public MovementDtos.PageResponse search(LocalDate from,LocalDate to,MovementEnums.Direction direction,MovementEnums.Status status,Boolean missingPhoto,Boolean hasIssue,String q,int page,int size){

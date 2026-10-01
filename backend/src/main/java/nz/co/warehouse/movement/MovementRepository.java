@@ -9,11 +9,11 @@ import java.util.Optional;
 public interface MovementRepository extends JpaRepository<Movement,Long> {
     Optional<Movement> findByIdempotencyKey(String key);
 
-    @EntityGraph(attributePaths={"items","items.issues","photos"})
+    @EntityGraph(attributePaths={"senderPerson","receiverPerson","items","items.product"})
     @Query("select distinct m from Movement m where m.id=:id")
     Optional<Movement> findDetailById(@Param("id") long id);
 
-    @EntityGraph(attributePaths={"items","items.issues","photos"})
+    @EntityGraph(attributePaths={"senderPerson","receiverPerson","items","items.product"})
     @Query("select distinct m from Movement m where m.movementTime>=:from and m.movementTime<:to and m.status=:status order by m.movementTime asc")
     java.util.List<Movement> findReportRows(@Param("from") Instant from,@Param("to") Instant to,@Param("status") MovementEnums.Status status);
 
