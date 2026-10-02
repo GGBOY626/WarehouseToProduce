@@ -5,5 +5,5 @@ export const toLocalInput=(iso:string)=>formatInTimeZone(iso,BUSINESS_ZONE,"yyyy
 export const toInstant=(local:string)=>fromZonedTime(local,BUSINESS_ZONE).toISOString();
 export const showDateTime=(iso:string)=>formatInTimeZone(iso,BUSINESS_ZONE,'yyyy-MM-dd HH:mm');
 export const showTime=(iso:string)=>formatInTimeZone(iso,BUSINESS_ZONE,'HH:mm');
-export const showMonthDayTime=(iso:string)=>formatInTimeZone(iso,BUSINESS_ZONE,'MM月dd日 HH:mm');
+export const showMonthDay=(iso:string)=>formatInTimeZone(iso,BUSINESS_ZONE,'MM月dd日');
 export const today=()=>formatInTimeZone(new Date(),BUSINESS_ZONE,'yyyy-MM-dd');
