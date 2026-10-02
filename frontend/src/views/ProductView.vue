@@ -63,6 +63,7 @@ async function remove(p: Product) {
     await load();
   } catch (e) {
     message.value = errorMessage(e);
+    alert(message.value);
   }
 }
 onMounted(load);

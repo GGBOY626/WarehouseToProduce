@@ -13,6 +13,7 @@ public class MovementController {
     @PutMapping("/{id}") public MovementDtos.DetailResponse update(@PathVariable long id,@Valid @RequestBody MovementDtos.SaveRequest r){return service.update(id,r);}
     @GetMapping("/{id}") public MovementDtos.DetailResponse detail(@PathVariable long id){return service.detail(id);}
     @PostMapping("/{id}/void") public MovementDtos.DetailResponse voidMovement(@PathVariable long id,@Valid @RequestBody MovementDtos.VoidRequest r){return service.voidMovement(id,r.reason());}
+    @DeleteMapping("/{id}") public void delete(@PathVariable long id){service.delete(id);}
     @GetMapping public MovementDtos.PageResponse search(
             @RequestParam @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate to,

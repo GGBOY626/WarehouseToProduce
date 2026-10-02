@@ -12,6 +12,10 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import java.nio.file.*;
+import java.io.IOException;
 import java.time.*;
 import java.util.*;
 
@@ -50,6 +54,17 @@ public class MovementService {
         Movement m=getActiveDetail(id);m.setStatus(MovementEnums.Status.VOID);m.setVoidReason(reason.trim());m.setVoidedAt(Instant.now());return MovementDtos.detail(m);
     }
 
+    @Transactional
+    public void delete(long id) {
+        Movement movement=repository.findDetailById(id).orElseThrow(()->BusinessException.notFound("MOVEMENT_NOT_FOUND","找不到该流转记录。"));
+        List<String> photoPaths=movement.getPhotos().stream().map(MovementPhoto::getFilePath).toList();
+        repository.delete(movement);
+        repository.flush();
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override public void afterCommit() { photoPaths.forEach(MovementService.this::deletePhotoFile); }
+        });
+    }
+
     @Transactional(readOnly=true)
     public MovementDtos.DetailResponse detail(long id){return MovementDtos.detail(repository.findDetailById(id).orElseThrow(()->BusinessException.notFound("MOVEMENT_NOT_FOUND","找不到该流转记录。")));}
 
@@ -84,4 +99,12 @@ public class MovementService {
     private void validateDirection(MovementDtos.SaveRequest r){if(r.direction()==MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION&&(r.manufactureLot()==null||r.manufactureLot().isBlank()))throw BusinessException.badRequest("MANUFACTURE_LOT_REQUIRED","仓库送往生产车间时必须填写物料批次。");}
     private Movement getActiveDetail(long id){Movement m=repository.findDetailById(id).orElseThrow(()->BusinessException.notFound("MOVEMENT_NOT_FOUND","找不到该流转记录。"));if(m.getStatus()==MovementEnums.Status.VOID)throw new BusinessException("MOVEMENT_VOID","已作废记录不能修改。",HttpStatus.CONFLICT);return m;}
     private String blank(String value){return value==null||value.isBlank()?null:value.trim();}
+    @Value("${app.upload-dir:./data/uploads}") private String uploadDir;
+    private void deletePhotoFile(String relative) {
+        try {
+            Path root=Path.of(uploadDir).toAbsolutePath().normalize();
+            Path path=root.resolve(relative).normalize();
+            if(path.startsWith(root))Files.deleteIfExists(path);
+        } catch(IOException ex) { log.error("删除流转记录后清理照片失败: {}",relative,ex); }
+    }
 }

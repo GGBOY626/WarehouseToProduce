@@ -10,6 +10,7 @@ export const movementsApi={
   detail:async(id:number)=>(await http.get<MovementDetail>(`/movements/${id}`)).data,
   list:async(params:{from:string;to:string;direction?:Direction;status?:MovementStatus;missingPhoto?:boolean;hasIssue?:boolean;q?:string;page?:number;size?:number})=>(await http.get<MovementPage>('/movements',{params})).data,
   void:async(id:number,reason:string)=>(await http.post<MovementDetail>(`/movements/${id}/void`,{reason})).data,
+  delete:async(id:number)=>http.delete(`/movements/${id}`),
   uploadPhoto:async(id:number,file:File,onProgress?:(n:number)=>void)=>{const form=new FormData();form.append('file',file);return(await http.post(`/movements/${id}/photos`,form,{timeout:30000,onUploadProgress:e=>onProgress?.(e.total?Math.round(e.loaded/e.total*100):0)})).data},
   deletePhoto:async(id:number,photoId:number)=>http.delete(`/movements/${id}/photos/${photoId}`)
 };

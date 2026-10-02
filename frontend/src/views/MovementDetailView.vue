@@ -56,6 +56,15 @@ async function voidRecord() {
     message.value = errorMessage(e);
   }
 }
+async function deleteRecord() {
+  if (!data.value || !confirm(`确定永久删除记录“${data.value.recordNo}”吗？产品明细和照片也会一并删除，且无法恢复。`)) return;
+  try {
+    await movementsApi.delete(id);
+    await router.replace("/history");
+  } catch (e) {
+    alert(errorMessage(e));
+  }
+}
 function duplicate() {
   if (!data.value) return;
   const m = data.value;
@@ -231,11 +240,12 @@ onMounted(()=>void load());
             @change="addPhoto"
         /></label>
       </section>
-      <section class="section actions" v-if="authenticated && data.status === 'ACTIVE'">
-        <RouterLink class="btn btn-primary" :to="`/movements/${id}/edit`"
+      <section class="section actions" v-if="authenticated">
+        <RouterLink v-if="data.status === 'ACTIVE'" class="btn btn-primary" :to="`/movements/${id}/edit`"
           >编辑记录</RouterLink
-        ><button class="btn btn-secondary" @click="duplicate">复制记录</button
-        ><button class="btn btn-danger" @click="voidRecord">作废记录</button>
+        ><button v-if="data.status === 'ACTIVE'" class="btn btn-secondary" @click="duplicate">复制记录</button
+        ><button v-if="data.status === 'ACTIVE'" class="btn btn-danger" @click="voidRecord">作废记录</button
+        ><button class="btn btn-danger permanent-delete" @click="deleteRecord">永久删除记录</button>
       </section></template
     >
   </div>
@@ -363,6 +373,7 @@ onMounted(()=>void load());
   display: grid;
   gap: 9px;
 }
+.permanent-delete { margin-top: 8px; border: 1px solid #f0c4c7; }
 @media (max-width: 380px) {
   .facts dl {
     grid-template-columns: 1fr;

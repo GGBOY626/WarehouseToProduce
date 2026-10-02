@@ -87,6 +87,17 @@ class MovementServiceIntegrationTest {
         assertThat(detail.items().getFirst().id()).isEqualTo(saved.items().getFirst().id());
     }
 
+    @Test void deletingMovementRemovesItsItemsAndReleasesProduct(){
+        var saved=movements.create(request(UUID.randomUUID().toString(),MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,1,0));
+        assertThatThrownBy(()->products.delete(product)).hasMessageContaining("不能删除");
+
+        movements.delete(saved.id());
+
+        assertThat(jdbc.queryForObject("select count(*) from movement where id=?",Long.class,saved.id())).isZero();
+        assertThat(jdbc.queryForObject("select count(*) from movement_item where movement_id=?",Long.class,saved.id())).isZero();
+        assertThatCode(()->products.delete(product)).doesNotThrowAnyException();
+    }
+
     private MovementDtos.SaveRequest request(String key,MovementEnums.Direction direction,int cartons,long loose){
         var item=new MovementDtos.ItemRequest(product,"BATCH-001",cartons,loose,null,"测试",List.of(new MovementDtos.IssueRequest(MovementEnums.IssueType.MISSING_LABEL,"少贴标签")));
         return new MovementDtos.SaveRequest(key,direction,Instant.parse("2026-09-28T00:00:00Z"),sender,receiver,direction==MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION?"CA202607006":null,"整单备注",List.of(item));
