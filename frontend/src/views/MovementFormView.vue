@@ -15,6 +15,7 @@ import { issueLabels, directionLabel } from "../utils/labels";
 import { nowLocalInput, toInstant, toLocalInput } from "../utils/time";
 import { createUuid } from "../utils/uuid";
 import { queuePhotoUploads } from "../utils/photoUploadQueue";
+import { preparePhoto } from "../utils/photo";
 const route = useRoute(),
   router = useRouter();
 const editId = route.params.id ? Number(route.params.id) : undefined;
@@ -43,7 +44,7 @@ const files = ref<
   {
     file: File;
     url: string;
-    status: "ready" | "uploading" | "failed";
+    status: "preparing" | "ready" | "failed";
     progress: number;
   }[]
 >([]);
@@ -84,16 +85,24 @@ function toggleIssue(item: ItemInput, type: IssueType, checked: boolean) {
 function issue(item: ItemInput, type: IssueType) {
   return item.issues.find((x) => x.type === type);
 }
-function pickFiles(event: Event) {
+async function pickFiles(event: Event) {
   const input = event.target as HTMLInputElement;
   for (const file of Array.from(input.files || [])) {
     if (files.value.length >= 10) break;
-    files.value.push({
+    const entry = {
       file,
       url: URL.createObjectURL(file),
-      status: "ready",
+      status: "preparing" as "preparing" | "ready" | "failed",
       progress: 0,
-    });
+    };
+    files.value.push(entry);
+    try {
+      entry.file = await preparePhoto(file);
+      entry.status = "ready";
+    } catch {
+      entry.status = "failed";
+      message.value = "照片处理失败，请删除后重新拍摄或选择 JPEG/PNG 图片。";
+    }
   }
   input.value = "";
 }
@@ -160,6 +169,14 @@ async function save() {
     );
     return;
   }
+  if (files.value.some((entry) => entry.status === "preparing")) {
+    message.value = "照片正在准备，请稍候再保存。";
+    return;
+  }
+  if (files.value.some((entry) => entry.status === "failed")) {
+    message.value = "存在处理失败的照片，请删除后重新选择。";
+    return;
+  }
   saving.value = true;
   try {
     const result = editId
@@ -174,7 +191,7 @@ async function save() {
       }),
     );
     dirty.value = false;
-    await queuePhotoUploads(result.id, files.value.map((entry) => entry.file));
+    void queuePhotoUploads(result.id, files.value.map((entry) => entry.file));
     await router.replace(`/movements/${result.id}`);
   } catch (e) {
     message.value = errorMessage(e);
@@ -479,9 +496,9 @@ onBeforeUnmount(() => {
               aria-label="删除照片"
             >
               ×</button
-            ><span v-if="entry.status === 'uploading'"
-              >{{ entry.progress }}%</span
-            ><span v-if="entry.status === 'failed'" class="failed">失败</span>
+            ><span v-if="entry.status === 'preparing'">正在优化…</span
+            ><span v-else-if="entry.status === 'ready'">已准备</span
+            ><span v-else class="failed">处理失败</span>
           </div>
         </div>
       </div>

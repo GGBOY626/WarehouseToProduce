@@ -8,6 +8,7 @@ import { directionLabel, issueLabels } from "../utils/labels";
 import { showDateTime, nowLocalInput } from "../utils/time";
 import { createUuid } from "../utils/uuid";
 import { queuePhotoUploads } from "../utils/photoUploadQueue";
+import { preparePhoto } from "../utils/photo";
 const route = useRoute(),
   router = useRouter(),
   id = Number(route.params.id);
@@ -23,11 +24,21 @@ async function load() {
 }
 async function addPhoto(e: Event) {
   const files = Array.from((e.target as HTMLInputElement).files || []);
+  (e.target as HTMLInputElement).value = "";
+  if (!files.length) return;
   uploading.value = true;
-  await queuePhotoUploads(id, files);
-  uploading.value = false;
+  message.value = "";
+  try {
+    const prepared: File[] = [];
+    for (const file of files) prepared.push(await preparePhoto(file));
+    void queuePhotoUploads(id, prepared);
+  } catch {
+    message.value = "照片处理失败，请重新拍摄或选择 JPEG/PNG 图片。";
+  } finally {
+    uploading.value = false;
+  }
 }
-function photoQueueChanged(event:Event){const detail=(event as CustomEvent).detail;if(detail.movementId===id&&detail.status==='complete')void load()}
+function photoQueueChanged(event:Event){const detail=(event as CustomEvent).detail;if(detail.movementId!==id)return;if(detail.status==='complete')void load();else if(detail.status==='failed')message.value=detail.message||'照片上传失败，请重新选择。'}
 async function deletePhoto(photoId: number) {
   if (!confirm("确定删除这张照片？")) return;
   await movementsApi.deletePhoto(id, photoId);
