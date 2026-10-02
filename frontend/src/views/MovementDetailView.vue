@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from "vue";
+import { onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { movementsApi } from "../api";
 import { errorMessage } from "../api/http";
@@ -7,7 +7,6 @@ import type { MovementDetail } from "../types";
 import { directionLabel, issueLabels } from "../utils/labels";
 import { showDateTime, nowLocalInput } from "../utils/time";
 import { createUuid } from "../utils/uuid";
-import { queuePhotoUploads } from "../utils/photoUploadQueue";
 import { preparePhoto } from "../utils/photo";
 const route = useRoute(),
   router = useRouter(),
@@ -29,16 +28,17 @@ async function addPhoto(e: Event) {
   uploading.value = true;
   message.value = "";
   try {
-    const prepared: File[] = [];
-    for (const file of files) prepared.push(await preparePhoto(file));
-    void queuePhotoUploads(id, prepared);
-  } catch {
-    message.value = "照片处理失败，请重新拍摄或选择 JPEG/PNG 图片。";
+    for (const file of files) {
+      const prepared = await preparePhoto(file);
+      await movementsApi.uploadPhoto(id, prepared);
+    }
+    await load();
+  } catch (error) {
+    message.value = errorMessage(error);
   } finally {
     uploading.value = false;
   }
 }
-function photoQueueChanged(event:Event){const detail=(event as CustomEvent).detail;if(detail.movementId!==id)return;if(detail.status==='complete')void load();else if(detail.status==='failed')message.value=detail.message||'照片上传失败，请重新选择。'}
 async function deletePhoto(photoId: number) {
   if (!confirm("确定删除这张照片？")) return;
   await movementsApi.deletePhoto(id, photoId);
@@ -91,8 +91,7 @@ function duplicate() {
     `/movements/new/${m.direction === "WAREHOUSE_TO_PRODUCTION" ? "warehouse-to-production" : "production-to-warehouse"}`,
   );
 }
-onMounted(()=>{window.addEventListener('photo-upload-queue',photoQueueChanged);void load()});
-onBeforeUnmount(()=>window.removeEventListener('photo-upload-queue',photoQueueChanged));
+onMounted(()=>void load());
 </script>
 <template>
   <div class="page">

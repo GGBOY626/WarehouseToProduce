@@ -14,7 +14,6 @@ import type {
 import { issueLabels, directionLabel } from "../utils/labels";
 import { nowLocalInput, toInstant, toLocalInput } from "../utils/time";
 import { createUuid } from "../utils/uuid";
-import { queuePhotoUploads } from "../utils/photoUploadQueue";
 import { preparePhoto } from "../utils/photo";
 const route = useRoute(),
   router = useRouter();
@@ -44,13 +43,14 @@ const files = ref<
   {
     file: File;
     url: string;
-    status: "preparing" | "ready" | "failed";
+    status: "preparing" | "ready" | "uploading" | "uploaded" | "prepare-failed" | "upload-failed";
     progress: number;
   }[]
 >([]);
 const saving = ref(false),
   dirty = ref(false),
   message = ref("");
+const savedMovementId = ref<number>();
 const draftKey = computed(() => `movement-draft:${direction.value}`);
 const allIssues = Object.entries(issueLabels) as [IssueType, string][];
 function calculate(item: ItemInput) {
@@ -92,7 +92,7 @@ async function pickFiles(event: Event) {
     const entry = {
       file,
       url: URL.createObjectURL(file),
-      status: "preparing" as "preparing" | "ready" | "failed",
+      status: "preparing" as "preparing" | "ready" | "uploading" | "uploaded" | "prepare-failed" | "upload-failed",
       progress: 0,
     };
     files.value.push(entry);
@@ -100,7 +100,7 @@ async function pickFiles(event: Event) {
       entry.file = await preparePhoto(file);
       entry.status = "ready";
     } catch {
-      entry.status = "failed";
+      entry.status = "prepare-failed";
       message.value = "照片处理失败，请删除后重新拍摄或选择 JPEG/PNG 图片。";
     }
   }
@@ -173,25 +173,35 @@ async function save() {
     message.value = "照片正在准备，请稍候再保存。";
     return;
   }
-  if (files.value.some((entry) => entry.status === "failed")) {
+  if (files.value.some((entry) => entry.status === "prepare-failed")) {
     message.value = "存在处理失败的照片，请删除后重新选择。";
     return;
   }
   saving.value = true;
   try {
-    const result = editId
-      ? await movementsApi.update(editId, payload())
+    const movementId = editId ?? savedMovementId.value;
+    const result = movementId
+      ? await movementsApi.update(movementId, payload())
       : await movementsApi.create(payload());
+    savedMovementId.value = result.id;
+    for (const entry of files.value) {
+      if (entry.status === "uploaded") continue;
+      entry.status = "uploading";
+      entry.progress = 0;
+      try {
+        await movementsApi.uploadPhoto(result.id, entry.file, (progress) => entry.progress = progress);
+        entry.status = "uploaded";
+      } catch (error) {
+        entry.status = "upload-failed";
+        throw error;
+      }
+    }
     localStorage.removeItem(draftKey.value);
-    localStorage.setItem(
-      `last-persons:${direction.value}`,
-      JSON.stringify({
-        sender: result.senderPersonId,
-        receiver: result.receiverPersonId,
-      }),
-    );
+    localStorage.setItem(`last-persons:${direction.value}`, JSON.stringify({
+      sender: result.senderPersonId,
+      receiver: result.receiverPersonId,
+    }));
     dirty.value = false;
-    void queuePhotoUploads(result.id, files.value.map((entry) => entry.file));
     await router.replace(`/movements/${result.id}`);
   } catch (e) {
     message.value = errorMessage(e);
@@ -498,7 +508,9 @@ onBeforeUnmount(() => {
               ×</button
             ><span v-if="entry.status === 'preparing'">正在优化…</span
             ><span v-else-if="entry.status === 'ready'">已准备</span
-            ><span v-else class="failed">处理失败</span>
+            ><span v-else-if="entry.status === 'uploading'">上传 {{ entry.progress }}%</span
+            ><span v-else-if="entry.status === 'uploaded'">上传完成</span
+            ><span v-else class="failed">{{ entry.status === 'prepare-failed' ? '处理失败' : '上传失败' }}</span>
           </div>
         </div>
       </div>
