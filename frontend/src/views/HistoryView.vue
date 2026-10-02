@@ -130,7 +130,7 @@ onMounted(load);
         没有符合条件的记录。
       </div>
       <div v-else class="stack">
-        <MovementCard v-for="row in rows" :key="row.id" :movement="row" />
+        <MovementCard v-for="row in rows" :key="row.id" :movement="row" show-date />
       </div>
     </section>
   </div>
