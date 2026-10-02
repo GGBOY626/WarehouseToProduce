@@ -1,5 +1,7 @@
 import {http} from './http';
 import type {Direction,MovementDetail,MovementPage,MovementStatus,Person,Product} from '../types';
+export interface AuthStatus {authenticated:boolean;username?:string}
+export const authApi={status:async()=>(await http.get<AuthStatus>('/auth/status')).data,login:async(username:string,password:string)=>(await http.post<AuthStatus>('/auth/login',{username,password})).data,logout:async()=>(await http.post<AuthStatus>('/auth/logout')).data};
 export const productsApi={search:async(q='',includeInactive=false)=>(await http.get<Product[]>('/products',{params:{q,includeInactive}})).data,create:async(data:object)=>(await http.post<Product>('/products',data)).data,update:async(id:number,data:object)=>(await http.put<Product>(`/products/${id}`,data)).data,status:async(id:number,active:boolean)=>(await http.patch<Product>(`/products/${id}/status`,null,{params:{active}})).data};
 export const personsApi={search:async(q='',includeInactive=false)=>(await http.get<Person[]>('/persons',{params:{q,includeInactive}})).data,create:async(data:object)=>(await http.post<Person>('/persons',data)).data,update:async(id:number,data:object)=>(await http.put<Person>(`/persons/${id}`,data)).data,status:async(id:number,active:boolean)=>(await http.patch<Person>(`/persons/${id}/status`,null,{params:{active}})).data};
 export const movementsApi={

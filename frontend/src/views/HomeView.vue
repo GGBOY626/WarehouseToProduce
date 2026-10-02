@@ -4,11 +4,13 @@ import MovementCard from "../components/MovementCard.vue";
 import { movementsApi } from "../api";
 import type { Direction, MovementSummary } from "../types";
 import { today } from "../utils/time";
+import { useAuth } from "../auth";
 
 const selectedDirection = ref<Direction>("WAREHOUSE_TO_PRODUCTION");
 const rows = ref<MovementSummary[]>([]);
 const loading = ref(true);
 let requestId = 0;
+const { authenticated } = useAuth();
 
 async function load(direction: Direction) {
   const currentRequest = ++requestId;
@@ -40,8 +42,8 @@ onMounted(() => load(selectedDirection.value));
 
 <template>
   <div class="page home">
-    <section class="intro"><p class="eyebrow">新西兰时间 · 今日流转</p><h1 class="page-title">现在要登记哪一次交接？</h1><p class="page-lead">点击上方方向直接新增记录，下方可独立切换今日记录方向。</p></section>
-    <div class="direction-actions">
+    <section v-if="authenticated" class="intro"><p class="eyebrow">新西兰时间 · 今日流转</p><h1 class="page-title">现在要登记哪一次交接？</h1><p class="page-lead">点击上方方向直接新增记录，下方可独立切换今日记录方向。</p></section>
+    <div v-if="authenticated" class="direction-actions">
       <RouterLink class="direction-button outbound" to="/movements/new/warehouse-to-production"><span class="place">仓库</span><span class="arrow">→</span><span class="place">生产车间</span></RouterLink>
       <RouterLink class="direction-button inbound" to="/movements/new/production-to-warehouse"><span class="place">生产车间</span><span class="arrow">→</span><span class="place">仓库</span></RouterLink>
     </div>

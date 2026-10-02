@@ -3,6 +3,8 @@ import { onMounted, ref } from "vue";
 import { productsApi } from "../api";
 import { errorMessage } from "../api/http";
 import type { Product } from "../types";
+import { useAuth } from "../auth";
+const { authenticated } = useAuth();
 const rows = ref<Product[]>([]),
   q = ref(""),
   editing = ref<Product>(),
@@ -70,10 +72,10 @@ onMounted(load);
         @keyup.enter="load"
       /><button class="btn btn-secondary" @click="load">搜索</button>
     </div>
-    <button class="btn btn-primary btn-block add" @click="open()">
+    <button v-if="authenticated" class="btn btn-primary btn-block add" @click="open()">
       ＋ 新增产品
     </button>
-    <section v-if="showEditor" class="card card-pad stack editor">
+    <section v-if="authenticated && showEditor" class="card card-pad stack editor">
       <div class="field">
         <label class="required">产品名称</label
         ><input class="input" v-model.trim="form.name" />
@@ -143,8 +145,8 @@ onMounted(load);
         <span :class="['status', p.active ? 'ok' : 'neutral']">{{
           p.active ? "启用" : "停用"
         }}</span
-        ><button class="btn btn-ghost" @click="open(p)">编辑</button
-        ><button class="btn btn-secondary" @click="toggle(p)">
+        ><button v-if="authenticated" class="btn btn-ghost" @click="open(p)">编辑</button
+        ><button v-if="authenticated" class="btn btn-secondary" @click="toggle(p)">
           {{ p.active ? "停用" : "启用" }}
         </button>
       </article>

@@ -32,6 +32,8 @@ services:
       UPLOAD_DIR: /data/uploads
       BUSINESS_TIME_ZONE: Pacific/Auckland
       TZ: Pacific/Auckland
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-change-this-password}
     volumes:
       - ${UPLOAD_HOST_DIR:-/opt/warehouse-system/data/uploads}:/data/uploads
     depends_on:

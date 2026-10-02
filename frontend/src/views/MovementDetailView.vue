@@ -8,12 +8,14 @@ import { directionLabel, issueLabels } from "../utils/labels";
 import { showDateTime, nowLocalInput } from "../utils/time";
 import { createUuid } from "../utils/uuid";
 import { preparePhoto } from "../utils/photo";
+import { useAuth } from "../auth";
 const route = useRoute(),
   router = useRouter(),
   id = Number(route.params.id);
 const data = ref<MovementDetail>(),
   message = ref(""),
   uploading = ref(false);
+const { authenticated } = useAuth();
 async function load() {
   try {
     data.value = await movementsApi.detail(id);
@@ -205,7 +207,7 @@ onMounted(()=>void load());
             <a :href="p.url" target="_blank"
               ><img :src="p.url" :alt="p.originalName" /></a
             ><button
-              v-if="data.status === 'ACTIVE'"
+              v-if="authenticated && data.status === 'ACTIVE'"
               @click="deletePhoto(p.id)"
               aria-label="删除照片"
             >
@@ -217,7 +219,7 @@ onMounted(()=>void load());
           这条记录还没有照片，可以稍后补拍。
         </div>
         <label
-          v-if="data.status === 'ACTIVE' && data.photos.length < 10"
+          v-if="authenticated && data.status === 'ACTIVE' && data.photos.length < 10"
           class="btn btn-secondary btn-block upload"
           >{{ uploading ? "正在上传…" : "＋ 补拍 / 上传照片"
           }}<input
@@ -229,7 +231,7 @@ onMounted(()=>void load());
             @change="addPhoto"
         /></label>
       </section>
-      <section class="section actions" v-if="data.status === 'ACTIVE'">
+      <section class="section actions" v-if="authenticated && data.status === 'ACTIVE'">
         <RouterLink class="btn btn-primary" :to="`/movements/${id}/edit`"
           >编辑记录</RouterLink
         ><button class="btn btn-secondary" @click="duplicate">复制记录</button
