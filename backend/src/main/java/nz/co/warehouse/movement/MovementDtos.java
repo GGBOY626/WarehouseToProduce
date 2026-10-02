@@ -33,6 +33,8 @@ public final class MovementDtos {
                                String senderName,String receiverName,int totalCartons,long totalQuantity,MovementEnums.Status status,
                                List<String> productNames,int itemCount,int photoCount,boolean hasIssues) {}
     public record PageResponse(List<ListResponse> content,int page,int size,long totalElements,int totalPages) {}
+    public record ProductStatResponse(String productName,long fullCartons,long totalQuantity) {}
+    public record TodayStatsResponse(long totalCartons,long totalQuantity,List<ProductStatResponse> products) {}
 
     static DetailResponse detail(Movement m) {
         List<ItemResponse> items=m.getItems().stream().map(i->new ItemResponse(i.getId(),i.getProduct().getId(),i.getProductNameSnapshot(),i.getSkuSnapshot(),i.getUnitsPerCartonSnapshot(),i.getBaseUnitSnapshot(),i.getBatchNo(),i.getFullCartons(),i.getLooseUnits(),i.getCalculatedTotalUnits(),i.getTotalUnits(),i.isTotalUnitsOverridden(),i.getRemarks(),i.getIssues().stream().map(x->new IssueResponse(x.getId(),x.getIssueType(),x.getDescription())).toList())).toList();

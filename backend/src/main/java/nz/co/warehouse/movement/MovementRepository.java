@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.*;
 import org.springframework.data.repository.query.Param;
 import java.time.Instant;
 import java.util.Optional;
+import java.util.List;
 
 public interface MovementRepository extends JpaRepository<Movement,Long> {
     Optional<Movement> findByIdempotencyKey(String key);
@@ -36,4 +37,16 @@ public interface MovementRepository extends JpaRepository<Movement,Long> {
     Page<Movement> search(@Param("from") Instant from,@Param("to") Instant to,@Param("direction") MovementEnums.Direction direction,
                           @Param("status") MovementEnums.Status status,@Param("missingPhoto") Boolean missingPhoto,
                           @Param("hasIssue") Boolean hasIssue,@Param("q") String q, Pageable pageable);
+
+    @Query("""
+        select i.productNameSnapshot, sum(i.fullCartons), coalesce(sum(i.totalUnits), 0)
+        from MovementItem i
+        where i.movement.movementTime >= :from and i.movement.movementTime < :to
+          and i.movement.direction = :direction and i.movement.status = :status
+        group by i.productNameSnapshot
+        order by i.productNameSnapshot
+        """)
+    List<Object[]> summarizeItems(@Param("from") Instant from,@Param("to") Instant to,
+                                  @Param("direction") MovementEnums.Direction direction,
+                                  @Param("status") MovementEnums.Status status);
 }

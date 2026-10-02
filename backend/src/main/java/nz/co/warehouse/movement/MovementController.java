@@ -14,6 +14,9 @@ public class MovementController {
     @GetMapping("/{id}") public MovementDtos.DetailResponse detail(@PathVariable long id){return service.detail(id);}
     @PostMapping("/{id}/void") public MovementDtos.DetailResponse voidMovement(@PathVariable long id,@Valid @RequestBody MovementDtos.VoidRequest r){return service.voidMovement(id,r.reason());}
     @DeleteMapping("/{id}") public void delete(@PathVariable long id){service.delete(id);}
+    @GetMapping("/stats") public MovementDtos.TodayStatsResponse stats(
+            @RequestParam @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate date,
+            @RequestParam MovementEnums.Direction direction){return service.todayStats(date,direction);}
     @GetMapping public MovementDtos.PageResponse search(
             @RequestParam @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate to,

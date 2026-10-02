@@ -117,3 +117,8 @@ export interface MovementPage {
   totalElements: number;
   totalPages: number;
 }
+export interface TodayStats {
+  totalCartons: number;
+  totalQuantity: number;
+  products: { productName: string; fullCartons: number; totalQuantity: number }[];
+}

@@ -72,6 +72,17 @@ class MovementServiceIntegrationTest {
         assertThat(summary.totalQuantity()).isEqualTo(154);
     }
 
+    @Test void todayStatsMergesRepeatedProductItemsForOneDirection(){
+        var first=movements.create(request(UUID.randomUUID().toString(),MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,2,5));
+        movements.create(request(UUID.randomUUID().toString(),MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,3,0));
+
+        var stats=movements.todayStats(LocalDate.of(2026,9,28),MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION);
+        var productStats=stats.products().stream().filter(x->x.productName().equals(first.items().getFirst().productName())).findFirst().orElseThrow();
+
+        assertThat(productStats.fullCartons()).isEqualTo(5);
+        assertThat(productStats.totalQuantity()).isEqualTo(155);
+    }
+
     @Test void detailDoesNotDuplicateItemWhenMovementHasMultiplePhotos(){
         var saved=movements.create(request(UUID.randomUUID().toString(),MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,1,0));
         for(int i=1;i<=2;i++)jdbc.update("""

@@ -77,6 +77,16 @@ public class MovementService {
         return new MovementDtos.PageResponse(result.getContent().stream().map(MovementDtos::summary).toList(),page,result.getSize(),result.getTotalElements(),result.getTotalPages());
     }
 
+    @Transactional(readOnly=true)
+    public MovementDtos.TodayStatsResponse todayStats(LocalDate date,MovementEnums.Direction direction){
+        ZoneId z=ZoneId.of(zone);Instant start=date.atStartOfDay(z).toInstant();Instant end=date.plusDays(1).atStartOfDay(z).toInstant();
+        List<MovementDtos.ProductStatResponse> productStats=repository.summarizeItems(start,end,direction,MovementEnums.Status.ACTIVE).stream()
+                .map(row->new MovementDtos.ProductStatResponse((String)row[0],((Number)row[1]).longValue(),((Number)row[2]).longValue())).toList();
+        long cartons=productStats.stream().mapToLong(MovementDtos.ProductStatResponse::fullCartons).sum();
+        long quantity=productStats.stream().mapToLong(MovementDtos.ProductStatResponse::totalQuantity).sum();
+        return new MovementDtos.TodayStatsResponse(cartons,quantity,productStats);
+    }
+
     private void apply(Movement m,MovementDtos.SaveRequest r){
         validateDirection(r);
         Person sender=m.getId()!=null&&m.getSenderPerson().getId().equals(r.senderPersonId())?persons.getAny(r.senderPersonId()):persons.getActive(r.senderPersonId());
