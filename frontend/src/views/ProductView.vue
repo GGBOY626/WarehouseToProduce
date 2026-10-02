@@ -55,6 +55,16 @@ async function toggle(p: Product) {
   await productsApi.status(p.id, !p.active);
   await load();
 }
+async function remove(p: Product) {
+  if (!confirm(`确定永久删除产品“${p.name}”吗？删除后无法恢复。`)) return;
+  message.value = "";
+  try {
+    await productsApi.delete(p.id);
+    await load();
+  } catch (e) {
+    message.value = errorMessage(e);
+  }
+}
 onMounted(load);
 </script>
 <template>
@@ -148,7 +158,7 @@ onMounted(load);
         ><button v-if="authenticated" class="btn btn-ghost" @click="open(p)">编辑</button
         ><button v-if="authenticated" class="btn btn-secondary" @click="toggle(p)">
           {{ p.active ? "停用" : "启用" }}
-        </button>
+        </button><button v-if="authenticated" class="btn btn-danger" @click="remove(p)">删除</button>
       </article>
     </div>
   </div>

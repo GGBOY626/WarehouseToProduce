@@ -15,4 +15,7 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     boolean existsByNameIgnoreCaseAndMaterialCodeIgnoreCaseAndActiveTrueAndIdNot(String name, String materialCode, Long id);
 
     long countByNameIgnoreCaseAndActiveTrue(String name);
+
+    @Query("select count(i) from MovementItem i where i.product.id = :productId")
+    long countMovementItems(@Param("productId") long productId);
 }
