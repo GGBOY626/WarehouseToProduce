@@ -1,6 +1,7 @@
 import axios from "axios";
 import { movementsApi } from "../api";
 import { errorMessage } from "../api/http";
+import { createUuid } from "./uuid";
 
 const DB_NAME = "warehouse-photo-uploads";
 const STORE_NAME = "pending";
@@ -57,7 +58,7 @@ export async function queuePhotoUploads(movementId: number, files: File[]) {
   if (!files.length) return;
   try {
     for (const file of files)
-      await savePending({ id: crypto.randomUUID(), movementId, file, attempts: 0, nextAttemptAt: 0 });
+      await savePending({ id: createUuid(), movementId, file, attempts: 0, nextAttemptAt: 0 });
     notify("queued", (await allPending()).length, movementId);
     void runQueue();
   } catch {

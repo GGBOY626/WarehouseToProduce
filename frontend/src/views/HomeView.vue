@@ -15,8 +15,15 @@ async function load(direction: Direction) {
   loading.value = true;
   rows.value = [];
   try {
-    const result = await movementsApi.list({ from: today(), to: today(), direction, status: "ACTIVE", size: 8 });
-    if (currentRequest === requestId) rows.value = result.content;
+    const date = today();
+    const first = await movementsApi.list({ from: date, to: date, direction, status: "ACTIVE", page: 0, size: 100 });
+    const content = [...first.content];
+    for (let page = 1; page < first.totalPages; page++) {
+      if (currentRequest !== requestId) return;
+      const next = await movementsApi.list({ from: date, to: date, direction, status: "ACTIVE", page, size: 100 });
+      content.push(...next.content);
+    }
+    if (currentRequest === requestId) rows.value = content;
   } finally {
     if (currentRequest === requestId) loading.value = false;
   }
