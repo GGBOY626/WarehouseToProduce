@@ -83,6 +83,19 @@ class MovementServiceIntegrationTest {
         assertThat(productStats.totalQuantity()).isEqualTo(155);
     }
 
+    @Test void todayStatsCanCombineBothDirections(){
+        var item=new MovementDtos.ItemRequest(product,"BATCH-BOTH",1,5,null,null,List.of());
+        Instant time=Instant.parse("2026-10-15T01:00:00Z");
+        movements.create(new MovementDtos.SaveRequest(UUID.randomUUID().toString(),MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,time,sender,receiver,"LOT-BOTH",null,List.of(item)));
+        movements.create(new MovementDtos.SaveRequest(UUID.randomUUID().toString(),MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE,time,sender,receiver,null,null,List.of(item)));
+
+        var stats=movements.todayStats(LocalDate.of(2026,10,15),null);
+
+        assertThat(stats.totalCartons()).isEqualTo(2);
+        assertThat(stats.totalQuantity()).isEqualTo(70);
+        assertThat(stats.products()).hasSize(1);
+    }
+
     @Test void allowsAnItemWithExplicitlyUnknownQuantity(){
         var item=new MovementDtos.ItemRequest(product,"NO-LABEL",0,0,null,true,"无法清点",List.of());
         var request=new MovementDtos.SaveRequest(UUID.randomUUID().toString(),MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,Instant.parse("2026-09-28T01:00:00Z"),sender,receiver,"LOT-UNKNOWN",null,List.of(item));

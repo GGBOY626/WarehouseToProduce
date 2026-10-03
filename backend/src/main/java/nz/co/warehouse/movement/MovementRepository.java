@@ -42,7 +42,7 @@ public interface MovementRepository extends JpaRepository<Movement,Long> {
         select i.productNameSnapshot, sum(i.fullCartons), coalesce(sum(i.totalUnits), 0), sum(case when i.quantityUnknown=true then 1 else 0 end)
         from MovementItem i
         where i.movement.movementTime >= :from and i.movement.movementTime < :to
-          and i.movement.direction = :direction and i.movement.status = :status
+          and (:direction is null or i.movement.direction = :direction) and i.movement.status = :status
         group by i.productNameSnapshot
         order by i.productNameSnapshot
         """)

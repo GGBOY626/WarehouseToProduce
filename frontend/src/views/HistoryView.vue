@@ -18,7 +18,9 @@ const rows = ref<MovementSummary[]>([]),
   hasIssue = ref<boolean | undefined>(),
   moreFilters = ref(false),
   activePreset = ref<"today" | "yesterday" | "week" | "month" | undefined>("today");
+let requestId = 0;
 async function load() {
+  const currentRequest = ++requestId;
   loading.value = true;
   stats.value = undefined;
   try {
@@ -35,13 +37,19 @@ async function load() {
       movementsApi.list({ ...params, size: 100 }),
       movementsApi.queryStats(params),
     ]);
+    if (currentRequest !== requestId) return;
     rows.value = page.content;
     stats.value = currentStats;
     appliedFrom.value = from.value;
     appliedTo.value = to.value;
   } finally {
-    loading.value = false;
+    if (currentRequest === requestId) loading.value = false;
   }
+}
+function selectDirection(value: Direction | "") {
+  if (direction.value === value) return;
+  direction.value = value;
+  void load();
 }
 function shiftDate(date: string, days: number) {
   const [year, month, day] = date.split("-").map(Number);
@@ -85,29 +93,22 @@ const formatNumber = (value: number) => value.toLocaleString("zh-CN");
         ><button class="quick-date" :class="{active:activePreset==='week'}" @click="preset('week')">本周</button
         ><button class="quick-date" :class="{active:activePreset==='month'}" @click="preset('month')">本月</button>
       </div>
-      <div class="grid-2 primary-filters">
-        <div class="field">
-          <label>搜索</label
-          ><input
-            class="input"
-            v-model.trim="q"
-            placeholder="产品、编码、批次或记录编号"
-            @keyup.enter="load"
-          />
-        </div>
-        <div class="field">
-          <label>方向</label
-          ><select class="select" v-model="direction">
-            <option value="">全部方向</option>
-            <option value="WAREHOUSE_TO_PRODUCTION">仓库 → 生产车间</option>
-            <option value="PRODUCTION_TO_WAREHOUSE">生产车间 → 仓库</option>
-          </select>
+      <div class="field">
+        <label>方向</label>
+        <div class="direction-choice" role="group" aria-label="流转方向筛选">
+          <button type="button" :class="{active:direction===''}" :aria-pressed="direction===''" @click="selectDirection('')">全部方向</button>
+          <button type="button" :class="{active:direction==='WAREHOUSE_TO_PRODUCTION'}" :aria-pressed="direction==='WAREHOUSE_TO_PRODUCTION'" @click="selectDirection('WAREHOUSE_TO_PRODUCTION')">仓库 → 车间</button>
+          <button type="button" class="return" :class="{active:direction==='PRODUCTION_TO_WAREHOUSE'}" :aria-pressed="direction==='PRODUCTION_TO_WAREHOUSE'" @click="selectDirection('PRODUCTION_TO_WAREHOUSE')">车间 → 仓库</button>
         </div>
       </div>
       <button class="more-toggle" type="button" :aria-expanded="moreFilters" aria-controls="advanced-filters" @click="moreFilters=!moreFilters">
         <span>更多筛选</span><span aria-hidden="true">{{moreFilters ? '收起' : '展开'}} {{moreFilters ? '⌃' : '⌄'}}</span>
       </button>
       <div v-show="moreFilters" id="advanced-filters" class="advanced-filters">
+        <div class="field">
+          <label>搜索</label
+          ><input class="input" v-model.trim="q" placeholder="产品、编码、批次或记录编号" @keyup.enter="load" />
+        </div>
         <div class="grid-2">
           <div class="field">
             <label>开始日期</label
@@ -194,7 +195,11 @@ const formatNumber = (value: number) => value.toLocaleString("zh-CN");
   cursor: pointer;
 }
 .quick-date.active { background: #fff; color: #174a68; box-shadow: 0 2px 8px rgba(32,53,64,.14); }
-.quick-date:focus-visible,.more-toggle:focus-visible { outline: 3px solid rgba(31,107,138,.3); outline-offset: 2px; }
+.quick-date:focus-visible,.more-toggle:focus-visible,.direction-choice button:focus-visible { outline: 3px solid rgba(31,107,138,.3); outline-offset: 2px; }
+.direction-choice { display: grid; grid-template-columns: repeat(3,1fr); gap: 4px; padding: 4px; border-radius: 11px; background: #e7edef; }
+.direction-choice button { min-height: 44px; border: 0; border-radius: 8px; padding: 8px 4px; background: transparent; color: #60737d; font: inherit; font-size: 13px; font-weight: 760; cursor: pointer; }
+.direction-choice button.active { background: #fff; color: #174a68; box-shadow: 0 2px 8px rgba(32,53,64,.14); }
+.direction-choice button.return.active { color: #267566; }
 .more-toggle {
   min-height: 42px;
   display: flex;
@@ -214,9 +219,6 @@ const formatNumber = (value: number) => value.toLocaleString("zh-CN");
 .advanced-filters { display: grid; gap: 13px; padding: 13px; border-radius: 10px; background: #f4f7f8; }
 .option-filters { gap: 8px; }
 .option-filters .check { padding: 0 10px; border: 1px solid #dce4e7; border-radius: 8px; background: #fff; }
-@media (max-width: 560px) {
-  .primary-filters { grid-template-columns: 1fr; }
-}
 .check {
   min-height: 44px;
   display: flex;
@@ -242,6 +244,7 @@ const formatNumber = (value: number) => value.toLocaleString("zh-CN");
 .product-stat strong { overflow-wrap: anywhere; }
 .product-stat span { color: #52626b; white-space: nowrap; font-variant-numeric: tabular-nums; }
 @media (max-width: 560px) {
+  .direction-choice button { font-size: 11px; }
   .stats-heading { align-items: flex-start; flex-direction: column; gap: 4px; }
   .product-stat { gap: 8px; font-size: 13px; }
 }
