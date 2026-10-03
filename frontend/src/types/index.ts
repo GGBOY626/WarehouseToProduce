@@ -13,7 +13,8 @@ export interface Product {
   materialCode: string;
   materialBatch?: string;
   defaultUnitsPerCarton?: number;
-  baseUnit: string;
+  baseUnit?: string;
+  quantityUnknown: boolean;
   active: boolean;
   duplicateName?: boolean;
 }

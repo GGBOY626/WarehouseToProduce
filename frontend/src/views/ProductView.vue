@@ -15,6 +15,7 @@ const rows = ref<Product[]>([]),
     materialBatch: "",
     defaultUnitsPerCarton: undefined as number | undefined,
     baseUnit: "个",
+    quantityUnknown: false,
   }),
   message = ref("");
 async function load() {
@@ -29,7 +30,8 @@ function open(p?: Product) {
         materialCode: p.materialCode,
         materialBatch: p.materialBatch || "",
         defaultUnitsPerCarton: p.defaultUnitsPerCarton,
-        baseUnit: p.baseUnit,
+        baseUnit: p.baseUnit || "",
+        quantityUnknown: p.quantityUnknown,
       }
     : {
         name: "",
@@ -37,7 +39,14 @@ function open(p?: Product) {
         materialBatch: "",
         defaultUnitsPerCarton: undefined,
         baseUnit: "个",
+        quantityUnknown: false,
       };
+}
+function quantityTypeChanged() {
+  if (form.value.quantityUnknown) {
+    form.value.defaultUnitsPerCarton = undefined;
+    form.value.baseUnit = "";
+  }
 }
 async function save() {
   try {
@@ -116,17 +125,23 @@ onMounted(load);
             min="1"
             inputmode="numeric"
             v-model.number="form.defaultUnitsPerCarton"
+            :disabled="form.quantityUnknown"
           />
         </div>
         <div class="field">
-          <label class="required">基础单位</label
+          <label :class="{required:!form.quantityUnknown}">基础单位</label
           ><input
             class="input"
             v-model.trim="form.baseUnit"
+            :disabled="form.quantityUnknown"
             placeholder="个 / 袋 / 瓶"
           />
         </div>
       </div>
+      <label class="unknown-quantity">
+        <input type="checkbox" v-model="form.quantityUnknown" @change="quantityTypeChanged" />
+        该产品数量不确定（无固定计量单位或无法清点）
+      </label>
       <div class="row">
         <button class="btn btn-primary grow" @click="save">保存产品</button
         ><button class="btn btn-secondary" @click="showEditor = false">
@@ -147,7 +162,9 @@ onMounted(load);
           </div>
           <div class="hint">
             {{
-              p.defaultUnitsPerCarton
+              p.quantityUnknown
+                ? "数量不确定"
+                : p.defaultUnitsPerCarton
                 ? `${p.defaultUnitsPerCarton} ${p.baseUnit}/箱`
                 : "未设置箱规"
             }}
@@ -190,4 +207,6 @@ onMounted(load);
   font-size: 13px;
   font-weight: 680;
 }
+.unknown-quantity { display: flex; align-items: center; gap: 8px; min-height: 42px; color: #174a68; font-size: 14px; font-weight: 680; }
+.unknown-quantity input { width: 18px; height: 18px; accent-color: #174a68; }
 </style>

@@ -96,6 +96,20 @@ class MovementServiceIntegrationTest {
         assertThat(page.content().getFirst().hasUnknownQuantity()).isTrue();
     }
 
+    @Test void productConfiguredWithUnknownQuantityNeedsNoUnitAndMakesMovementQuantityUnknown(){
+        String suffix=UUID.randomUUID().toString().substring(0,8);
+        var unknownProduct=products.create(new ProductDtos.Request("无法清点产品-"+suffix,"UNKNOWN-"+suffix,null,null,null,true));
+        var item=new MovementDtos.ItemRequest(unknownProduct.id(),"UNKNOWN-"+suffix,0,0,null,false,null,List.of());
+        var request=new MovementDtos.SaveRequest(UUID.randomUUID().toString(),MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,Instant.parse("2026-09-28T01:00:00Z"),sender,receiver,"LOT-UNKNOWN-PRODUCT",null,List.of(item));
+
+        var saved=movements.create(request);
+
+        assertThat(unknownProduct.quantityUnknown()).isTrue();
+        assertThat(unknownProduct.baseUnit()).isNull();
+        assertThat(saved.items().getFirst().quantityUnknown()).isTrue();
+        assertThat(saved.items().getFirst().totalUnits()).isNull();
+    }
+
     @Test void queryStatsUsesTheSameDirectionAndMissingPhotoFiltersAsHistorySearch(){
         var outbound=movements.create(request(UUID.randomUUID().toString(),MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,2,5));
         var inbound=movements.create(request(UUID.randomUUID().toString(),MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE,3,0));

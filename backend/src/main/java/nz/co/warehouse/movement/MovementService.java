@@ -118,10 +118,12 @@ public class MovementService {
     }
 
     private MovementItem buildItem(MovementDtos.ItemRequest r,int order,boolean allowInactive){
-        if(!r.quantityUnknown()&&!QuantityRules.hasQuantity(r.fullCartons(),r.looseUnits(),r.totalUnits()))throw BusinessException.badRequest("QUANTITY_REQUIRED","每个产品至少填写一种数量，或选择数量不确定。");
-        Product p=allowInactive?products.getAny(r.productId()):products.getActive(r.productId());MovementItem i=new MovementItem();i.setProduct(p);i.setProductNameSnapshot(p.getName());i.setSkuSnapshot(null);i.setUnitsPerCartonSnapshot(p.getDefaultUnitsPerCarton());i.setBaseUnitSnapshot(p.getBaseUnit());i.setBatchNo(r.batchNo().trim());i.setFullCartons(r.quantityUnknown()?0:r.fullCartons());i.setLooseUnits(r.quantityUnknown()?0:r.looseUnits());i.setSortOrder(order);i.setRemarks(blank(r.remarks()));
-        Long calculated=r.quantityUnknown()?null:QuantityRules.calculate(p.getDefaultUnitsPerCarton(),r.fullCartons(),r.looseUnits());
-        i.setCalculatedTotalUnits(calculated);i.setTotalUnits(r.quantityUnknown()?null:(r.totalUnits()!=null?r.totalUnits():calculated));i.setTotalUnitsOverridden(!r.quantityUnknown()&&i.getTotalUnits()!=null&&!Objects.equals(i.getTotalUnits(),calculated));i.setQuantityUnknown(r.quantityUnknown());
+        Product p=allowInactive?products.getAny(r.productId()):products.getActive(r.productId());MovementItem i=new MovementItem();i.setProduct(p);i.setProductNameSnapshot(p.getName());i.setSkuSnapshot(null);i.setUnitsPerCartonSnapshot(p.getDefaultUnitsPerCarton());i.setBatchNo(r.batchNo().trim());i.setSortOrder(order);i.setRemarks(blank(r.remarks()));
+        boolean quantityUnknown=p.isQuantityUnknown()||r.quantityUnknown();
+        if(!quantityUnknown&&!QuantityRules.hasQuantity(r.fullCartons(),r.looseUnits(),r.totalUnits()))throw BusinessException.badRequest("QUANTITY_REQUIRED","每个产品至少填写一种数量，或选择数量不确定。");
+        i.setBaseUnitSnapshot(p.getBaseUnit()==null?"—":p.getBaseUnit());i.setFullCartons(quantityUnknown?0:r.fullCartons());i.setLooseUnits(quantityUnknown?0:r.looseUnits());
+        Long calculated=quantityUnknown?null:QuantityRules.calculate(p.getDefaultUnitsPerCarton(),r.fullCartons(),r.looseUnits());
+        i.setCalculatedTotalUnits(calculated);i.setTotalUnits(quantityUnknown?null:(r.totalUnits()!=null?r.totalUnits():calculated));i.setTotalUnitsOverridden(!quantityUnknown&&i.getTotalUnits()!=null&&!Objects.equals(i.getTotalUnits(),calculated));i.setQuantityUnknown(quantityUnknown);
         Set<MovementEnums.IssueType> seen=new HashSet<>();for(var issue:Optional.ofNullable(r.issues()).orElse(List.of())){if(!seen.add(issue.type()))throw BusinessException.badRequest("DUPLICATE_ISSUE","同一种异常不能重复选择。");if(issue.type()==MovementEnums.IssueType.OTHER&&(issue.description()==null||issue.description().isBlank()))throw BusinessException.badRequest("ISSUE_DESCRIPTION_REQUIRED","选择“其他”异常时必须填写说明。");MovementItemIssue entity=new MovementItemIssue();entity.setIssueType(issue.type());entity.setDescription(blank(issue.description()));i.addIssue(entity);}return i;
     }
     private void validateDirection(MovementDtos.SaveRequest r){if(r.direction()==MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION&&(r.manufactureLot()==null||r.manufactureLot().isBlank()))throw BusinessException.badRequest("MANUFACTURE_LOT_REQUIRED","仓库送往生产车间时必须填写物料批次。");}

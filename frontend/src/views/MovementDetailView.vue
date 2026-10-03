@@ -87,6 +87,7 @@ function duplicate() {
           materialCode: x.batchNo,
           defaultUnitsPerCarton: x.unitsPerCarton,
           baseUnit: x.baseUnit,
+          quantityUnknown: false,
           active: true,
         },
         batchNo: x.batchNo,

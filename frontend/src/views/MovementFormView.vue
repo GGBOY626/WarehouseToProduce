@@ -75,6 +75,11 @@ function selectProduct(item: ItemInput, p?: Product) {
   )
     draft.value.manufactureLot = p.materialBatch;
   item.manualTotal = false;
+  item.quantityUnknown = !!p?.quantityUnknown;
+  if (item.quantityUnknown) {
+    item.fullCartons = 0;
+    item.looseUnits = 0;
+  }
   item.totalUnits = calculate(item);
 }
 function quantityChanged(item: ItemInput) {
@@ -260,6 +265,7 @@ onMounted(async () => {
           materialCode: x.batchNo,
           defaultUnitsPerCarton: x.unitsPerCarton,
           baseUnit: x.baseUnit,
+          quantityUnknown: false,
           active: true,
         },
         batchNo: x.batchNo,
@@ -413,8 +419,8 @@ onBeforeUnmount(() => {
             </div>
           </div>
           <label class="unknown-quantity">
-            <input type="checkbox" v-model="item.quantityUnknown" @change="toggleUnknownQuantity(item)" />
-            数量不确定（无法清点或没有数量标识）
+            <input type="checkbox" v-model="item.quantityUnknown" :disabled="item.product?.quantityUnknown" @change="toggleUnknownQuantity(item)" />
+            {{item.product?.quantityUnknown ? '该产品已设置为数量不确定' : '数量不确定（无法清点或没有数量标识）'}}
           </label>
           <div class="total-box">
             <span>总数量</span
