@@ -15,7 +15,9 @@ const rows = ref<MovementSummary[]>([]),
   status = ref<MovementStatus>("ACTIVE"),
   q = ref(""),
   missingPhoto = ref<boolean | undefined>(),
-  hasIssue = ref<boolean | undefined>();
+  hasIssue = ref<boolean | undefined>(),
+  moreFilters = ref(false),
+  activePreset = ref<"today" | "yesterday" | "week" | "month" | undefined>("today");
 async function load() {
   loading.value = true;
   stats.value = undefined;
@@ -47,19 +49,26 @@ function shiftDate(date: string, days: number) {
   value.setUTCDate(value.getUTCDate() + days);
   return value.toISOString().slice(0, 10);
 }
-function preset(kind: "today" | "yesterday" | "week" | "twoWeeks") {
+function preset(kind: "today" | "yesterday" | "week" | "month") {
   const current = today();
+  activePreset.value = kind;
   if (kind === "today") {
     from.value = to.value = current;
   } else if (kind === "yesterday") {
     from.value = to.value = shiftDate(current, -1);
+  } else if (kind === "month") {
+    from.value = `${current.slice(0, 7)}-01`;
+    to.value = current;
   } else {
     const currentDate = new Date(`${current}T00:00:00Z`);
     const daysSinceMonday = (currentDate.getUTCDay() + 6) % 7;
-    from.value = shiftDate(current, kind === "week" ? -daysSinceMonday : -(daysSinceMonday + 7));
+    from.value = shiftDate(current, -daysSinceMonday);
     to.value = current;
   }
   load();
+}
+function customDate() {
+  activePreset.value = undefined;
 }
 onMounted(load);
 const directionLabel = (value: Direction) => value === "WAREHOUSE_TO_PRODUCTION" ? "仓库 → 生产车间" : "生产车间 → 仓库";
@@ -71,31 +80,21 @@ const formatNumber = (value: number) => value.toLocaleString("zh-CN");
     <p class="page-lead">按实际流转时间查询。</p>
     <section class="filters card card-pad">
       <div class="preset">
-        <button class="btn btn-secondary" @click="preset('today')">今天</button
-        ><button class="btn btn-secondary" @click="preset('yesterday')">昨天</button
-        ><button class="btn btn-secondary" @click="preset('week')">本周</button
-        ><button class="btn btn-secondary" @click="preset('twoWeeks')">这两周</button>
+        <button class="quick-date" :class="{active:activePreset==='today'}" @click="preset('today')">今天</button
+        ><button class="quick-date" :class="{active:activePreset==='yesterday'}" @click="preset('yesterday')">昨天</button
+        ><button class="quick-date" :class="{active:activePreset==='week'}" @click="preset('week')">本周</button
+        ><button class="quick-date" :class="{active:activePreset==='month'}" @click="preset('month')">本月</button>
       </div>
-      <div class="grid-2">
+      <div class="grid-2 primary-filters">
         <div class="field">
-          <label>开始日期</label
-          ><input class="input" type="date" v-model="from" />
+          <label>搜索</label
+          ><input
+            class="input"
+            v-model.trim="q"
+            placeholder="产品、编码、批次或记录编号"
+            @keyup.enter="load"
+          />
         </div>
-        <div class="field">
-          <label>结束日期</label
-          ><input class="input" type="date" v-model="to" />
-        </div>
-      </div>
-      <div class="field">
-        <label>搜索</label
-        ><input
-          class="input"
-          v-model.trim="q"
-          placeholder="产品、物料编码、物料批次、记录编号"
-          @keyup.enter="load"
-        />
-      </div>
-      <div class="grid-2">
         <div class="field">
           <label>方向</label
           ><select class="select" v-model="direction">
@@ -104,6 +103,21 @@ const formatNumber = (value: number) => value.toLocaleString("zh-CN");
             <option value="PRODUCTION_TO_WAREHOUSE">生产车间 → 仓库</option>
           </select>
         </div>
+      </div>
+      <button class="more-toggle" type="button" :aria-expanded="moreFilters" aria-controls="advanced-filters" @click="moreFilters=!moreFilters">
+        <span>更多筛选</span><span aria-hidden="true">{{moreFilters ? '收起' : '展开'}} {{moreFilters ? '⌃' : '⌄'}}</span>
+      </button>
+      <div v-show="moreFilters" id="advanced-filters" class="advanced-filters">
+        <div class="grid-2">
+          <div class="field">
+            <label>开始日期</label
+            ><input class="input" type="date" v-model="from" @input="customDate" />
+          </div>
+          <div class="field">
+            <label>结束日期</label
+            ><input class="input" type="date" v-model="to" @input="customDate" />
+          </div>
+        </div>
         <div class="field">
           <label>状态</label
           ><select class="select" v-model="status">
@@ -111,23 +125,12 @@ const formatNumber = (value: number) => value.toLocaleString("zh-CN");
             <option value="VOID">已作废</option>
           </select>
         </div>
-      </div>
-      <div class="grid-2">
-        <label class="check"
-          ><input
-            type="checkbox"
-            v-model="missingPhoto"
-            :true-value="true"
-            :false-value="undefined"
-          />只看缺少照片</label
-        ><label class="check"
-          ><input
-            type="checkbox"
-            v-model="hasIssue"
-            :true-value="true"
-            :false-value="undefined"
-          />只看有异常</label
-        >
+        <div class="grid-2 option-filters">
+          <label class="check"
+            ><input type="checkbox" v-model="missingPhoto" :true-value="true" :false-value="undefined" />只看缺少照片</label
+          ><label class="check"
+            ><input type="checkbox" v-model="hasIssue" :true-value="true" :false-value="undefined" />只看有异常</label>
+        </div>
       </div>
       <button class="btn btn-primary btn-block" @click="load">查询记录</button>
     </section>
@@ -172,12 +175,47 @@ const formatNumber = (value: number) => value.toLocaleString("zh-CN");
   gap: 13px;
 }
 .preset {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 5px;
+  padding: 4px;
+  border-radius: 11px;
+  background: #e7edef;
 }
-.preset .btn {
+.quick-date {
   min-height: 42px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #60737d;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 760;
+  cursor: pointer;
+}
+.quick-date.active { background: #fff; color: #174a68; box-shadow: 0 2px 8px rgba(32,53,64,.14); }
+.quick-date:focus-visible,.more-toggle:focus-visible { outline: 3px solid rgba(31,107,138,.3); outline-offset: 2px; }
+.more-toggle {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border: 0;
+  border-top: 1px solid #e1e7e9;
+  padding: 10px 2px 0;
+  background: transparent;
+  color: #174a68;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 720;
+  cursor: pointer;
+}
+.more-toggle span:last-child { color: #6c7d85; font-size: 12px; font-weight: 600; }
+.advanced-filters { display: grid; gap: 13px; padding: 13px; border-radius: 10px; background: #f4f7f8; }
+.option-filters { gap: 8px; }
+.option-filters .check { padding: 0 10px; border: 1px solid #dce4e7; border-radius: 8px; background: #fff; }
+@media (max-width: 560px) {
+  .primary-filters { grid-template-columns: 1fr; }
 }
 .check {
   min-height: 44px;
