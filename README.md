@@ -22,7 +22,11 @@ Flyway 会执行 `V1__init_schema.sql`。正式环境使用 `ddl-auto=validate`�
 /opt/warehouse-system/data/backups
 ```
 
-将项目放入 compose 目录，创建 `.env`，然后运行 `docker compose up -d --build`。默认通过 `0.0.0.0:8088` 提供访问；如使用宿主机 nginx 提供 HTTPS，请将 `APP_BIND_ADDRESS` 改为 `127.0.0.1`。修改 `nginx/warehouse.conf` 中的域名和证书路径后启用配置。
+将项目放入 compose 目录，创建 `.env`，然后运行 `docker compose up -d --build`。默认通过 `0.0.0.0:8088` 提供访问；使用仓库内的宿主机 Nginx 配置提供 HTTPS 时，请将 `APP_BIND_ADDRESS` 改为 `127.0.0.1`。
+
+### warehouseflow.tech 域名与 HTTPS
+
+先确保 `warehouseflow.tech` 和 `www.warehouseflow.tech` 的 A 记录均指向服务器公网 IP，并开放 TCP 80、443。首次签发证书时先启用 `nginx/warehouse-http.conf`，使用 Certbot webroot 模式申请证书；签发成功后再替换为 `nginx/warehouse.conf`。最终配置会将 HTTP 和 `www` 请求统一跳转到 `https://warehouseflow.tech`，同时保留 ACME 验证路径供证书自动续期使用。
 
 PDF 使用随应用打包的 `src/main/resources/fonts/DroidSansFallbackFull.ttf`，运行时直接从 classpath 加载，不依赖容器操作系统字体或 Debian 软件源。
 
