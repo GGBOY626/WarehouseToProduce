@@ -81,10 +81,28 @@ public class MovementService {
     public MovementDtos.TodayStatsResponse todayStats(LocalDate date,MovementEnums.Direction direction){
         ZoneId z=ZoneId.of(zone);Instant start=date.atStartOfDay(z).toInstant();Instant end=date.plusDays(1).atStartOfDay(z).toInstant();
         List<MovementDtos.ProductStatResponse> productStats=repository.summarizeItems(start,end,direction,MovementEnums.Status.ACTIVE).stream()
-                .map(row->new MovementDtos.ProductStatResponse((String)row[0],((Number)row[1]).longValue(),((Number)row[2]).longValue())).toList();
+                .map(row->new MovementDtos.ProductStatResponse((String)row[0],((Number)row[1]).longValue(),((Number)row[2]).longValue(),((Number)row[3]).longValue())).toList();
         long cartons=productStats.stream().mapToLong(MovementDtos.ProductStatResponse::fullCartons).sum();
         long quantity=productStats.stream().mapToLong(MovementDtos.ProductStatResponse::totalQuantity).sum();
-        return new MovementDtos.TodayStatsResponse(cartons,quantity,productStats);
+        long unknown=productStats.stream().mapToLong(MovementDtos.ProductStatResponse::unknownItemCount).sum();
+        return new MovementDtos.TodayStatsResponse(cartons,quantity,unknown,productStats);
+    }
+
+    @Transactional(readOnly=true)
+    public MovementDtos.QueryStatsResponse queryStats(LocalDate from,LocalDate to,MovementEnums.Direction direction,MovementEnums.Status status,Boolean missingPhoto,Boolean hasIssue,String q){
+        ZoneId z=ZoneId.of(zone);Instant start=from.atStartOfDay(z).toInstant();Instant end=to.plusDays(1).atStartOfDay(z).toInstant();
+        Map<MovementEnums.Direction,List<MovementDtos.ProductStatResponse>> grouped=new EnumMap<>(MovementEnums.Direction.class);
+        repository.summarizeSearch(start,end,direction,status,missingPhoto,hasIssue,q==null?"":q.trim()).forEach(row->{
+            MovementEnums.Direction rowDirection=(MovementEnums.Direction)row[0];
+            grouped.computeIfAbsent(rowDirection,key->new ArrayList<>()).add(new MovementDtos.ProductStatResponse((String)row[1],((Number)row[2]).longValue(),((Number)row[3]).longValue(),((Number)row[4]).longValue()));
+        });
+        List<MovementDtos.DirectionStatResponse> directions=grouped.entrySet().stream().map(entry->{
+            long cartons=entry.getValue().stream().mapToLong(MovementDtos.ProductStatResponse::fullCartons).sum();
+            long quantity=entry.getValue().stream().mapToLong(MovementDtos.ProductStatResponse::totalQuantity).sum();
+            long unknown=entry.getValue().stream().mapToLong(MovementDtos.ProductStatResponse::unknownItemCount).sum();
+            return new MovementDtos.DirectionStatResponse(entry.getKey(),cartons,quantity,unknown,entry.getValue());
+        }).toList();
+        return new MovementDtos.QueryStatsResponse(directions);
     }
 
     private void apply(Movement m,MovementDtos.SaveRequest r){
@@ -95,15 +113,15 @@ public class MovementService {
         m.setManufactureLot(r.direction()==MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION?r.manufactureLot().trim():null);m.setRemarks(blank(r.remarks()));
         Set<Long> existingProductIds=m.getItems().stream().map(x->x.getProduct().getId()).collect(java.util.stream.Collectors.toSet());
         m.getItems().clear();int cartons=0;int order=0;
-        for(var input:r.items()){MovementItem item=buildItem(input,order++,existingProductIds.contains(input.productId()));m.addItem(item);cartons+=input.fullCartons();}
+        for(var input:r.items()){MovementItem item=buildItem(input,order++,existingProductIds.contains(input.productId()));m.addItem(item);cartons+=item.getFullCartons();}
         m.setTotalCartons(cartons);
     }
 
     private MovementItem buildItem(MovementDtos.ItemRequest r,int order,boolean allowInactive){
-        if(!QuantityRules.hasQuantity(r.fullCartons(),r.looseUnits(),r.totalUnits()))throw BusinessException.badRequest("QUANTITY_REQUIRED","每个产品至少填写一种数量。");
-        Product p=allowInactive?products.getAny(r.productId()):products.getActive(r.productId());MovementItem i=new MovementItem();i.setProduct(p);i.setProductNameSnapshot(p.getName());i.setSkuSnapshot(null);i.setUnitsPerCartonSnapshot(p.getDefaultUnitsPerCarton());i.setBaseUnitSnapshot(p.getBaseUnit());i.setBatchNo(r.batchNo().trim());i.setFullCartons(r.fullCartons());i.setLooseUnits(r.looseUnits());i.setSortOrder(order);i.setRemarks(blank(r.remarks()));
-        Long calculated=QuantityRules.calculate(p.getDefaultUnitsPerCarton(),r.fullCartons(),r.looseUnits());
-        i.setCalculatedTotalUnits(calculated);i.setTotalUnits(r.totalUnits()!=null?r.totalUnits():calculated);i.setTotalUnitsOverridden(i.getTotalUnits()!=null&&!Objects.equals(i.getTotalUnits(),calculated));
+        if(!r.quantityUnknown()&&!QuantityRules.hasQuantity(r.fullCartons(),r.looseUnits(),r.totalUnits()))throw BusinessException.badRequest("QUANTITY_REQUIRED","每个产品至少填写一种数量，或选择数量不确定。");
+        Product p=allowInactive?products.getAny(r.productId()):products.getActive(r.productId());MovementItem i=new MovementItem();i.setProduct(p);i.setProductNameSnapshot(p.getName());i.setSkuSnapshot(null);i.setUnitsPerCartonSnapshot(p.getDefaultUnitsPerCarton());i.setBaseUnitSnapshot(p.getBaseUnit());i.setBatchNo(r.batchNo().trim());i.setFullCartons(r.quantityUnknown()?0:r.fullCartons());i.setLooseUnits(r.quantityUnknown()?0:r.looseUnits());i.setSortOrder(order);i.setRemarks(blank(r.remarks()));
+        Long calculated=r.quantityUnknown()?null:QuantityRules.calculate(p.getDefaultUnitsPerCarton(),r.fullCartons(),r.looseUnits());
+        i.setCalculatedTotalUnits(calculated);i.setTotalUnits(r.quantityUnknown()?null:(r.totalUnits()!=null?r.totalUnits():calculated));i.setTotalUnitsOverridden(!r.quantityUnknown()&&i.getTotalUnits()!=null&&!Objects.equals(i.getTotalUnits(),calculated));i.setQuantityUnknown(r.quantityUnknown());
         Set<MovementEnums.IssueType> seen=new HashSet<>();for(var issue:Optional.ofNullable(r.issues()).orElse(List.of())){if(!seen.add(issue.type()))throw BusinessException.badRequest("DUPLICATE_ISSUE","同一种异常不能重复选择。");if(issue.type()==MovementEnums.IssueType.OTHER&&(issue.description()==null||issue.description().isBlank()))throw BusinessException.badRequest("ISSUE_DESCRIPTION_REQUIRED","选择“其他”异常时必须填写说明。");MovementItemIssue entity=new MovementItemIssue();entity.setIssueType(issue.type());entity.setDescription(blank(issue.description()));i.addIssue(entity);}return i;
     }
     private void validateDirection(MovementDtos.SaveRequest r){if(r.direction()==MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION&&(r.manufactureLot()==null||r.manufactureLot().isBlank()))throw BusinessException.badRequest("MANUFACTURE_LOT_REQUIRED","仓库送往生产车间时必须填写物料批次。");}

@@ -23,6 +23,7 @@ public class MovementItem extends PersistentEntity {
     @Column(name="calculated_total_units") private Long calculatedTotalUnits;
     @Column(name="total_units") private Long totalUnits;
     @Column(name="total_units_overridden",nullable=false) private boolean totalUnitsOverridden;
+    @Column(name="quantity_unknown",nullable=false) private boolean quantityUnknown;
     @Column(length=1000) private String remarks;
     @Column(name="sort_order",nullable=false) private int sortOrder;
     @OneToMany(mappedBy="movementItem",cascade=CascadeType.ALL,orphanRemoval=true)

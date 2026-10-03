@@ -27,6 +27,7 @@ const blankItem = (): ItemInput => ({
   batchNo: "",
   fullCartons: 0,
   looseUnits: 0,
+  quantityUnknown: false,
   remarks: "",
   issues: [],
   manualTotal: false,
@@ -60,6 +61,7 @@ function calculate(item: ItemInput) {
   return undefined;
 }
 function displayedTotal(item: ItemInput) {
+  if (item.quantityUnknown) return undefined;
   return item.manualTotal ? item.totalUnits : calculate(item);
 }
 function selectProduct(item: ItemInput, p?: Product) {
@@ -77,6 +79,14 @@ function selectProduct(item: ItemInput, p?: Product) {
 }
 function quantityChanged(item: ItemInput) {
   if (!item.manualTotal) item.totalUnits = calculate(item);
+}
+function toggleUnknownQuantity(item: ItemInput) {
+  if (item.quantityUnknown) {
+    item.fullCartons = 0;
+    item.looseUnits = 0;
+    item.totalUnits = undefined;
+    item.manualTotal = false;
+  }
 }
 function toggleIssue(item: ItemInput, type: IssueType, checked: boolean) {
   if (checked) item.issues.push({ type });
@@ -124,6 +134,7 @@ function validate() {
     if (!x.productId) return `请选择产品明细 ${i + 1} 的产品。`;
     if (!x.batchNo.trim()) return `请填写产品明细 ${i + 1} 的物料编码。`;
     if (
+      !x.quantityUnknown &&
       x.fullCartons <= 0 &&
       x.looseUnits <= 0 &&
       (!x.totalUnits || x.totalUnits <= 0)
@@ -152,9 +163,10 @@ function payload() {
       fullCartons: Number(x.fullCartons) || 0,
       looseUnits: Number(x.looseUnits) || 0,
       totalUnits:
-        x.manualTotal && x.totalUnits !== undefined
+        x.quantityUnknown ? undefined : x.manualTotal && x.totalUnits !== undefined
           ? Number(x.totalUnits)
           : displayedTotal(x),
+      quantityUnknown: x.quantityUnknown,
       remarks: x.remarks,
       issues: x.issues,
     })),
@@ -254,6 +266,7 @@ onMounted(async () => {
         fullCartons: x.fullCartons,
         looseUnits: x.looseUnits,
         totalUnits: x.totalUnits,
+        quantityUnknown: x.quantityUnknown,
         manualTotal: x.totalUnitsOverridden,
         remarks: x.remarks || "",
         issues: x.issues.map((y) => ({
@@ -378,6 +391,7 @@ onBeforeUnmount(() => {
                 min="0"
                 step="1"
                 v-model.number="item.fullCartons"
+                :disabled="item.quantityUnknown"
                 @input="quantityChanged(item)"
               />
             </div>
@@ -393,10 +407,15 @@ onBeforeUnmount(() => {
                 min="0"
                 step="1"
                 v-model.number="item.looseUnits"
+                :disabled="item.quantityUnknown"
                 @input="quantityChanged(item)"
               />
             </div>
           </div>
+          <label class="unknown-quantity">
+            <input type="checkbox" v-model="item.quantityUnknown" @change="toggleUnknownQuantity(item)" />
+            数量不确定（无法清点或没有数量标识）
+          </label>
           <div class="total-box">
             <span>总数量</span
             ><strong class="mono"
@@ -405,7 +424,7 @@ onBeforeUnmount(() => {
                 {{ item.product?.baseUnit || "个" }}</small
               ></strong
             ><label class="manual"
-              ><input type="checkbox" v-model="item.manualTotal" />
+              ><input type="checkbox" v-model="item.manualTotal" :disabled="item.quantityUnknown" />
               人工填写总数量</label
             ><input
               v-if="item.manualTotal"
@@ -585,11 +604,13 @@ onBeforeUnmount(() => {
   min-height: 34px;
 }
 .manual input,
+.unknown-quantity input,
 .issues input {
   width: 18px;
   height: 18px;
   accent-color: #174a68;
 }
+.unknown-quantity { display: flex; align-items: center; gap: 8px; min-height: 40px; font-size: 14px; font-weight: 680; color: #174a68; }
 .issues {
   border: 0;
   padding: 0;

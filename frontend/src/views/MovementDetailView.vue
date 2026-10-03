@@ -92,6 +92,7 @@ function duplicate() {
         batchNo: x.batchNo,
         fullCartons: 0,
         looseUnits: 0,
+        quantityUnknown: false,
         remarks: "",
         issues: [],
         manualTotal: false,
@@ -176,7 +177,8 @@ onMounted(()=>void load());
           >
             物料批次：{{ data.manufactureLot }}
           </div>
-          <div class="quantities">
+          <div v-if="item.quantityUnknown" class="unknown-box">数量不确定（未计入数量合计）</div>
+          <div v-else class="quantities">
             <span
               ><small>完整箱</small><b>{{ item.fullCartons }}</b></span
             ><span
@@ -323,6 +325,7 @@ onMounted(()=>void load());
   font-size: 12px;
   color: #b75b18;
 }
+.unknown-box { margin-top: 12px; padding: 12px; border-radius: 8px; background: #fff4dd; color: #8a5714; font-weight: 680; }
 .issue-list {
   display: flex;
   flex-wrap: wrap;

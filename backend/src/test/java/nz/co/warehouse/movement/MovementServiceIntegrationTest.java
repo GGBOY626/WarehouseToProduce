@@ -83,6 +83,37 @@ class MovementServiceIntegrationTest {
         assertThat(productStats.totalQuantity()).isEqualTo(155);
     }
 
+    @Test void allowsAnItemWithExplicitlyUnknownQuantity(){
+        var item=new MovementDtos.ItemRequest(product,"NO-LABEL",0,0,null,true,"无法清点",List.of());
+        var request=new MovementDtos.SaveRequest(UUID.randomUUID().toString(),MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,Instant.parse("2026-09-28T01:00:00Z"),sender,receiver,"LOT-UNKNOWN",null,List.of(item));
+
+        var saved=movements.create(request);
+
+        assertThat(saved.items().getFirst().quantityUnknown()).isTrue();
+        assertThat(saved.items().getFirst().totalUnits()).isNull();
+        assertThat(saved.totalCartons()).isZero();
+        var page=movements.search(LocalDate.of(2026,9,28),LocalDate.of(2026,9,28),null,null,null,null,saved.recordNo(),0,20);
+        assertThat(page.content().getFirst().hasUnknownQuantity()).isTrue();
+    }
+
+    @Test void queryStatsUsesTheSameDirectionAndMissingPhotoFiltersAsHistorySearch(){
+        var outbound=movements.create(request(UUID.randomUUID().toString(),MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,2,5));
+        var inbound=movements.create(request(UUID.randomUUID().toString(),MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE,3,0));
+        jdbc.update("""
+                insert into movement_photo
+                    (movement_id,file_path,original_name,mime_type,file_size,width,height,created_at,updated_at)
+                values (?, 'test/inbound.jpg', 'inbound.jpg', 'image/jpeg', 100, 100, 100, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """,inbound.id());
+
+        var stats=movements.queryStats(LocalDate.of(2026,9,28),LocalDate.of(2026,9,28),MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,MovementEnums.Status.ACTIVE,true,true,outbound.items().getFirst().productName());
+
+        assertThat(stats.directions()).hasSize(1);
+        assertThat(stats.directions().getFirst().direction()).isEqualTo(MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION);
+        assertThat(stats.directions().getFirst().totalCartons()).isEqualTo(2);
+        assertThat(stats.directions().getFirst().totalQuantity()).isEqualTo(65);
+        assertThat(stats.directions().getFirst().products()).extracting(MovementDtos.ProductStatResponse::productName).containsExactly(outbound.items().getFirst().productName());
+    }
+
     @Test void detailDoesNotDuplicateItemWhenMovementHasMultiplePhotos(){
         var saved=movements.create(request(UUID.randomUUID().toString(),MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,1,0));
         for(int i=1;i<=2;i++)jdbc.update("""

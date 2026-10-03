@@ -2,9 +2,12 @@
 import { onMounted, ref } from "vue";
 import MovementCard from "../components/MovementCard.vue";
 import { movementsApi } from "../api";
-import type { Direction, MovementStatus, MovementSummary } from "../types";
+import type { Direction, MovementStatus, MovementSummary, QueryStats } from "../types";
 import { today } from "../utils/time";
 const rows = ref<MovementSummary[]>([]),
+  stats = ref<QueryStats>(),
+  appliedFrom = ref(today()),
+  appliedTo = ref(today()),
   loading = ref(false),
   from = ref(today()),
   to = ref(today()),
@@ -15,19 +18,25 @@ const rows = ref<MovementSummary[]>([]),
   hasIssue = ref<boolean | undefined>();
 async function load() {
   loading.value = true;
+  stats.value = undefined;
   try {
-    rows.value = (
-      await movementsApi.list({
-        from: from.value,
-        to: to.value,
-        direction: direction.value || undefined,
-        status: status.value || undefined,
-        missingPhoto: missingPhoto.value,
-        hasIssue: hasIssue.value,
-        q: q.value,
-        size: 100,
-      })
-    ).content;
+    const params = {
+      from: from.value,
+      to: to.value,
+      direction: direction.value || undefined,
+      status: status.value || undefined,
+      missingPhoto: missingPhoto.value,
+      hasIssue: hasIssue.value,
+      q: q.value,
+    };
+    const [page, currentStats] = await Promise.all([
+      movementsApi.list({ ...params, size: 100 }),
+      movementsApi.queryStats(params),
+    ]);
+    rows.value = page.content;
+    stats.value = currentStats;
+    appliedFrom.value = from.value;
+    appliedTo.value = to.value;
   } finally {
     loading.value = false;
   }
@@ -53,6 +62,8 @@ function preset(kind: "today" | "yesterday" | "week" | "twoWeeks") {
   load();
 }
 onMounted(load);
+const directionLabel = (value: Direction) => value === "WAREHOUSE_TO_PRODUCTION" ? "仓库 → 生产车间" : "生产车间 → 仓库";
+const formatNumber = (value: number) => value.toLocaleString("zh-CN");
 </script>
 <template>
   <div class="page">
@@ -125,6 +136,26 @@ onMounted(load);
         <h2 class="section-title">查询结果</h2>
         <span class="hint">{{ rows.length }} 条</span>
       </div>
+      <div v-if="!loading" class="query-stats card">
+        <div class="stats-heading">
+          <strong>查询范围统计</strong>
+          <span>{{ appliedFrom }} ～ {{ appliedTo }}</span>
+        </div>
+        <div v-if="!stats?.directions.length" class="stats-empty">当前查询范围暂无统计数据</div>
+        <div v-else>
+          <section v-for="group in stats.directions" :key="group.direction" class="direction-stat">
+            <h3>{{ directionLabel(group.direction) }}</h3>
+            <div class="stats-total">{{ group.unknownItemCount ? '已知合计：' : '总计：' }}<strong>{{ formatNumber(group.totalCartons) }} 箱</strong><span>·</span><strong>{{ formatNumber(group.totalQuantity) }} 个</strong><span v-if="group.unknownItemCount">· 含 {{ group.unknownItemCount }} 项数量不确定</span></div>
+            <div>
+              <div v-for="product in group.products" :key="product.productName" class="product-stat">
+                <strong>{{ product.productName }}<small v-if="product.unknownItemCount">（{{ product.unknownItemCount }} 项不确定）</small></strong>
+                <span>{{ formatNumber(product.fullCartons) }} 箱</span>
+                <span>{{ formatNumber(product.totalQuantity) }} 个</span>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
       <div v-if="loading" class="card empty">正在查询…</div>
       <div v-else-if="!rows.length" class="card empty">
         没有符合条件的记录。
@@ -159,5 +190,21 @@ onMounted(load);
   width: 18px;
   height: 18px;
   accent-color: #174a68;
+}
+.query-stats { margin-bottom: 14px; overflow: hidden; }
+.stats-heading { display: flex; justify-content: space-between; gap: 12px; padding: 14px 16px; background: #f3f7f8; color: #174a68; }
+.stats-heading span { color: #687982; font-size: 13px; }
+.stats-empty { padding: 24px 16px; text-align: center; color: #66747c; }
+.direction-stat { padding: 15px 16px; border-top: 1px solid #e2e8ea; }
+.direction-stat:first-child { border-top: 0; }
+.direction-stat h3 { margin: 0 0 8px; font-size: 15px; color: #243e4b; }
+.stats-total { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; margin-bottom: 7px; color: #52626b; }
+.stats-total strong { color: #174a68; font-size: 17px; }
+.product-stat { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 16px; padding: 9px 0; border-top: 1px solid #edf0f1; font-size: 14px; }
+.product-stat strong { overflow-wrap: anywhere; }
+.product-stat span { color: #52626b; white-space: nowrap; font-variant-numeric: tabular-nums; }
+@media (max-width: 560px) {
+  .stats-heading { align-items: flex-start; flex-direction: column; gap: 4px; }
+  .product-stat { gap: 8px; font-size: 13px; }
 }
 </style>

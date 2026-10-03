@@ -34,6 +34,7 @@ export interface ItemInput {
   fullCartons: number;
   looseUnits: number;
   totalUnits?: number;
+  quantityUnknown: boolean;
   remarks: string;
   issues: IssueInput[];
   manualTotal: boolean;
@@ -71,6 +72,7 @@ export interface MovementItem {
   calculatedTotalUnits?: number;
   totalUnits?: number;
   totalUnitsOverridden: boolean;
+  quantityUnknown: boolean;
   remarks?: string;
   issues: { id: number; type: IssueType; description?: string }[];
 }
@@ -109,6 +111,7 @@ export interface MovementSummary {
   itemCount: number;
   photoCount: number;
   hasIssues: boolean;
+  hasUnknownQuantity: boolean;
 }
 export interface MovementPage {
   content: MovementSummary[];
@@ -120,5 +123,15 @@ export interface MovementPage {
 export interface TodayStats {
   totalCartons: number;
   totalQuantity: number;
-  products: { productName: string; fullCartons: number; totalQuantity: number }[];
+  unknownItemCount: number;
+  products: { productName: string; fullCartons: number; totalQuantity: number; unknownItemCount: number }[];
+}
+export interface QueryStats {
+  directions: {
+    direction: Direction;
+    totalCartons: number;
+    totalQuantity: number;
+    unknownItemCount: number;
+    products: { productName: string; fullCartons: number; totalQuantity: number; unknownItemCount: number }[];
+  }[];
 }

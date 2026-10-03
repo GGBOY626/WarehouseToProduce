@@ -69,10 +69,10 @@ const formatNumber = (value: number) => value.toLocaleString("zh-CN");
         <div v-if="loading" class="stats-empty">正在统计…</div>
         <div v-else-if="!stats?.products.length" class="stats-empty">今日暂无数据</div>
         <template v-else>
-          <div class="stats-total">总计：<strong>{{formatNumber(stats.totalCartons)}} 箱</strong><span>·</span><strong>{{formatNumber(stats.totalQuantity)}} 个</strong></div>
+          <div class="stats-total">{{stats.unknownItemCount ? '已知合计：' : '总计：'}}<strong>{{formatNumber(stats.totalCartons)}} 箱</strong><span>·</span><strong>{{formatNumber(stats.totalQuantity)}} 个</strong><span v-if="stats.unknownItemCount">· 含 {{stats.unknownItemCount}} 项数量不确定</span></div>
           <div class="stats-products">
             <div v-for="product in stats.products" :key="product.productName" class="stats-row">
-              <strong>{{product.productName}}</strong><span>{{formatNumber(product.fullCartons)}} 箱</span><span>{{formatNumber(product.totalQuantity)}} 个</span>
+              <strong>{{product.productName}}<small v-if="product.unknownItemCount">（{{product.unknownItemCount}} 项不确定）</small></strong><span>{{formatNumber(product.fullCartons)}} 箱</span><span>{{formatNumber(product.totalQuantity)}} 个</span>
             </div>
           </div>
         </template>
