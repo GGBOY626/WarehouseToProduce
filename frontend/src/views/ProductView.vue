@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { nextTick, onMounted, ref } from "vue";
 import { productsApi } from "../api";
 import { errorMessage } from "../api/http";
 import type { Product, ProductUsage } from "../types";
@@ -19,6 +19,7 @@ const rows = ref<Product[]>([]),
     quantityUnknown: false,
   }),
   message = ref("");
+const editorSection = ref<HTMLElement>();
 async function load() {
   rows.value = await productsApi.search(q.value, true);
 }
@@ -44,6 +45,7 @@ function open(p?: Product) {
         baseUnit: "个",
         quantityUnknown: false,
       };
+  void nextTick(() => editorSection.value?.scrollIntoView({ behavior: "smooth", block: "start" }));
 }
 function quantityTypeChanged() {
   if (form.value.quantityUnknown) {
@@ -102,7 +104,7 @@ onMounted(load);
     <button v-if="authenticated" class="btn btn-primary btn-block add" @click="open()">
       ＋ 新增产品
     </button>
-    <section v-if="authenticated && showEditor" class="card card-pad stack editor">
+    <section ref="editorSection" v-if="authenticated && showEditor" class="card card-pad stack editor">
       <div class="field">
         <label class="required">产品名称</label
         ><input class="input" v-model.trim="form.name" />
@@ -204,6 +206,7 @@ onMounted(load);
 }
 .editor {
   margin-bottom: 14px;
+  scroll-margin-top: 76px;
 }
 .list .row {
   flex-wrap: wrap;
