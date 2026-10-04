@@ -1,4 +1,5 @@
 export type Direction = "WAREHOUSE_TO_PRODUCTION" | "PRODUCTION_TO_WAREHOUSE";
+export type ProductUsage = Direction;
 export type MovementStatus = "ACTIVE" | "VOID";
 export type IssueType =
   | "MISSING_LABEL"
@@ -15,6 +16,7 @@ export interface Product {
   defaultUnitsPerCarton?: number;
   baseUnit?: string;
   quantityUnknown: boolean;
+  movementDirection?: ProductUsage;
   active: boolean;
   duplicateName?: boolean;
 }
@@ -47,6 +49,7 @@ export interface MovementDraft {
   senderPersonId?: number;
   receiverPersonId?: number;
   manufactureLot: string;
+  returnMovement: boolean;
   remarks: string;
   items: ItemInput[];
 }
@@ -87,6 +90,7 @@ export interface MovementDetail {
   receiverPersonId: number;
   receiverName: string;
   manufactureLot?: string;
+  returnMovement: boolean;
   totalCartons: number;
   remarks?: string;
   status: MovementStatus;
@@ -105,6 +109,7 @@ export interface MovementSummary {
   movementTime: string;
   senderName: string;
   receiverName: string;
+  returnMovement: boolean;
   totalCartons: number;
   totalQuantity: number;
   status: MovementStatus;

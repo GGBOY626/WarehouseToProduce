@@ -109,16 +109,18 @@ public class MovementService {
         validateDirection(r);
         Person sender=m.getId()!=null&&m.getSenderPerson().getId().equals(r.senderPersonId())?persons.getAny(r.senderPersonId()):persons.getActive(r.senderPersonId());
         Person receiver=m.getId()!=null&&m.getReceiverPerson().getId().equals(r.receiverPersonId())?persons.getAny(r.receiverPersonId()):persons.getActive(r.receiverPersonId());
-        m.setDirection(r.direction());m.setMovementTime(r.movementTime());m.setSenderPerson(sender);m.setSenderNameSnapshot(sender.getName());m.setReceiverPerson(receiver);m.setReceiverNameSnapshot(receiver.getName());
+        m.setDirection(r.direction());m.setReturnMovement(r.returnMovement());m.setMovementTime(r.movementTime());m.setSenderPerson(sender);m.setSenderNameSnapshot(sender.getName());m.setReceiverPerson(receiver);m.setReceiverNameSnapshot(receiver.getName());
         m.setManufactureLot(r.direction()==MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION?r.manufactureLot().trim():null);m.setRemarks(blank(r.remarks()));
         Set<Long> existingProductIds=m.getItems().stream().map(x->x.getProduct().getId()).collect(java.util.stream.Collectors.toSet());
         m.getItems().clear();int cartons=0;int order=0;
-        for(var input:r.items()){MovementItem item=buildItem(input,order++,existingProductIds.contains(input.productId()));m.addItem(item);cartons+=item.getFullCartons();}
+        ProductUsage expectedUsage=r.returnMovement()?ProductUsage.WAREHOUSE_TO_PRODUCTION
+                :(r.direction()==MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION?ProductUsage.WAREHOUSE_TO_PRODUCTION:ProductUsage.PRODUCTION_TO_WAREHOUSE);
+        for(var input:r.items()){MovementItem item=buildItem(input,order++,existingProductIds.contains(input.productId()),expectedUsage);m.addItem(item);cartons+=item.getFullCartons();}
         m.setTotalCartons(cartons);
     }
 
-    private MovementItem buildItem(MovementDtos.ItemRequest r,int order,boolean allowInactive){
-        Product p=allowInactive?products.getAny(r.productId()):products.getActive(r.productId());MovementItem i=new MovementItem();i.setProduct(p);i.setProductNameSnapshot(p.getName());i.setSkuSnapshot(null);i.setUnitsPerCartonSnapshot(p.getDefaultUnitsPerCarton());i.setBatchNo(r.batchNo().trim());i.setSortOrder(order);i.setRemarks(blank(r.remarks()));
+    private MovementItem buildItem(MovementDtos.ItemRequest r,int order,boolean allowInactive,ProductUsage expectedUsage){
+        Product p=products.getForMovement(r.productId(),expectedUsage,allowInactive);MovementItem i=new MovementItem();i.setProduct(p);i.setProductNameSnapshot(p.getName());i.setSkuSnapshot(null);i.setUnitsPerCartonSnapshot(p.getDefaultUnitsPerCarton());i.setBatchNo(r.batchNo().trim());i.setSortOrder(order);i.setRemarks(blank(r.remarks()));
         boolean quantityUnknown=p.isQuantityUnknown()||r.quantityUnknown();
         if(!quantityUnknown&&!QuantityRules.hasQuantity(r.fullCartons(),r.looseUnits(),r.totalUnits()))throw BusinessException.badRequest("QUANTITY_REQUIRED","每个产品至少填写一种数量，或选择数量不确定。");
         i.setBaseUnitSnapshot(p.getBaseUnit()==null?"—":p.getBaseUnit());i.setFullCartons(quantityUnknown?0:r.fullCartons());i.setLooseUnits(quantityUnknown?0:r.looseUnits());
@@ -126,7 +128,12 @@ public class MovementService {
         i.setCalculatedTotalUnits(calculated);i.setTotalUnits(quantityUnknown?null:(r.totalUnits()!=null?r.totalUnits():calculated));i.setTotalUnitsOverridden(!quantityUnknown&&i.getTotalUnits()!=null&&!Objects.equals(i.getTotalUnits(),calculated));i.setQuantityUnknown(quantityUnknown);
         Set<MovementEnums.IssueType> seen=new HashSet<>();for(var issue:Optional.ofNullable(r.issues()).orElse(List.of())){if(!seen.add(issue.type()))throw BusinessException.badRequest("DUPLICATE_ISSUE","同一种异常不能重复选择。");if(issue.type()==MovementEnums.IssueType.OTHER&&(issue.description()==null||issue.description().isBlank()))throw BusinessException.badRequest("ISSUE_DESCRIPTION_REQUIRED","选择“其他”异常时必须填写说明。");MovementItemIssue entity=new MovementItemIssue();entity.setIssueType(issue.type());entity.setDescription(blank(issue.description()));i.addIssue(entity);}return i;
     }
-    private void validateDirection(MovementDtos.SaveRequest r){if(r.direction()==MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION&&(r.manufactureLot()==null||r.manufactureLot().isBlank()))throw BusinessException.badRequest("MANUFACTURE_LOT_REQUIRED","仓库送往生产车间时必须填写物料批次。");}
+    private void validateDirection(MovementDtos.SaveRequest r){
+        if(r.returnMovement()&&r.direction()!=MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE)
+            throw BusinessException.badRequest("RETURN_DIRECTION_INVALID","退回只能用于生产车间到仓库的记录。");
+        if(r.direction()==MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION&&(r.manufactureLot()==null||r.manufactureLot().isBlank()))
+            throw BusinessException.badRequest("MANUFACTURE_LOT_REQUIRED","仓库送往生产车间时必须填写物料批次。");
+    }
     private Movement getActiveDetail(long id){Movement m=repository.findDetailById(id).orElseThrow(()->BusinessException.notFound("MOVEMENT_NOT_FOUND","找不到该流转记录。"));if(m.getStatus()==MovementEnums.Status.VOID)throw new BusinessException("MOVEMENT_VOID","已作废记录不能修改。",HttpStatus.CONFLICT);return m;}
     private String blank(String value){return value==null||value.isBlank()?null:value.trim();}
     @Value("${app.upload-dir:./data/uploads}") private String uploadDir;

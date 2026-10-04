@@ -78,6 +78,7 @@ function duplicate() {
       senderPersonId: m.senderPersonId,
       receiverPersonId: m.receiverPersonId,
       manufactureLot: "",
+      returnMovement: m.returnMovement,
       remarks: "",
       items: m.items.map((x) => ({
         productId: x.productId,
@@ -89,6 +90,7 @@ function duplicate() {
           baseUnit: x.baseUnit,
           quantityUnknown: false,
           active: true,
+          movementDirection: m.returnMovement ? "WAREHOUSE_TO_PRODUCTION" : m.direction,
         },
         batchNo: x.batchNo,
         fullCartons: 0,
@@ -141,6 +143,7 @@ onMounted(()=>void load());
           ]"
         >
           {{ directionLabel(data.direction) }}
+          <span v-if="data.returnMovement" class="return-badge">退回</span>
         </div>
         <dl>
           <div>
@@ -274,6 +277,7 @@ onMounted(()=>void load());
   gap: 14px;
   margin: 18px 0 0;
 }
+.return-badge{display:inline-block;margin-left:8px;padding:3px 8px;border-radius:999px;background:#fff0d6;color:#8a5714;font-size:12px;font-weight:700}
 .facts dt {
   font-size: 12px;
   color: #66747c;

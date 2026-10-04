@@ -7,8 +7,10 @@ import java.util.List;
 
 public interface ProductRepository extends JpaRepository<Product, Long> {
     @Query("select p from Product p where (:includeInactive = true or p.active = true) and " +
+           "(:direction is null or p.movementDirection = :direction) and " +
            "(:q = '' or lower(p.name) like lower(concat('%', :q, '%')) or lower(p.materialCode) like lower(concat('%', :q, '%')) or lower(coalesce(p.materialBatch,'')) like lower(concat('%', :q, '%'))) order by p.active desc, p.name, p.materialCode")
-    List<Product> search(@Param("q") String q, @Param("includeInactive") boolean includeInactive);
+    List<Product> search(@Param("q") String q, @Param("includeInactive") boolean includeInactive,
+                         @Param("direction") ProductUsage direction);
 
     boolean existsByNameIgnoreCaseAndMaterialCodeIgnoreCaseAndActiveTrue(String name, String materialCode);
 

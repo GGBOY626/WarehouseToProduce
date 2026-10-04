@@ -37,6 +37,7 @@ const draft = ref<MovementDraft>({
   direction: direction.value,
   movementTime: nowLocalInput(),
   manufactureLot: "",
+  returnMovement: false,
   remarks: "",
   items: [blankItem()],
 });
@@ -54,6 +55,10 @@ const saving = ref(false),
 const savedMovementId = ref<number>();
 const draftKey = computed(() => `movement-draft:${direction.value}`);
 const allIssues = Object.entries(issueLabels) as [IssueType, string][];
+const productUsage = computed<Direction>(() => draft.value.returnMovement ? "WAREHOUSE_TO_PRODUCTION" : direction.value);
+function returnChanged() {
+  draft.value.items = [blankItem()];
+}
 function calculate(item: ItemInput) {
   const size = item.product?.defaultUnitsPerCarton;
   if (size != null) return item.fullCartons * size + item.looseUnits;
@@ -161,6 +166,7 @@ function payload() {
       direction.value === "WAREHOUSE_TO_PRODUCTION"
         ? draft.value.manufactureLot
         : undefined,
+    returnMovement: direction.value === "PRODUCTION_TO_WAREHOUSE" && draft.value.returnMovement,
     remarks: draft.value.remarks,
     items: draft.value.items.map((x) => ({
       productId: x.productId,
@@ -256,6 +262,7 @@ onMounted(async () => {
       senderPersonId: m.senderPersonId,
       receiverPersonId: m.receiverPersonId,
       manufactureLot: m.manufactureLot || "",
+      returnMovement: m.returnMovement,
       remarks: m.remarks || "",
       items: m.items.map((x) => ({
         productId: x.productId,
@@ -266,6 +273,7 @@ onMounted(async () => {
           defaultUnitsPerCarton: x.unitsPerCarton,
           baseUnit: x.baseUnit,
           quantityUnknown: false,
+          movementDirection: m.returnMovement ? "WAREHOUSE_TO_PRODUCTION" : m.direction,
           active: true,
         },
         batchNo: x.batchNo,
@@ -285,7 +293,7 @@ onMounted(async () => {
   } else {
     const cached = localStorage.getItem(draftKey.value);
     if (cached && confirm("发现未保存的表单草稿，是否继续填写？"))
-      draft.value = JSON.parse(cached);
+      draft.value = { ...JSON.parse(cached), returnMovement: !!JSON.parse(cached).returnMovement };
     else {
       const last = localStorage.getItem(`last-persons:${direction.value}`);
       if (last) {
@@ -316,6 +324,10 @@ onBeforeUnmount(() => {
     <p class="page-lead">带 * 的内容必须填写。没有照片也可以保存。</p>
     <div v-if="message" class="form-alert" role="alert">{{ message }}</div>
     <section class="card card-pad stack">
+      <label v-if="direction === 'PRODUCTION_TO_WAREHOUSE'" class="return-choice">
+        <input type="checkbox" v-model="draft.returnMovement" @change="returnChanged" />
+        <span><strong>这是退回物料</strong><small>仓库之前送入生产车间，现在将多余物料退回仓库</small></span>
+      </label>
       <div class="field">
         <label class="required">实际流转时间</label
         ><input
@@ -364,7 +376,7 @@ onBeforeUnmount(() => {
             v-model="item.productId"
             label="产品"
             placeholder="输入产品名、物料编码或物料批次"
-            :load="(q) => productsApi.search(q)"
+            :load="(q) => productsApi.search(q, false, productUsage)"
             @select="(p) => selectProduct(item, p)"
           />
           <div class="field">
@@ -617,6 +629,7 @@ onBeforeUnmount(() => {
   accent-color: #174a68;
 }
 .unknown-quantity { display: flex; align-items: center; gap: 8px; min-height: 40px; font-size: 14px; font-weight: 680; color: #174a68; }
+.return-choice{display:flex;gap:10px;align-items:flex-start;padding:12px;border:1px solid #e3b56d;background:#fff8e8;border-radius:9px;color:#744a10}.return-choice input{width:20px;height:20px;accent-color:#b75b18}.return-choice span{display:grid;gap:3px}.return-choice small{font-weight:400;color:#806239}
 .issues {
   border: 0;
   padding: 0;

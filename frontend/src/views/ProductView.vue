@@ -2,7 +2,7 @@
 import { onMounted, ref } from "vue";
 import { productsApi } from "../api";
 import { errorMessage } from "../api/http";
-import type { Product } from "../types";
+import type { Product, ProductUsage } from "../types";
 import { useAuth } from "../auth";
 const { authenticated } = useAuth();
 const rows = ref<Product[]>([]),
@@ -13,6 +13,7 @@ const rows = ref<Product[]>([]),
     name: "",
     materialCode: "",
     materialBatch: "",
+    movementDirection: "" as ProductUsage | "",
     defaultUnitsPerCarton: undefined as number | undefined,
     baseUnit: "个",
     quantityUnknown: false,
@@ -29,6 +30,7 @@ function open(p?: Product) {
         name: p.name,
         materialCode: p.materialCode,
         materialBatch: p.materialBatch || "",
+        movementDirection: p.movementDirection || "",
         defaultUnitsPerCarton: p.defaultUnitsPerCarton,
         baseUnit: p.baseUnit || "",
         quantityUnknown: p.quantityUnknown,
@@ -37,6 +39,7 @@ function open(p?: Product) {
         name: "",
         materialCode: "",
         materialBatch: "",
+        movementDirection: "" as ProductUsage | "",
         defaultUnitsPerCarton: undefined,
         baseUnit: "个",
         quantityUnknown: false,
@@ -49,6 +52,10 @@ function quantityTypeChanged() {
   }
 }
 async function save() {
+  if (!form.value.movementDirection) {
+    message.value = "请选择产品流转分类。";
+    return;
+  }
   try {
     if (editing.value) await productsApi.update(editing.value.id, form.value);
     else await productsApi.create(form.value);
@@ -116,6 +123,14 @@ onMounted(load);
           placeholder="例如 CA202607006"
         />
       </div>
+      <div class="field">
+        <label class="required">流转分类</label>
+        <div class="usage-choice" role="group" aria-label="产品流转分类">
+          <button type="button" :class="{active:form.movementDirection==='WAREHOUSE_TO_PRODUCTION'}" @click="form.movementDirection='WAREHOUSE_TO_PRODUCTION'">仓库 → 生产车间</button>
+          <button type="button" :class="{active:form.movementDirection==='PRODUCTION_TO_WAREHOUSE'}" @click="form.movementDirection='PRODUCTION_TO_WAREHOUSE'">生产车间 → 仓库</button>
+        </div>
+        <small class="hint">该产品只会出现在对应方向的产品搜索中。</small>
+      </div>
       <div class="grid-2">
         <div class="field">
           <label>默认每箱数量</label
@@ -157,6 +172,8 @@ onMounted(load);
           <div v-if="p.materialBatch" class="hint mono">
             物料批次：{{ p.materialBatch }}
           </div>
+          <span v-if="p.movementDirection" class="usage-badge">{{ p.movementDirection === 'WAREHOUSE_TO_PRODUCTION' ? '仓库 → 生产车间' : '生产车间 → 仓库' }}</span>
+          <span v-else class="status warn">未分类，请编辑</span>
           <div v-if="p.duplicateName" class="duplicate-warning">
             同名产品，请核对物料编码
           </div>
@@ -209,4 +226,6 @@ onMounted(load);
 }
 .unknown-quantity { display: flex; align-items: center; gap: 8px; min-height: 42px; color: #174a68; font-size: 14px; font-weight: 680; }
 .unknown-quantity input { width: 18px; height: 18px; accent-color: #174a68; }
+.usage-choice{display:grid;grid-template-columns:1fr 1fr;gap:8px}.usage-choice button{border:1px solid #b9c7ce;background:#fff;border-radius:8px;padding:10px;color:#314650}.usage-choice button.active{background:#174a68;border-color:#174a68;color:#fff}.usage-badge{display:inline-block;margin:4px 0;padding:4px 8px;border-radius:999px;background:#e9f2f6;color:#174a68;font-size:12px;font-weight:680}
+@media(max-width:420px){.usage-choice{grid-template-columns:1fr}}
 </style>

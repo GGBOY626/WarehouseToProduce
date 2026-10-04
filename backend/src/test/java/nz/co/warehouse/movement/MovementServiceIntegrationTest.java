@@ -26,13 +26,14 @@ class MovementServiceIntegrationTest {
     @Autowired ProductService products;
     @Autowired PersonService persons;
     @Autowired JdbcTemplate jdbc;
-    Long sender,receiver,product;
+    Long sender,receiver,product,inboundProduct;
 
     @BeforeEach void setup(){
         String suffix=UUID.randomUUID().toString().substring(0,8);
         sender=persons.create(new PersonDtos.Request("仓库人员-"+suffix,null)).id();
         receiver=persons.create(new PersonDtos.Request("生产人员-"+suffix,null)).id();
-        product=products.create(new ProductDtos.Request("测试产品-"+suffix,"MAT-"+suffix,"LOT-"+suffix,30,"个")).id();
+        product=products.create(new ProductDtos.Request("测试产品-"+suffix,"MAT-"+suffix,"LOT-"+suffix,ProductUsage.WAREHOUSE_TO_PRODUCTION,30,"个")).id();
+        inboundProduct=products.create(new ProductDtos.Request("入库产品-"+suffix,"IN-"+suffix,null,ProductUsage.PRODUCTION_TO_WAREHOUSE,30,"个")).id();
     }
 
     @Test void createsAndReturnsSameMovementForRepeatedIdempotencyKey(){
@@ -43,6 +44,31 @@ class MovementServiceIntegrationTest {
     @Test void productionToWarehouseDoesNotStoreManufactureLot(){
         var saved=movements.create(request(UUID.randomUUID().toString(),MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE,1,0));
         assertThat(saved.manufactureLot()).isNull();
+    }
+
+    @Test void productSearchFiltersByRequiredMovementDirection(){
+        assertThat(products.search("",false,ProductUsage.WAREHOUSE_TO_PRODUCTION)).extracting(ProductDtos.Response::id).contains(product).doesNotContain(inboundProduct);
+        assertThat(products.search("",false,ProductUsage.PRODUCTION_TO_WAREHOUSE)).extracting(ProductDtos.Response::id).contains(inboundProduct).doesNotContain(product);
+    }
+
+    @Test void normalInboundRejectsOutboundProductButReturnAcceptsIt(){
+        var item=new MovementDtos.ItemRequest(product,"RETURN-MAT",1,0,null,null,List.of());
+        var normal=new MovementDtos.SaveRequest(UUID.randomUUID().toString(),MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE,
+                Instant.parse("2026-09-28T01:00:00Z"),sender,receiver,null,false,null,List.of(item));
+        assertThatThrownBy(()->movements.create(normal)).hasMessageContaining("不适用于当前流转类型");
+
+        var returned=new MovementDtos.SaveRequest(UUID.randomUUID().toString(),MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE,
+                Instant.parse("2026-09-28T01:00:00Z"),sender,receiver,null,true,null,List.of(item));
+        var saved=movements.create(returned);
+        assertThat(saved.returnMovement()).isTrue();
+        assertThat(saved.items().getFirst().productId()).isEqualTo(product);
+    }
+
+    @Test void returnFlagIsRejectedForWarehouseToProduction(){
+        var item=new MovementDtos.ItemRequest(product,"MAT",1,0,null,null,List.of());
+        var invalid=new MovementDtos.SaveRequest(UUID.randomUUID().toString(),MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,
+                Instant.parse("2026-09-28T01:00:00Z"),sender,receiver,"LOT",true,null,List.of(item));
+        assertThatThrownBy(()->movements.create(invalid)).hasMessageContaining("退回只能用于");
     }
 
     @Test void voidedMovementCannotBeEdited(){
@@ -84,16 +110,17 @@ class MovementServiceIntegrationTest {
     }
 
     @Test void todayStatsCanCombineBothDirections(){
-        var item=new MovementDtos.ItemRequest(product,"BATCH-BOTH",1,5,null,null,List.of());
+        var outboundItem=new MovementDtos.ItemRequest(product,"BATCH-BOTH",1,5,null,null,List.of());
+        var inboundItem=new MovementDtos.ItemRequest(inboundProduct,"BATCH-IN",1,5,null,null,List.of());
         Instant time=Instant.parse("2026-10-15T01:00:00Z");
-        movements.create(new MovementDtos.SaveRequest(UUID.randomUUID().toString(),MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,time,sender,receiver,"LOT-BOTH",null,List.of(item)));
-        movements.create(new MovementDtos.SaveRequest(UUID.randomUUID().toString(),MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE,time,sender,receiver,null,null,List.of(item)));
+        movements.create(new MovementDtos.SaveRequest(UUID.randomUUID().toString(),MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,time,sender,receiver,"LOT-BOTH",null,List.of(outboundItem)));
+        movements.create(new MovementDtos.SaveRequest(UUID.randomUUID().toString(),MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE,time,sender,receiver,null,null,List.of(inboundItem)));
 
         var stats=movements.todayStats(LocalDate.of(2026,10,15),null);
 
         assertThat(stats.totalCartons()).isEqualTo(2);
         assertThat(stats.totalQuantity()).isEqualTo(70);
-        assertThat(stats.products()).hasSize(1);
+        assertThat(stats.products()).hasSize(2);
     }
 
     @Test void allowsAnItemWithExplicitlyUnknownQuantity(){
@@ -111,7 +138,7 @@ class MovementServiceIntegrationTest {
 
     @Test void productConfiguredWithUnknownQuantityNeedsNoUnitAndMakesMovementQuantityUnknown(){
         String suffix=UUID.randomUUID().toString().substring(0,8);
-        var unknownProduct=products.create(new ProductDtos.Request("无法清点产品-"+suffix,"UNKNOWN-"+suffix,null,null,null,true));
+        var unknownProduct=products.create(new ProductDtos.Request("无法清点产品-"+suffix,"UNKNOWN-"+suffix,null,ProductUsage.WAREHOUSE_TO_PRODUCTION,null,null,true));
         var item=new MovementDtos.ItemRequest(unknownProduct.id(),"UNKNOWN-"+suffix,0,0,null,false,null,List.of());
         var request=new MovementDtos.SaveRequest(UUID.randomUUID().toString(),MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,Instant.parse("2026-09-28T01:00:00Z"),sender,receiver,"LOT-UNKNOWN-PRODUCT",null,List.of(item));
 
@@ -168,7 +195,8 @@ class MovementServiceIntegrationTest {
     }
 
     private MovementDtos.SaveRequest request(String key,MovementEnums.Direction direction,int cartons,long loose){
-        var item=new MovementDtos.ItemRequest(product,"BATCH-001",cartons,loose,null,"测试",List.of(new MovementDtos.IssueRequest(MovementEnums.IssueType.MISSING_LABEL,"少贴标签")));
+        long selectedProduct=direction==MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION?product:inboundProduct;
+        var item=new MovementDtos.ItemRequest(selectedProduct,"BATCH-001",cartons,loose,null,"测试",List.of(new MovementDtos.IssueRequest(MovementEnums.IssueType.MISSING_LABEL,"少贴标签")));
         return new MovementDtos.SaveRequest(key,direction,Instant.parse("2026-09-28T00:00:00Z"),sender,receiver,direction==MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION?"CA202607006":null,"整单备注",List.of(item));
     }
 }

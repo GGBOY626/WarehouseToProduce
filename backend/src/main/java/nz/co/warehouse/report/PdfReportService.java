@@ -4,51 +4,202 @@ import com.openhtmltopdf.pdfboxout.PdfRendererBuilder;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import nz.co.warehouse.common.BusinessException;
-import nz.co.warehouse.movement.*;
+import nz.co.warehouse.movement.Movement;
+import nz.co.warehouse.movement.MovementEnums;
+import nz.co.warehouse.movement.MovementItem;
+import nz.co.warehouse.movement.MovementRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.io.*;
-import java.time.*;
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
-import java.util.*;
-import java.util.stream.Collectors;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 @Slf4j @Service @RequiredArgsConstructor
 public class PdfReportService {
+    private static final String PDF_FONT = "/fonts/DroidSansFallbackFull.ttf";
+    private static final DateTimeFormatter REPORT_DATE = DateTimeFormatter.ofPattern("yyyy/MM/dd");
     private final MovementRepository repository;
     @Value("${app.business-zone:Pacific/Auckland}") private String zone;
-    private static final String PDF_FONT="/fonts/DroidSansFallbackFull.ttf";
 
-    @Transactional(readOnly=true)
-    public byte[] generate(LocalDate from,LocalDate to){
-        if(to.isBefore(from))throw BusinessException.badRequest("INVALID_DATE_RANGE","结束日期不能早于开始日期。");
-        if(from.plusYears(1).isBefore(to))throw BusinessException.badRequest("DATE_RANGE_TOO_LARGE","单次导出日期范围不能超过一年。");
-        ZoneId z=ZoneId.of(zone);List<Movement> rows=repository.findReportRows(from.atStartOfDay(z).toInstant(),to.plusDays(1).atStartOfDay(z).toInstant(),MovementEnums.Status.ACTIVE);
-        try(ByteArrayOutputStream out=new ByteArrayOutputStream()){
-            PdfRendererBuilder builder=new PdfRendererBuilder();builder.useFastMode();builder.useFont(this::openFont,"WarehouseCN");builder.withHtmlContent(html(rows,from,to,z),null);builder.toStream(out);builder.run();return out.toByteArray();
-        }catch(Exception ex){log.error("PDF 生成失败 {} - {}",from,to,ex);throw new BusinessException("PDF_GENERATION_FAILED","PDF 生成失败，请稍后重试或联系管理员。",HttpStatus.INTERNAL_SERVER_ERROR);}
+    @Transactional(readOnly = true)
+    public byte[] generate(LocalDate from, LocalDate to, MovementEnums.Direction direction) {
+        validateRange(from, to);
+        ZoneId businessZone = ZoneId.of(zone);
+        List<Movement> rows = repository.findReportRows(from.atStartOfDay(businessZone).toInstant(),
+                to.plusDays(1).atStartOfDay(businessZone).toInstant(), MovementEnums.Status.ACTIVE);
+        if (direction == MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION)
+            rows = rows.stream().filter(row -> row.getDirection() == direction || row.isReturnMovement()).toList();
+        else if (direction == MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE)
+            rows = rows.stream().filter(row -> row.getDirection() == direction && !row.isReturnMovement()).toList();
+        try (ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            PdfRendererBuilder builder = new PdfRendererBuilder();
+            builder.useFastMode();
+            builder.useFont(this::openFont, "WarehouseCN");
+            builder.withHtmlContent(html(rows, from, to, direction, businessZone), null);
+            builder.toStream(output);
+            builder.run();
+            return output.toByteArray();
+        } catch (Exception exception) {
+            log.error("PDF 生成失败 {} - {}", from, to, exception);
+            throw new BusinessException("PDF_GENERATION_FAILED", "PDF 生成失败，请稍后重试或联系管理员。", HttpStatus.INTERNAL_SERVER_ERROR);
+        }
     }
 
-    private InputStream openFont(){
-        InputStream font=PdfReportService.class.getResourceAsStream(PDF_FONT);
-        if(font==null)throw new IllegalStateException("JAR 中缺少 PDF 中文字体: "+PDF_FONT);
+    public byte[] generate(LocalDate from, LocalDate to) { return generate(from, to, null); }
+
+    private void validateRange(LocalDate from, LocalDate to) {
+        if (to.isBefore(from)) throw BusinessException.badRequest("INVALID_DATE_RANGE", "结束日期不能早于开始日期。");
+        if (from.plusYears(1).isBefore(to)) throw BusinessException.badRequest("DATE_RANGE_TOO_LARGE", "单次导出日期范围不能超过一年。");
+    }
+
+    private InputStream openFont() {
+        InputStream font = PdfReportService.class.getResourceAsStream(PDF_FONT);
+        if (font == null) throw new IllegalStateException("JAR 中缺少 PDF 中文字体: " + PDF_FONT);
         return font;
     }
 
-    private String html(List<Movement> rows,LocalDate from,LocalDate to,ZoneId z){
-        StringBuilder b=new StringBuilder("""
-        <!DOCTYPE html><html><head><meta charset="UTF-8"/><style>
-        @page{size:A4 landscape;margin:12mm 10mm}*{box-sizing:border-box}body{font-family:WarehouseCN,sans-serif;color:#172126;font-size:9px}h1{font-size:18px;margin:0 0 4px}.range{color:#52626b;margin-bottom:12px}.movement{border:1px solid #9eacb3;margin:0 0 10px;page-break-inside:avoid}.head{background:#e9f2f6;padding:7px 8px}.head strong{font-size:11px}.meta{margin-top:3px;color:#42545d}table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{border-top:1px solid #cbd4d8;border-right:1px solid #dce2e5;padding:5px;vertical-align:top;word-wrap:break-word}th{background:#f3f5f6;text-align:left}th:last-child,td:last-child{border-right:0}.notes{padding:6px 8px;border-top:1px solid #dce2e5}.summary{margin-top:14px;border-top:2px solid #174a68;padding-top:8px}.void{color:#b4232c}</style></head><body>
-        """);b.append("<h1>仓库 / 生产车间物料流转记录</h1><div class='range'>日期范围：").append(from).append(" ～ ").append(to).append("</div>");
-        for(Movement m:rows){b.append("<section class='movement'><div class='head'><strong>").append(e(m.getRecordNo())).append(" · ").append(direction(m)).append("</strong><div class='meta'>").append(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm").format(m.getMovementTime().atZone(z))).append("　发送人：").append(e(m.getSenderNameSnapshot())).append("　接收人：").append(e(m.getReceiverNameSnapshot()));if(m.getManufactureLot()!=null)b.append("　物料批次：").append(e(m.getManufactureLot()));b.append("　照片：").append(m.getPhotos().isEmpty()?"无":"有（"+m.getPhotos().size()+" 张）").append("</div></div><table><thead><tr><th style='width:18%'>产品</th><th style='width:11%'>物料编码</th><th style='width:7%'>完整箱</th><th style='width:8%'>散装</th><th style='width:9%'>总数量</th><th style='width:18%'>异常</th><th>产品备注</th></tr></thead><tbody>");for(MovementItem i:m.getItems()){String issues=i.getIssues().stream().map(x->issue(x.getIssueType())+(x.getDescription()==null?"":"："+x.getDescription())).collect(Collectors.joining("；"));b.append("<tr><td>").append(e(i.getProductNameSnapshot())).append(i.getSkuSnapshot()==null?"":"<br/>SKU "+e(i.getSkuSnapshot())).append("</td><td>").append(e(i.getBatchNo())).append("</td><td>").append(i.isQuantityUnknown()?"—":i.getFullCartons()).append("</td><td>").append(i.isQuantityUnknown()?"—":i.getLooseUnits()+" "+e(i.getBaseUnitSnapshot())).append("</td><td>").append(i.isQuantityUnknown()?"数量不确定":i.getTotalUnits()==null?"—":i.getTotalUnits()+" "+e(i.getBaseUnitSnapshot())).append(i.isTotalUnitsOverridden()?"<br/>（人工调整）":"").append("</td><td>").append(issues.isBlank()?"无":e(issues)).append("</td><td>").append(e(i.getRemarks())).append("</td></tr>");}b.append("</tbody></table>");if(m.getRemarks()!=null)b.append("<div class='notes'>整单备注：").append(e(m.getRemarks())).append("</div>");b.append("</section>");}
-        long outbound=rows.stream().filter(m->m.getDirection()==MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION).count();int cartons=rows.stream().mapToInt(Movement::getTotalCartons).sum();long missing=rows.stream().filter(m->m.getPhotos().isEmpty()).count();long issues=rows.stream().filter(m->m.getItems().stream().anyMatch(i->!i.getIssues().isEmpty())).count();Map<String,Long> loose=new LinkedHashMap<>();rows.forEach(m->m.getItems().forEach(i->loose.merge(i.getBaseUnitSnapshot(),i.getLooseUnits(),Long::sum)));
-        long unknown=rows.stream().flatMap(m->m.getItems().stream()).filter(MovementItem::isQuantityUnknown).count();
-        b.append("<div class='summary'><strong>统计</strong><br/>流转次数：").append(rows.size()).append("　仓库 → 生产车间：").append(outbound).append("　生产车间 → 仓库：").append(rows.size()-outbound).append("　完整箱总数：").append(cartons).append("　散装：").append(loose.entrySet().stream().map(x->x.getValue()+" "+e(x.getKey())).collect(Collectors.joining("、"))).append("　数量不确定：").append(unknown).append(" 项　缺少照片：").append(missing).append("　存在异常：").append(issues).append("</div></body></html>");return b.toString();
+    private String html(List<Movement> rows, LocalDate from, LocalDate to,
+                        MovementEnums.Direction selectedDirection, ZoneId businessZone) {
+        StringBuilder html = new StringBuilder("""
+                <!DOCTYPE html><html><head><meta charset="UTF-8"/><style>
+                @page{size:A4 landscape;margin:7mm 4mm 8mm;@bottom-center{content:"第 " counter(page) " / " counter(pages) " 页";font-family:WarehouseCN;font-size:7px;color:#9aa8ae}}
+                *{box-sizing:border-box}body{font-family:WarehouseCN;color:#172126;font-size:9px;line-height:1.28}h1{font-size:19px;margin:0 0 2px}
+                .range{color:#52626b;margin-bottom:4px}.formula{background:#eef5f8;border-left:3px solid #174a68;padding:3px 7px;margin:0 0 7px}
+                .report-section{margin:0 0 9px}.section-title{font-size:14px;color:#174a68;border-bottom:2px solid #174a68;padding-bottom:3px;margin:0 0 4px}
+                .totals{page-break-inside:avoid;margin-top:4px}.totals .section-title{font-size:15px;background:#f4f8fa;padding:4px 6px;border-bottom-width:2px}
+                .section-summary{float:right;font-size:8px;font-weight:normal;color:#60727b;margin-top:2px}
+                .return-label{display:inline-block;background:#fff0d6;color:#8a5714;border:1px solid #e3b56d;padding:1px 5px;margin-left:5px;font-size:9px}
+                .arrow{display:inline-block;width:15px;height:7px;border-top:1.5px solid #172126;margin:0 5px;position:relative;top:3px}
+                .arrow-tip{display:block;width:6px;height:6px;border-top:1.5px solid #172126;border-right:1.5px solid #172126;position:absolute;right:0;top:-4px;transform:rotate(45deg)}
+                table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{border:1px solid #bcc8cd;padding:4px;vertical-align:middle;word-wrap:break-word}
+                th{background:#e9f2f6;text-align:center;font-weight:bold}.text{text-align:left}.center{text-align:center}.number{text-align:right}
+                .date-group td{background:#dcecf3;color:#174a68;text-align:center;font-size:10px;font-weight:bold;padding:4px}
+                .carton-spec{font-size:7.5px;color:#718188;white-space:nowrap}.empty{text-align:center;padding:12px;color:#66777f}
+                .direction-block+.direction-block{page-break-before:always}
+                </style></head><body>
+                """);
+        html.append("<h1>仓库 / 生产车间物料流转记录</h1><div class='range'>日期范围：")
+                .append(REPORT_DATE.format(from)).append(" 至 ").append(REPORT_DATE.format(to)).append("　导出范围：")
+                .append(selectedDirection == null ? "全部方向" : directionText(selectedDirection)).append("</div>")
+                .append("<div class='formula'><strong>数量计算：</strong>总数量 = 完整箱 × 每箱数量 + 散装数量（例：3 × 10 + 2 = 32）。</div>");
+        if (selectedDirection == null || selectedDirection == MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION)
+            appendDirectionBlock(html, rows, MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION, businessZone);
+        if ((selectedDirection == null || selectedDirection == MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION)
+                && rows.stream().anyMatch(Movement::isReturnMovement))
+            appendReturnBlock(html, rows, businessZone);
+        if (selectedDirection == null || selectedDirection == MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE)
+            appendDirectionBlock(html, rows, MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE, businessZone);
+        return html.append("</body></html>").toString();
     }
-    private String direction(Movement m){return m.getDirection()==MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION?"仓库 → 生产车间":"生产车间 → 仓库";}
-    private String issue(MovementEnums.IssueType t){return switch(t){case MISSING_LABEL->"缺少标签";case WRONG_LABEL->"标签错误";case DAMAGED_CARTON->"外箱破损";case QUANTITY_MISMATCH->"数量不一致";case PACKAGING_ISSUE->"包装异常";case OTHER->"其他";};}
-    private String e(String s){if(s==null)return"";return s.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;").replace("\"","&quot;");}
+
+    private void appendDirectionBlock(StringBuilder html, List<Movement> allRows,
+                                      MovementEnums.Direction direction, ZoneId businessZone) {
+        List<Movement> rows = allRows.stream().filter(row -> row.getDirection() == direction && !row.isReturnMovement()).toList();
+        String heading = directionMarkup(direction);
+        html.append("<div class='direction-block'>");
+        appendDetailTable(html, rows, heading, businessZone);
+        appendTotalTable(html, rows, heading);
+        html.append("</div>");
+    }
+
+    private void appendReturnBlock(StringBuilder html, List<Movement> allRows, ZoneId businessZone) {
+        List<Movement> rows = allRows.stream().filter(Movement::isReturnMovement).toList();
+        String heading = directionMarkup(MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE) + " <span class='return-label'>退回</span>";
+        html.append("<div class='direction-block'>");
+        appendDetailTable(html, rows, heading, businessZone);
+        appendTotalTable(html, rows, heading);
+        html.append("</div>");
+    }
+
+    private void appendDetailTable(StringBuilder html, List<Movement> rows,
+                                   String heading, ZoneId businessZone) {
+        html.append("<section class='report-section'><h2 class='section-title'>").append(heading).append(" 明细表</h2>")
+                .append("<table><thead><tr><th style='width:9%'>日期</th><th style='width:15%'>产品</th><th style='width:12%'>物料编码</th>")
+                .append("<th style='width:11%'>物料批次</th><th style='width:11%'>完整箱</th><th style='width:8%'>散装数量</th>")
+                .append("<th style='width:9%'>总数量</th><th style='width:10%'>产品备注</th><th style='width:7.5%'>出货人</th><th style='width:7.5%'>收货人</th></tr></thead><tbody>");
+        int itemCount = 0;
+        Map<LocalDate, Integer> dailyCounts = new LinkedHashMap<>();
+        for (Movement movement : rows) {
+            LocalDate date = movement.getMovementTime().atZone(businessZone).toLocalDate();
+            dailyCounts.merge(date, movement.getItems().size(), Integer::sum);
+        }
+        LocalDate currentDate = null;
+        for (Movement movement : rows) {
+            LocalDate movementDate = movement.getMovementTime().atZone(businessZone).toLocalDate();
+            if (!movementDate.equals(currentDate)) {
+                currentDate = movementDate;
+                html.append("<tr class='date-group'><td colspan='10'>").append(REPORT_DATE.format(movementDate))
+                        .append("　当日 ").append(dailyCounts.get(movementDate)).append(" 条</td></tr>");
+            }
+            for (MovementItem item : movement.getItems()) {
+            itemCount++;
+            html.append("<tr><td class='center'>").append(REPORT_DATE.format(movementDate)).append("</td><td class='text'>")
+                    .append(e(item.getProductNameSnapshot())).append("</td><td class='center'>").append(e(item.getBatchNo()))
+                    .append("</td><td class='center'>").append(e(movement.getManufactureLot())).append("</td><td class='number'>").append(fullCartons(item))
+                    .append("</td><td class='number'>").append(quantity(item, item.getLooseUnits())).append("</td><td class='number'>").append(totalQuantity(item))
+                    .append("</td><td class='text'>").append(e(item.getRemarks())).append("</td><td class='center'>").append(e(movement.getSenderNameSnapshot()))
+                    .append("</td><td class='center'>").append(e(movement.getReceiverNameSnapshot())).append("</td></tr>");
+            }
+        }
+        if (itemCount == 0) html.append("<tr><td colspan='10' class='empty'>该方向暂无记录</td></tr>");
+        html.append("</tbody></table></section>");
+    }
+
+    private void appendTotalTable(StringBuilder html, List<Movement> rows, String heading) {
+        Map<TotalKey, TotalRow> totals = new LinkedHashMap<>();
+        for (Movement movement : rows) for (MovementItem item : movement.getItems()) {
+            TotalKey key = new TotalKey(item.getProductNameSnapshot(), item.getBatchNo(), movement.getManufactureLot(), item.getUnitsPerCartonSnapshot(), item.getBaseUnitSnapshot());
+            totals.computeIfAbsent(key, ignored -> new TotalRow()).add(item);
+        }
+        int recordCount = rows.stream().mapToInt(movement -> movement.getItems().size()).sum();
+        html.append("<section class='report-section totals'><h2 class='section-title'>").append(heading).append(" 总计表")
+                .append("<span class='section-summary'>共 ").append(totals.size()).append(" 种物料 / ").append(recordCount).append(" 条记录</span></h2>")
+                .append("<table><thead><tr><th>产品</th><th>物料编码</th><th>物料批次</th><th>每箱数量</th><th>完整箱合计</th><th>散装合计</th><th>总数量合计</th></tr></thead><tbody>");
+        for (Map.Entry<TotalKey, TotalRow> entry : totals.entrySet()) {
+            TotalKey key = entry.getKey(); TotalRow total = entry.getValue();
+            html.append("<tr><td class='text'>").append(e(key.product())).append("</td><td class='center'>").append(e(key.materialCode())).append("</td><td class='center'>").append(e(key.batch()))
+                    .append("</td><td class='number'>").append(key.unitsPerCarton() == null ? "-" : key.unitsPerCarton() + " " + e(key.unit()))
+                    .append("</td><td class='number'>").append(total.cartons).append(" 箱</td><td class='number'>").append(total.loose).append(" ").append(e(key.unit()))
+                    .append("</td><td class='number'>").append(total.unknown ? "含数量不确定项" : total.total + " " + e(key.unit())).append("</td></tr>");
+        }
+        if (totals.isEmpty()) html.append("<tr><td colspan='7' class='empty'>该方向暂无记录</td></tr>");
+        html.append("</tbody></table></section>");
+    }
+
+    private String fullCartons(MovementItem item) {
+        if (item.isQuantityUnknown()) return "数量不确定";
+        String cartonSize = item.getUnitsPerCartonSnapshot() == null ? "规格未设置" : item.getUnitsPerCartonSnapshot() + " " + e(item.getBaseUnitSnapshot()) + "/箱";
+        return item.getFullCartons() + " 箱<br/><span class='carton-spec'>" + cartonSize + "</span>";
+    }
+    private String quantity(MovementItem item, long value) { return item.isQuantityUnknown() ? "数量不确定" : value + " " + e(item.getBaseUnitSnapshot()); }
+    private String totalQuantity(MovementItem item) {
+        if (item.isQuantityUnknown() || item.getTotalUnits() == null) return "数量不确定";
+        return item.getTotalUnits() + " " + e(item.getBaseUnitSnapshot()) + (item.isTotalUnitsOverridden() ? "<br/><span class='muted'>（人工调整）</span>" : "");
+    }
+    private String directionText(MovementEnums.Direction direction) { return direction == MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION ? "仓库到生产车间" : "生产车间到仓库"; }
+
+    /* The bundled CJK font has no U+2192 glyph, so CSS draws the arrow instead of rendering '#'. */
+    private String directionMarkup(MovementEnums.Direction direction) {
+        String from = direction == MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION ? "仓库" : "生产车间";
+        String to = direction == MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION ? "生产车间" : "仓库";
+        return from + "<span class='arrow'><span class='arrow-tip'></span></span>" + to;
+    }
+    private String e(String value) { return value == null ? "" : value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;"); }
+
+    private record TotalKey(String product, String materialCode, String batch, Integer unitsPerCarton, String unit) {}
+    private static final class TotalRow {
+        private int cartons; private long loose; private long total; private boolean unknown;
+        private void add(MovementItem item) {
+            cartons += item.getFullCartons(); loose += item.getLooseUnits();
+            if (item.isQuantityUnknown() || item.getTotalUnits() == null) unknown = true; else total += item.getTotalUnits();
+        }
+    }
 }

@@ -12,8 +12,8 @@ public class ProductService {
     private final ProductRepository repository;
 
     @Transactional(readOnly = true)
-    public List<ProductDtos.Response> search(String q, boolean includeInactive) {
-        return repository.search(q == null ? "" : q.trim(), includeInactive).stream()
+    public List<ProductDtos.Response> search(String q, boolean includeInactive, ProductUsage direction) {
+        return repository.search(q == null ? "" : q.trim(), includeInactive, direction).stream()
                 .map(p->ProductDtos.Response.from(p,repository.countByNameIgnoreCaseAndActiveTrue(p.getName())>1)).toList();
     }
 
@@ -50,6 +50,17 @@ public class ProductService {
     }
     public Product getAny(long id) { return get(id); }
 
+    public Product getForMovement(long id, ProductUsage expectedDirection, boolean allowInactive) {
+        Product product = get(id);
+        if (!allowInactive && !product.isActive())
+            throw new BusinessException("PRODUCT_DISABLED", "该产品已停用，请重新选择产品。", HttpStatus.CONFLICT);
+        if (product.getMovementDirection() == null)
+            throw BusinessException.badRequest("PRODUCT_DIRECTION_REQUIRED", "该产品尚未设置流转分类，请先到产品管理中补充。");
+        if (product.getMovementDirection() != expectedDirection)
+            throw BusinessException.badRequest("PRODUCT_DIRECTION_MISMATCH", "该产品不适用于当前流转类型，请重新选择。");
+        return product;
+    }
+
     private Product get(long id) { return repository.findById(id).orElseThrow(() -> BusinessException.notFound("PRODUCT_NOT_FOUND", "找不到该产品。")); }
     private void apply(Product p, ProductDtos.Request r) {
         String name=r.name().trim(), materialCode=r.materialCode().trim();
@@ -58,7 +69,7 @@ public class ProductService {
                 :repository.existsByNameIgnoreCaseAndMaterialCodeIgnoreCaseAndActiveTrueAndIdNot(name,materialCode,p.getId());
         if(duplicate)throw new BusinessException("PRODUCT_DUPLICATE", "已有相同名称和物料编码的启用产品。", HttpStatus.CONFLICT);
         if(!r.quantityUnknown()&&(r.baseUnit()==null||r.baseUnit().isBlank()))throw BusinessException.badRequest("BASE_UNIT_REQUIRED", "数量确定的产品必须填写基础单位。");
-        p.setName(name);p.setMaterialCode(materialCode);p.setMaterialBatch(blankToNull(r.materialBatch()));p.setQuantityUnknown(r.quantityUnknown());p.setDefaultUnitsPerCarton(r.quantityUnknown()?null:r.defaultUnitsPerCarton());p.setBaseUnit(r.quantityUnknown()?null:r.baseUnit().trim());
+        p.setName(name);p.setMaterialCode(materialCode);p.setMaterialBatch(blankToNull(r.materialBatch()));p.setMovementDirection(r.movementDirection());p.setQuantityUnknown(r.quantityUnknown());p.setDefaultUnitsPerCarton(r.quantityUnknown()?null:r.defaultUnitsPerCarton());p.setBaseUnit(r.quantityUnknown()?null:r.baseUnit().trim());
     }
     private String blankToNull(String s) { return s == null || s.isBlank() ? null : s.trim(); }
 }
