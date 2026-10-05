@@ -51,7 +51,8 @@ public interface MovementRepository extends JpaRepository<Movement,Long> {
                                   @Param("status") MovementEnums.Status status);
 
     @Query("""
-        select i.movement.direction, i.productNameSnapshot, sum(i.fullCartons), coalesce(sum(i.totalUnits), 0), sum(case when i.quantityUnknown=true then 1 else 0 end)
+        select i.movement.direction, i.productNameSnapshot, sum(i.fullCartons), coalesce(sum(i.totalUnits), 0), sum(case when i.quantityUnknown=true then 1 else 0 end),
+               i.movement.id, i.movement.recordNo, i.movement.movementTime, i.movement.senderNameSnapshot, i.movement.receiverNameSnapshot
         from MovementItem i
         where i.movement.movementTime >= :from and i.movement.movementTime < :to
           and (:direction is null or i.movement.direction = :direction)
@@ -62,8 +63,8 @@ public interface MovementRepository extends JpaRepository<Movement,Long> {
               select matched.id from MovementItem matched where matched.movement=i.movement and
               (lower(matched.productNameSnapshot) like lower(concat('%',:q,'%')) or lower(coalesce(matched.skuSnapshot,'')) like lower(concat('%',:q,'%')) or lower(matched.batchNo) like lower(concat('%',:q,'%')))
           ))
-        group by i.movement.direction, i.productNameSnapshot
-        order by i.movement.direction, i.productNameSnapshot
+        group by i.movement.direction, i.productNameSnapshot, i.movement.id, i.movement.recordNo, i.movement.movementTime, i.movement.senderNameSnapshot, i.movement.receiverNameSnapshot
+        order by i.movement.direction, i.productNameSnapshot, i.movement.movementTime desc, i.movement.id desc
         """)
     List<Object[]> summarizeSearch(@Param("from") Instant from,@Param("to") Instant to,
                                    @Param("direction") MovementEnums.Direction direction,

@@ -191,6 +191,34 @@ class MovementServiceIntegrationTest {
         assertThat(stats.directions().getFirst().products()).extracting(MovementDtos.ProductStatResponse::productName).containsExactly(outbound.items().getFirst().productName());
     }
 
+    @Test void statisticsTraceDistinctOriginalMovementsAndTheirOwnMaterialAmounts(){
+        var firstItem=new MovementDtos.ItemRequest(product,"TRACE-A",2,0,null,null,List.of());
+        var secondItem=new MovementDtos.ItemRequest(product,"TRACE-B",3,0,null,null,List.of());
+        var first=movements.create(new MovementDtos.SaveRequest(UUID.randomUUID().toString(),MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,Instant.parse("2026-09-28T01:00:00Z"),sender,receiver,"TRACE-LOT",null,List.of(firstItem,secondItem)));
+        var single=movements.queryStats(LocalDate.of(2026,9,28),LocalDate.of(2026,9,28),MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,MovementEnums.Status.ACTIVE,null,null,first.recordNo()).directions().getFirst().products().getFirst();
+        assertThat(single.movements()).hasSize(1);
+        assertThat(single.movements().getFirst().id()).isEqualTo(first.id());
+        assertThat(single.movements().getFirst().fullCartons()).isEqualTo(5);
+        assertThat(single.movements().getFirst().totalQuantity()).isEqualTo(150);
+
+        var second=movements.create(request(UUID.randomUUID().toString(),MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,4,2));
+        var third=movements.create(request(UUID.randomUUID().toString(),MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,6,1));
+        var voided=movements.create(request(UUID.randomUUID().toString(),MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,99,0));
+        movements.voidMovement(voided.id(),"不参与统计");
+        movements.create(new MovementDtos.SaveRequest(UUID.randomUUID().toString(),MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,Instant.parse("2026-09-29T01:00:00Z"),sender,receiver,"TRACE-OUTSIDE",null,List.of(firstItem)));
+        var result=movements.queryStats(LocalDate.of(2026,9,28),LocalDate.of(2026,9,28),MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,MovementEnums.Status.ACTIVE,null,null,first.items().getFirst().productName()).directions().getFirst().products().getFirst();
+        assertThat(result.movements()).extracting(MovementDtos.StatMovementResponse::id).containsExactlyInAnyOrder(first.id(),second.id(),third.id());
+        assertThat(result.fullCartons()).isEqualTo(15);
+        assertThat(result.totalQuantity()).isEqualTo(453);
+        var source=result.movements().stream().filter(m->m.id().equals(second.id())).findFirst().orElseThrow();
+        assertThat(source.fullCartons()).isEqualTo(4);
+        assertThat(source.totalQuantity()).isEqualTo(122);
+        assertThat(source.recordNo()).isEqualTo(second.recordNo());
+        assertThat(source.movementTime()).isEqualTo(second.movementTime());
+        assertThat(source.senderName()).isEqualTo(second.senderName());
+        assertThat(source.receiverName()).isEqualTo(second.receiverName());
+    }
+
     @Test void detailDoesNotDuplicateItemWhenMovementHasMultiplePhotos(){
         var saved=movements.create(request(UUID.randomUUID().toString(),MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,1,0));
         for(int i=1;i<=2;i++)jdbc.update("""

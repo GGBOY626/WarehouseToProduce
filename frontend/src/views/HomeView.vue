@@ -1,12 +1,30 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { useRouter } from "vue-router";
 import MovementCard from "../components/MovementCard.vue";
 import { movementsApi } from "../api";
-import type { Direction, MovementSummary, QueryStats } from "../types";
-import { today } from "../utils/time";
+import type { Direction, MovementSummary, QueryStats, StatMovement } from "../types";
+import { today, showDateTime } from "../utils/time";
 import { useAuth } from "../auth";
 import { errorMessage } from "../api/http";
 const { authenticated } = useAuth();
+const router = useRouter();
+const recordDialog = ref<HTMLDialogElement>();
+const selectedProduct = ref("");
+const sourceMovements = ref<StatMovement[]>([]);
+function openProduct(product: QueryStats["directions"][number]["products"][number]) {
+  if (product.movements.length === 1) {
+    void router.push(`/movements/${product.movements[0].id}`);
+    return;
+  }
+  selectedProduct.value = product.productName;
+  sourceMovements.value = product.movements;
+  recordDialog.value?.showModal();
+}
+function openMovement(id: number) {
+  recordDialog.value?.close();
+  void router.push(`/movements/${id}`);
+}
 const error = ref("");
 let searchTimer: ReturnType<typeof setTimeout> | undefined;
 const rows = ref<MovementSummary[]>([]),
@@ -22,6 +40,7 @@ const rows = ref<MovementSummary[]>([]),
   activePreset = ref<"today" | "yesterday" | "week" | "twoWeeks" | undefined>("today");
 let requestId = 0;
 async function load() {
+  recordDialog.value?.close();
   const currentRequest = ++requestId;
   clearTimeout(searchTimer);
   loading.value = false;
@@ -156,11 +175,12 @@ const formatNumber = (value: number) => value.toLocaleString("zh-CN");
             <h3>{{ directionLabel(group.direction) }}</h3>
             <div class="stats-total"><strong>共 {{ formatNumber(group.products.length) }} 种物料</strong><span>·</span><strong>{{ formatNumber(group.totalCartons) }} 箱</strong><span v-if="group.unknownItemCount">· 含 {{ group.unknownItemCount }} 项数量不确定</span></div>
             <div>
-              <div v-for="product in group.products" :key="product.productName" class="product-stat">
+              <button v-for="product in group.products" :key="product.productName" type="button" class="product-stat" :aria-label="`查看 ${product.productName} 的原始流转记录`" @click="openProduct(product)">
                 <strong>{{ product.productName }}<small v-if="product.unknownItemCount">（{{ product.unknownItemCount }} 项不确定）</small></strong>
                 <span>{{ formatNumber(product.fullCartons) }} 箱</span>
                 <span>{{ formatNumber(product.totalQuantity) }} 个</span>
-              </div>
+                <span class="record-arrow" aria-hidden="true">›</span>
+              </button>
             </div>
           </section>
         </div>
@@ -177,6 +197,18 @@ const formatNumber = (value: number) => value.toLocaleString("zh-CN");
     </section>
     <nav class="quick-links card" aria-label="管理与导出"><RouterLink to="/reports">导出 PDF</RouterLink><RouterLink v-if="authenticated" to="/products">产品管理</RouterLink><RouterLink v-if="authenticated" to="/persons">人员管理</RouterLink></nav>
   </div>
+    <dialog ref="recordDialog" class="record-dialog" aria-labelledby="record-dialog-title" @click="event => { if (event.target === recordDialog) recordDialog?.close(); }">
+      <div class="dialog-heading"><h2 id="record-dialog-title">选择流转记录</h2><button type="button" class="btn" autofocus @click="recordDialog?.close()">关闭</button></div>
+      <p class="dialog-summary">{{ selectedProduct }} · 共 {{ sourceMovements.length }} 个流转单</p>
+      <div class="source-list">
+        <button v-for="movement in sourceMovements" :key="movement.id" type="button" class="source-record" @click="openMovement(movement.id)">
+          <strong>{{ movement.recordNo }} <span aria-hidden="true">›</span></strong>
+          <span>{{ showDateTime(movement.movementTime) }} · {{ directionLabel(movement.direction) }}</span>
+          <span>本单该物料：{{ formatNumber(movement.fullCartons) }} 箱 · {{ movement.unknownItemCount ? '已知数量 ' : '' }}{{ formatNumber(movement.totalQuantity) }} 个<span v-if="movement.unknownItemCount">（含 {{ movement.unknownItemCount }} 项数量不确定）</span></span>
+          <span>{{ movement.senderName }} → {{ movement.receiverName }}</span>
+        </button>
+      </div>
+    </dialog>
 </template>
 <style scoped>
 .page-heading { flex-wrap: wrap; gap: 12px; }
@@ -240,7 +272,19 @@ const formatNumber = (value: number) => value.toLocaleString("zh-CN");
 .direction-stat h3 { margin: 0 0 8px; font-size: 15px; color: #243e4b; }
 .stats-total { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; margin-bottom: 7px; color: #52626b; }
 .stats-total strong { color: #174a68; font-size: 17px; }
-.product-stat { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 16px; padding: 9px 0; border-top: 1px solid #edf0f1; font-size: 14px; }
+.product-stat { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; gap: 16px; padding: 12px 4px; border: 0; border-top: 1px solid #edf0f1; font: inherit; font-size: 14px; width: 100%; text-align: left; background: transparent; color: inherit; cursor: pointer; align-items: center; }
+.product-stat:hover,.source-record:hover { background: #edf5f7; }
+.product-stat:focus-visible,.source-record:focus-visible { outline: 3px solid #267566; outline-offset: -3px; }
+.product-stat .record-arrow { color: #174a68; font-size: 22px; }
+.record-dialog { width: min(620px, calc(100% - 24px)); max-height: 85dvh; box-sizing: border-box; padding: 20px; border: 1px solid #b9c7ce; border-radius: 14px; color: #243e4b; }
+.record-dialog::backdrop { background: rgba(20, 40, 50, .5); }
+.dialog-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.dialog-heading h2 { margin: 0; font-size: 20px; }
+.dialog-summary { overflow-wrap: anywhere; color: #60737d; }
+.source-list { display: grid; gap: 10px; }
+.source-record { display: grid; gap: 8px; width: 100%; padding: 14px; border: 1px solid #dce2e5; border-radius: 9px; background: #fff; color: inherit; text-align: left; font: inherit; cursor: pointer; overflow-wrap: anywhere; }
+.source-record strong { display: flex; justify-content: space-between; color: #174a68; }
+.source-record > span { font-size: 13px; }
 .product-stat strong { overflow-wrap: anywhere; }
 .product-stat span { color: #52626b; white-space: nowrap; font-variant-numeric: tabular-nums; }
 @media (max-width: 560px) {

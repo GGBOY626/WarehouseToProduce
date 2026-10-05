@@ -138,6 +138,17 @@ export interface QueryStats {
     totalCartons: number;
     totalQuantity: number;
     unknownItemCount: number;
-    products: { productName: string; fullCartons: number; totalQuantity: number; unknownItemCount: number }[];
+    products: { productName: string; fullCartons: number; totalQuantity: number; unknownItemCount: number; movements: StatMovement[] }[];
   }[];
+}
+export interface StatMovement {
+  id: number;
+  recordNo: string;
+  movementTime: string;
+  direction: Direction;
+  senderName: string;
+  receiverName: string;
+  fullCartons: number;
+  totalQuantity: number;
+  unknownItemCount: number;
 }

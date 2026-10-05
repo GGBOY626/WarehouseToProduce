@@ -91,11 +91,17 @@ public class MovementService {
     @Transactional(readOnly=true)
     public MovementDtos.QueryStatsResponse queryStats(LocalDate from,LocalDate to,MovementEnums.Direction direction,MovementEnums.Status status,Boolean missingPhoto,Boolean hasIssue,String q){
         ZoneId z=ZoneId.of(zone);Instant start=from.atStartOfDay(z).toInstant();Instant end=to.plusDays(1).atStartOfDay(z).toInstant();
-        Map<MovementEnums.Direction,List<MovementDtos.ProductStatResponse>> grouped=new EnumMap<>(MovementEnums.Direction.class);
+        Map<MovementEnums.Direction,Map<String,List<MovementDtos.StatMovementResponse>>> sources=new EnumMap<>(MovementEnums.Direction.class);
         repository.summarizeSearch(start,end,direction,status,missingPhoto,hasIssue,q==null?"":q.trim()).forEach(row->{
             MovementEnums.Direction rowDirection=(MovementEnums.Direction)row[0];
-            grouped.computeIfAbsent(rowDirection,key->new ArrayList<>()).add(new MovementDtos.ProductStatResponse((String)row[1],((Number)row[2]).longValue(),((Number)row[3]).longValue(),((Number)row[4]).longValue()));
+            sources.computeIfAbsent(rowDirection,key->new LinkedHashMap<>()).computeIfAbsent((String)row[1],key->new ArrayList<>())
+                    .add(new MovementDtos.StatMovementResponse(((Number)row[5]).longValue(),(String)row[6],(Instant)row[7],rowDirection,(String)row[8],(String)row[9],((Number)row[2]).longValue(),((Number)row[3]).longValue(),((Number)row[4]).longValue()));
         });
+        Map<MovementEnums.Direction,List<MovementDtos.ProductStatResponse>> grouped=new EnumMap<>(MovementEnums.Direction.class);
+        sources.forEach((key,products)->grouped.put(key,products.entrySet().stream().map(entry->new MovementDtos.ProductStatResponse(
+                entry.getKey(),entry.getValue().stream().mapToLong(MovementDtos.StatMovementResponse::fullCartons).sum(),
+                entry.getValue().stream().mapToLong(MovementDtos.StatMovementResponse::totalQuantity).sum(),
+                entry.getValue().stream().mapToLong(MovementDtos.StatMovementResponse::unknownItemCount).sum(),List.copyOf(entry.getValue()))).toList()));
         List<MovementDtos.DirectionStatResponse> directions=grouped.entrySet().stream().map(entry->{
             long cartons=entry.getValue().stream().mapToLong(MovementDtos.ProductStatResponse::fullCartons).sum();
             long quantity=entry.getValue().stream().mapToLong(MovementDtos.ProductStatResponse::totalQuantity).sum();

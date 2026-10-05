@@ -42,7 +42,13 @@ public final class MovementDtos {
                                String senderName,String receiverName,boolean returnMovement,int totalCartons,long totalQuantity,MovementEnums.Status status,
                                List<String> productNames,int itemCount,int photoCount,boolean hasIssues,boolean hasUnknownQuantity) {}
     public record PageResponse(List<ListResponse> content,int page,int size,long totalElements,int totalPages) {}
-    public record ProductStatResponse(String productName,long fullCartons,long totalQuantity,long unknownItemCount) {}
+    public record StatMovementResponse(Long id,String recordNo,Instant movementTime,MovementEnums.Direction direction,
+                                       String senderName,String receiverName,long fullCartons,long totalQuantity,long unknownItemCount) {}
+    public record ProductStatResponse(String productName,long fullCartons,long totalQuantity,long unknownItemCount,List<StatMovementResponse> movements) {
+        public ProductStatResponse(String productName,long fullCartons,long totalQuantity,long unknownItemCount) {
+            this(productName,fullCartons,totalQuantity,unknownItemCount,List.of());
+        }
+    }
     public record TodayStatsResponse(long totalCartons,long totalQuantity,long unknownItemCount,List<ProductStatResponse> products) {}
     public record DirectionStatResponse(MovementEnums.Direction direction,long totalCartons,long totalQuantity,long unknownItemCount,List<ProductStatResponse> products) {}
     public record QueryStatsResponse(List<DirectionStatResponse> directions) {}
