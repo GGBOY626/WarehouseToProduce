@@ -2,6 +2,7 @@
 import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import MovementCard from "../components/MovementCard.vue";
+import RecordOriginals from "../components/RecordOriginals.vue";
 import { movementsApi } from "../api";
 import type { Direction, MovementSummary, QueryStats, StatMovement } from "../types";
 import { today, showDateTime } from "../utils/time";
@@ -163,6 +164,7 @@ const formatNumber = (value: number) => value.toLocaleString("zh-CN");
         </div>
       </div>
     </section>
+    <RecordOriginals :from="from" :to="to" :direction="direction" />
     <section class="section">
       <div v-if="!loading && !error" class="query-stats card">
         <div class="stats-heading">
