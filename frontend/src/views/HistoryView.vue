@@ -11,7 +11,7 @@ const rows = ref<MovementSummary[]>([]),
   loading = ref(false),
   from = ref(today()),
   to = ref(today()),
-  direction = ref<Direction | "">(""),
+  direction = ref<Direction>("WAREHOUSE_TO_PRODUCTION"),
   status = ref<MovementStatus>("ACTIVE"),
   q = ref(""),
   missingPhoto = ref<boolean | undefined>(),
@@ -27,7 +27,7 @@ async function load() {
     const params = {
       from: from.value,
       to: to.value,
-      direction: direction.value || undefined,
+      direction: direction.value,
       status: status.value || undefined,
       missingPhoto: missingPhoto.value,
       hasIssue: hasIssue.value,
@@ -46,7 +46,7 @@ async function load() {
     if (currentRequest === requestId) loading.value = false;
   }
 }
-function selectDirection(value: Direction | "") {
+function selectDirection(value: Direction) {
   if (direction.value === value) return;
   direction.value = value;
   void load();
@@ -96,7 +96,6 @@ const formatNumber = (value: number) => value.toLocaleString("zh-CN");
       <div class="field">
         <label>方向</label>
         <div class="direction-choice" role="group" aria-label="流转方向筛选">
-          <button type="button" :class="{active:direction===''}" :aria-pressed="direction===''" @click="selectDirection('')">全部方向</button>
           <button type="button" :class="{active:direction==='WAREHOUSE_TO_PRODUCTION'}" :aria-pressed="direction==='WAREHOUSE_TO_PRODUCTION'" @click="selectDirection('WAREHOUSE_TO_PRODUCTION')">仓库 → 车间</button>
           <button type="button" class="return" :class="{active:direction==='PRODUCTION_TO_WAREHOUSE'}" :aria-pressed="direction==='PRODUCTION_TO_WAREHOUSE'" @click="selectDirection('PRODUCTION_TO_WAREHOUSE')">车间 → 仓库</button>
         </div>
@@ -196,7 +195,7 @@ const formatNumber = (value: number) => value.toLocaleString("zh-CN");
 }
 .quick-date.active { background: #fff; color: #174a68; box-shadow: 0 2px 8px rgba(32,53,64,.14); }
 .quick-date:focus-visible,.more-toggle:focus-visible,.direction-choice button:focus-visible { outline: 3px solid rgba(31,107,138,.3); outline-offset: 2px; }
-.direction-choice { display: grid; grid-template-columns: repeat(3,1fr); gap: 4px; padding: 4px; border-radius: 11px; background: #e7edef; }
+.direction-choice { display: grid; grid-template-columns: repeat(2,1fr); gap: 4px; padding: 4px; border-radius: 11px; background: #e7edef; }
 .direction-choice button { min-height: 44px; border: 0; border-radius: 8px; padding: 8px 4px; background: transparent; color: #60737d; font: inherit; font-size: 13px; font-weight: 760; cursor: pointer; }
 .direction-choice button.active { background: #fff; color: #174a68; box-shadow: 0 2px 8px rgba(32,53,64,.14); }
 .direction-choice button.return.active { color: #267566; }
