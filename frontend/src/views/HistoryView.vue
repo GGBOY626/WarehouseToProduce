@@ -14,8 +14,6 @@ const rows = ref<MovementSummary[]>([]),
   direction = ref<Direction>("WAREHOUSE_TO_PRODUCTION"),
   status = ref<MovementStatus>("ACTIVE"),
   q = ref(""),
-  missingPhoto = ref<boolean | undefined>(),
-  hasIssue = ref<boolean | undefined>(),
   moreFilters = ref(false),
   activePreset = ref<"today" | "yesterday" | "week" | "twoWeeks" | undefined>("today");
 let requestId = 0;
@@ -29,8 +27,6 @@ async function load() {
       to: to.value,
       direction: direction.value,
       status: status.value || undefined,
-      missingPhoto: missingPhoto.value,
-      hasIssue: hasIssue.value,
       q: q.value,
     };
     const [page, currentStats] = await Promise.all([
@@ -122,12 +118,6 @@ const formatNumber = (value: number) => value.toLocaleString("zh-CN");
             <option value="VOID">已作废</option>
           </select>
         </div>
-        <div class="grid-2 option-filters">
-          <label class="check"
-            ><input type="checkbox" v-model="missingPhoto" :true-value="true" :false-value="undefined" />只看缺少照片</label
-          ><label class="check"
-            ><input type="checkbox" v-model="hasIssue" :true-value="true" :false-value="undefined" />只看有异常</label>
-        </div>
       </div>
       <button class="btn btn-primary btn-block" @click="load">查询记录</button>
     </section>
@@ -213,20 +203,6 @@ const formatNumber = (value: number) => value.toLocaleString("zh-CN");
 }
 .more-toggle span:last-child { color: #6c7d85; font-size: 12px; font-weight: 600; }
 .advanced-filters { display: grid; gap: 13px; padding: 13px; border-radius: 10px; background: #f4f7f8; }
-.option-filters { gap: 8px; }
-.option-filters .check { padding: 0 10px; border: 1px solid #dce4e7; border-radius: 8px; background: #fff; }
-.check {
-  min-height: 44px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 14px;
-}
-.check input {
-  width: 18px;
-  height: 18px;
-  accent-color: #174a68;
-}
 .query-stats { margin-bottom: 14px; overflow: hidden; }
 .stats-heading { display: flex; justify-content: space-between; gap: 12px; padding: 14px 16px; background: #f3f7f8; color: #174a68; }
 .stats-heading span { color: #687982; font-size: 13px; }
