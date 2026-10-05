@@ -154,7 +154,7 @@ const formatNumber = (value: number) => value.toLocaleString("zh-CN");
         <div v-else>
           <section v-for="group in stats.directions" :key="group.direction" class="direction-stat">
             <h3>{{ directionLabel(group.direction) }}</h3>
-            <div class="stats-total">{{ group.unknownItemCount ? '已知合计：' : '总计：' }}<strong>{{ formatNumber(group.totalCartons) }} 箱</strong><span>·</span><strong>{{ formatNumber(group.totalQuantity) }} 个</strong><span v-if="group.unknownItemCount">· 含 {{ group.unknownItemCount }} 项数量不确定</span></div>
+            <div class="stats-total"><strong>共 {{ formatNumber(group.products.length) }} 种物料</strong><span>·</span><strong>{{ formatNumber(group.totalCartons) }} 箱</strong><span v-if="group.unknownItemCount">· 含 {{ group.unknownItemCount }} 项数量不确定</span></div>
             <div>
               <div v-for="product in group.products" :key="product.productName" class="product-stat">
                 <strong>{{ product.productName }}<small v-if="product.unknownItemCount">（{{ product.unknownItemCount }} 项不确定）</small></strong>
