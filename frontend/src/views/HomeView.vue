@@ -2,7 +2,7 @@
 import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 import MovementCard from "../components/MovementCard.vue";
 import { movementsApi } from "../api";
-import type { Direction, MovementStatus, MovementSummary, QueryStats } from "../types";
+import type { Direction, MovementSummary, QueryStats } from "../types";
 import { today } from "../utils/time";
 import { useAuth } from "../auth";
 import { errorMessage } from "../api/http";
@@ -17,7 +17,6 @@ const rows = ref<MovementSummary[]>([]),
   from = ref(today()),
   to = ref(today()),
   direction = ref<Direction>("WAREHOUSE_TO_PRODUCTION"),
-  status = ref<MovementStatus>("ACTIVE"),
   q = ref(""),
   moreFilters = ref(false),
   activePreset = ref<"today" | "yesterday" | "week" | "twoWeeks" | undefined>("today");
@@ -39,7 +38,7 @@ async function load() {
       from: from.value,
       to: to.value,
       direction: direction.value,
-      status: status.value || undefined,
+      status: "ACTIVE" as const,
       q: q.value,
     };
     const [page, currentStats] = await Promise.all([
@@ -90,6 +89,7 @@ function preset(kind: "today" | "yesterday" | "week" | "twoWeeks") {
 }
 function customDate() {
   activePreset.value = undefined;
+  to.value = today();
   void load();
 }
 watch(q, () => {
@@ -137,22 +137,10 @@ const formatNumber = (value: number) => value.toLocaleString("zh-CN");
           <label>搜索</label
           ><input class="input" v-model.trim="q" placeholder="产品、编码、批次或记录编号" @keyup.enter="load" />
         </div>
-        <div class="grid-2">
-          <div class="field">
-            <label>开始日期</label
-            ><input class="input" type="date" v-model="from" @change="customDate" />
-          </div>
-          <div class="field">
-            <label>结束日期</label
-            ><input class="input" type="date" v-model="to" @change="customDate" />
-          </div>
-        </div>
         <div class="field">
-          <label>状态</label
-          ><select class="select" v-model="status" @change="load">
-            <option value="ACTIVE">正常记录</option>
-            <option value="VOID">已作废</option>
-          </select>
+          <label>开始日期</label
+          ><input class="input" type="date" v-model="from" :max="today()" @change="customDate" />
+          <small class="hint">自定义日期查询至今天</small>
         </div>
       </div>
     </section>
