@@ -17,7 +17,7 @@ const rows = ref<MovementSummary[]>([]),
   missingPhoto = ref<boolean | undefined>(),
   hasIssue = ref<boolean | undefined>(),
   moreFilters = ref(false),
-  activePreset = ref<"today" | "yesterday" | "week" | "month" | undefined>("today");
+  activePreset = ref<"today" | "yesterday" | "week" | "twoWeeks" | undefined>("today");
 let requestId = 0;
 async function load() {
   const currentRequest = ++requestId;
@@ -57,20 +57,17 @@ function shiftDate(date: string, days: number) {
   value.setUTCDate(value.getUTCDate() + days);
   return value.toISOString().slice(0, 10);
 }
-function preset(kind: "today" | "yesterday" | "week" | "month") {
+function preset(kind: "today" | "yesterday" | "week" | "twoWeeks") {
   const current = today();
   activePreset.value = kind;
   if (kind === "today") {
     from.value = to.value = current;
   } else if (kind === "yesterday") {
     from.value = to.value = shiftDate(current, -1);
-  } else if (kind === "month") {
-    from.value = `${current.slice(0, 7)}-01`;
-    to.value = current;
   } else {
     const currentDate = new Date(`${current}T00:00:00Z`);
     const daysSinceMonday = (currentDate.getUTCDay() + 6) % 7;
-    from.value = shiftDate(current, -daysSinceMonday);
+    from.value = shiftDate(current, -daysSinceMonday - (kind === "twoWeeks" ? 7 : 0));
     to.value = current;
   }
   load();
@@ -91,7 +88,7 @@ const formatNumber = (value: number) => value.toLocaleString("zh-CN");
         <button class="quick-date" :class="{active:activePreset==='today'}" @click="preset('today')">今天</button
         ><button class="quick-date" :class="{active:activePreset==='yesterday'}" @click="preset('yesterday')">昨天</button
         ><button class="quick-date" :class="{active:activePreset==='week'}" @click="preset('week')">本周</button
-        ><button class="quick-date" :class="{active:activePreset==='month'}" @click="preset('month')">本月</button>
+        ><button class="quick-date" :class="{active:activePreset==='twoWeeks'}" @click="preset('twoWeeks')">两周</button>
       </div>
       <div class="field">
         <label>方向</label>
