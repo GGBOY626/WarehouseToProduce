@@ -175,7 +175,7 @@ public class PdfReportService {
     }
 
     private String fullCartons(MovementItem item) {
-        if (item.isQuantityUnknown()) return "数量不确定";
+        if (item.isQuantityUnknown()) return item.getFullCartons() + " 箱";
         String cartonSize = item.getUnitsPerCartonSnapshot() == null ? "规格未设置" : item.getUnitsPerCartonSnapshot() + " " + e(item.getBaseUnitSnapshot()) + "/箱";
         return item.getFullCartons() + " 箱<br/><span class='carton-spec'>" + cartonSize + "</span>";
     }

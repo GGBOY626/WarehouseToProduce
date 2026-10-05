@@ -139,15 +139,38 @@ class MovementServiceIntegrationTest {
     @Test void productConfiguredWithUnknownQuantityNeedsNoUnitAndMakesMovementQuantityUnknown(){
         String suffix=UUID.randomUUID().toString().substring(0,8);
         var unknownProduct=products.create(new ProductDtos.Request("无法清点产品-"+suffix,"UNKNOWN-"+suffix,null,ProductUsage.WAREHOUSE_TO_PRODUCTION,null,null,true));
-        var item=new MovementDtos.ItemRequest(unknownProduct.id(),"UNKNOWN-"+suffix,0,0,null,false,null,List.of());
+        var item=new MovementDtos.ItemRequest(unknownProduct.id(),"UNKNOWN-"+suffix,6,0,null,false,null,List.of());
         var request=new MovementDtos.SaveRequest(UUID.randomUUID().toString(),MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,Instant.parse("2026-09-28T01:00:00Z"),sender,receiver,"LOT-UNKNOWN-PRODUCT",null,List.of(item));
 
         var saved=movements.create(request);
 
         assertThat(unknownProduct.quantityUnknown()).isTrue();
         assertThat(unknownProduct.baseUnit()).isNull();
+        assertThat(saved.items().getFirst().fullCartons()).isEqualTo(6);
+        assertThat(saved.totalCartons()).isEqualTo(6);
         assertThat(saved.items().getFirst().quantityUnknown()).isTrue();
         assertThat(saved.items().getFirst().totalUnits()).isNull();
+        assertThat(saved.items().getFirst().calculatedTotalUnits()).isNull();
+        var stats=movements.queryStats(LocalDate.of(2026,9,28),LocalDate.of(2026,9,28),MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,MovementEnums.Status.ACTIVE,null,null,unknownProduct.name());
+        assertThat(stats.directions().getFirst().totalCartons()).isEqualTo(6);
+        assertThat(stats.directions().getFirst().unknownItemCount()).isEqualTo(1);
+    }
+
+    @Test void preservesKnownCartonsWhenUnknownQuantityIsSelectedAndEdited(){
+        var item=new MovementDtos.ItemRequest(product,"KNOWN-CARTONS",4,0,null,true,null,List.of());
+        var request=new MovementDtos.SaveRequest(UUID.randomUUID().toString(),MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,Instant.parse("2026-09-28T01:00:00Z"),sender,receiver,"LOT-UNKNOWN",null,List.of(item));
+        var saved=movements.create(request);
+        assertThat(saved.totalCartons()).isEqualTo(4);
+        assertThat(saved.items().getFirst().totalUnits()).isNull();
+
+        var updatedItem=new MovementDtos.ItemRequest(product,"KNOWN-CARTONS",7,0,null,true,null,List.of());
+        var updated=movements.update(saved.id(),new MovementDtos.SaveRequest(request.idempotencyKey(),request.direction(),request.movementTime(),sender,receiver,"LOT-UNKNOWN",null,List.of(updatedItem)));
+        var detail=movements.detail(updated.id());
+        assertThat(detail.totalCartons()).isEqualTo(7);
+        assertThat(detail.items().getFirst().fullCartons()).isEqualTo(7);
+        assertThat(detail.items().getFirst().quantityUnknown()).isTrue();
+        assertThat(detail.items().getFirst().totalUnits()).isNull();
+        assertThat(detail.items().getFirst().calculatedTotalUnits()).isNull();
     }
 
     @Test void queryStatsUsesTheSameDirectionAndMissingPhotoFiltersAsHistorySearch(){

@@ -181,7 +181,7 @@ onMounted(()=>void load());
           >
             物料批次：{{ data.manufactureLot }}
           </div>
-          <div v-if="item.quantityUnknown" class="unknown-box">数量不确定（未计入数量合计）</div>
+          <div v-if="item.quantityUnknown" class="unknown-box">完整箱：{{ item.fullCartons }} 箱；数量不确定（未计入数量合计）</div>
           <div v-else class="quantities">
             <span
               ><small>完整箱</small><b>{{ item.fullCartons }}</b></span

@@ -99,6 +99,21 @@ class PdfReportServiceTest {
         }
     }
 
+    @Test
+    void showsKnownCartonsWhenUnitQuantityIsUnknown() throws Exception {
+        MovementRepository repository = mock(MovementRepository.class);
+        Movement row = movement(MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION, "2026-09-01T01:00:00Z", "未知件数产品", "UNKNOWN-001", 6, 0, 0);
+        row.getItems().getFirst().setQuantityUnknown(true);
+        row.getItems().getFirst().setTotalUnits(null);
+        when(repository.findReportRows(any(), any(), any(MovementEnums.Status.class))).thenReturn(List.of(row));
+        PdfReportService service = new PdfReportService(repository);
+        ReflectionTestUtils.setField(service, "zone", "Pacific/Auckland");
+
+        String text = pdfText(service.generate(LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 1), MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION));
+        assertThat(text).contains("UNKNOWN-001", "6 箱");
+        assertThat((String) ReflectionTestUtils.invokeMethod(service, "totalQuantity", row.getItems().getFirst())).isEqualTo("数量不确定");
+    }
+
     private Movement movement(MovementEnums.Direction direction, String time, String product, String code,
                               int cartons, long loose, long total) {
         Movement movement = new Movement();

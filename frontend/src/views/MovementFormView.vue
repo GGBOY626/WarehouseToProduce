@@ -60,6 +60,7 @@ function returnChanged() {
   draft.value.items = [blankItem()];
 }
 function calculate(item: ItemInput) {
+  if (item.quantityUnknown) return undefined;
   const size = item.product?.defaultUnitsPerCarton;
   if (size != null) return item.fullCartons * size + item.looseUnits;
   if (item.fullCartons === 0) return item.looseUnits;
@@ -82,7 +83,6 @@ function selectProduct(item: ItemInput, p?: Product) {
   item.manualTotal = false;
   item.quantityUnknown = !!p?.quantityUnknown;
   if (item.quantityUnknown) {
-    item.fullCartons = 0;
     item.looseUnits = 0;
   }
   item.totalUnits = calculate(item);
@@ -92,7 +92,6 @@ function quantityChanged(item: ItemInput) {
 }
 function toggleUnknownQuantity(item: ItemInput) {
   if (item.quantityUnknown) {
-    item.fullCartons = 0;
     item.looseUnits = 0;
     item.totalUnits = undefined;
     item.manualTotal = false;
@@ -409,7 +408,6 @@ onBeforeUnmount(() => {
                 min="0"
                 step="1"
                 v-model.number="item.fullCartons"
-                :disabled="item.quantityUnknown"
                 @input="quantityChanged(item)"
               />
             </div>
