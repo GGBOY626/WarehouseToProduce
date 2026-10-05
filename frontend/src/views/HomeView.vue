@@ -175,14 +175,14 @@ const formatNumber = (value: number) => value.toLocaleString("zh-CN");
         <MovementCard v-for="row in rows" :key="row.id" :movement="row" show-date />
       </div>
     </section>
-    <nav class="quick-links card" aria-label="管理与导出"><RouterLink to="/reports">导出 PDF</RouterLink><RouterLink to="/products">产品管理</RouterLink><RouterLink to="/persons">人员管理</RouterLink></nav>
+    <nav class="quick-links card" aria-label="管理与导出"><RouterLink to="/reports">导出 PDF</RouterLink><RouterLink v-if="authenticated" to="/products">产品管理</RouterLink><RouterLink v-if="authenticated" to="/persons">人员管理</RouterLink></nav>
   </div>
 </template>
 <style scoped>
 .page-heading { flex-wrap: wrap; gap: 12px; }
 .page-heading .page-title { margin: 0; }
 .create-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-.quick-links { margin-top: 22px; display: grid; grid-template-columns: repeat(3, 1fr); }
+.quick-links { margin-top: 22px; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; }
 .quick-links a { min-height: 52px; display: grid; place-items: center; font-weight: 680; }
 .quick-links a + a { border-left: 1px solid #dce2e5; }
 .filters {
