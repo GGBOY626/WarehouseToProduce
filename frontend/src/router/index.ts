@@ -7,7 +7,7 @@ const router=createRouter({history:createWebHistory(),scrollBehavior:()=>({top:0
   {path:'/movements/new/:direction',component:()=>import('../views/MovementFormView.vue'),meta:{requiresAuth:true}},
   {path:'/movements/:id/edit',component:()=>import('../views/MovementFormView.vue'),meta:{requiresAuth:true}},
   {path:'/movements/:id',component:()=>import('../views/MovementDetailView.vue')},
-  {path:'/history',component:()=>import('../views/HistoryView.vue')},
+  {path:'/history',redirect:'/'},
   {path:'/products',component:()=>import('../views/ProductView.vue')},
   {path:'/persons',component:()=>import('../views/PersonView.vue')},
   {path:'/reports',component:()=>import('../views/ReportView.vue')}

@@ -60,7 +60,7 @@ async function deleteRecord() {
   if (!data.value || !confirm(`确定永久删除记录“${data.value.recordNo}”吗？产品明细和照片也会一并删除，且无法恢复。`)) return;
   try {
     await movementsApi.delete(id);
-    await router.replace("/history");
+    await router.replace("/");
   } catch (e) {
     alert(errorMessage(e));
   }

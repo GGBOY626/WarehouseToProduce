@@ -1,86 +1,263 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 import MovementCard from "../components/MovementCard.vue";
 import { movementsApi } from "../api";
-import type { Direction, MovementSummary, TodayStats } from "../types";
+import type { Direction, MovementStatus, MovementSummary, QueryStats } from "../types";
 import { today } from "../utils/time";
 import { useAuth } from "../auth";
-
-const selectedDirection = ref<Direction>("WAREHOUSE_TO_PRODUCTION");
-const rows = ref<MovementSummary[]>([]);
-const stats = ref<TodayStats>();
-const loading = ref(true);
-let requestId = 0;
+import { errorMessage } from "../api/http";
 const { authenticated } = useAuth();
-
-async function load(direction: Direction) {
+const error = ref("");
+let searchTimer: ReturnType<typeof setTimeout> | undefined;
+const rows = ref<MovementSummary[]>([]),
+  stats = ref<QueryStats>(),
+  appliedFrom = ref(today()),
+  appliedTo = ref(today()),
+  loading = ref(false),
+  from = ref(today()),
+  to = ref(today()),
+  direction = ref<Direction>("WAREHOUSE_TO_PRODUCTION"),
+  status = ref<MovementStatus>("ACTIVE"),
+  q = ref(""),
+  moreFilters = ref(false),
+  activePreset = ref<"today" | "yesterday" | "week" | "twoWeeks" | undefined>("today");
+let requestId = 0;
+async function load() {
   const currentRequest = ++requestId;
-  loading.value = true;
+  clearTimeout(searchTimer);
+  loading.value = false;
   rows.value = [];
   stats.value = undefined;
+  error.value = "";
+  if (!from.value || !to.value || from.value > to.value) {
+    error.value = "请选择有效的日期范围，开始日期不能晚于结束日期。";
+    return;
+  }
+  loading.value = true;
   try {
-    const date = today();
-    const [first, currentStats] = await Promise.all([
-      movementsApi.list({ from: date, to: date, direction, status: "ACTIVE", page: 0, size: 100 }),
-      movementsApi.stats(date, direction),
+    const params = {
+      from: from.value,
+      to: to.value,
+      direction: direction.value,
+      status: status.value || undefined,
+      q: q.value,
+    };
+    const [page, currentStats] = await Promise.all([
+      movementsApi.list({ ...params, page: 0, size: 100 }),
+      movementsApi.queryStats(params),
     ]);
-    const content = [...first.content];
-    for (let page = 1; page < first.totalPages; page++) {
+    if (currentRequest !== requestId) return;
+    const content = [...page.content];
+    for (let index = 1; index < page.totalPages; index++) {
+      const next = await movementsApi.list({ ...params, page: index, size: 100 });
       if (currentRequest !== requestId) return;
-      const next = await movementsApi.list({ from: date, to: date, direction, status: "ACTIVE", page, size: 100 });
       content.push(...next.content);
     }
-    if (currentRequest === requestId) {
-      rows.value = content;
-      stats.value = currentStats;
-    }
+    rows.value = content;
+    stats.value = currentStats;
+    appliedFrom.value = params.from;
+    appliedTo.value = params.to;
+  } catch (cause) {
+    if (currentRequest === requestId) error.value = errorMessage(cause);
   } finally {
     if (currentRequest === requestId) loading.value = false;
   }
 }
-
-function selectDirection(direction: Direction) {
-  if (direction === selectedDirection.value) return;
-  selectedDirection.value = direction;
-  void load(direction);
+function selectDirection(value: Direction) {
+  direction.value = value;
+  void load();
 }
-
-onMounted(() => load(selectedDirection.value));
+function shiftDate(date: string, days: number) {
+  const [year, month, day] = date.split("-").map(Number);
+  const value = new Date(Date.UTC(year, month - 1, day));
+  value.setUTCDate(value.getUTCDate() + days);
+  return value.toISOString().slice(0, 10);
+}
+function preset(kind: "today" | "yesterday" | "week" | "twoWeeks") {
+  const current = today();
+  activePreset.value = kind;
+  if (kind === "today") {
+    from.value = to.value = current;
+  } else if (kind === "yesterday") {
+    from.value = to.value = shiftDate(current, -1);
+  } else {
+    const currentDate = new Date(`${current}T00:00:00Z`);
+    const daysSinceMonday = (currentDate.getUTCDay() + 6) % 7;
+    from.value = shiftDate(current, -daysSinceMonday - (kind === "twoWeeks" ? 7 : 0));
+    to.value = current;
+  }
+  load();
+}
+function customDate() {
+  activePreset.value = undefined;
+  void load();
+}
+watch(q, () => {
+  clearTimeout(searchTimer);
+  ++requestId;
+  rows.value = [];
+  stats.value = undefined;
+  error.value = "";
+  loading.value = true;
+  searchTimer = setTimeout(() => void load(), 300);
+});
+onBeforeUnmount(() => { clearTimeout(searchTimer); ++requestId; });
+onMounted(load);
+const directionLabel = (value: Direction) => value === "WAREHOUSE_TO_PRODUCTION" ? "仓库 → 生产车间" : "生产车间 → 仓库";
 const formatNumber = (value: number) => value.toLocaleString("zh-CN");
 </script>
-
 <template>
-  <div class="page home">
-    <section v-if="authenticated" class="intro"><p class="eyebrow">新西兰时间 · 今日流转</p><h1 class="page-title">现在要登记哪一次交接？</h1><p class="page-lead">点击上方方向直接新增记录，下方可独立切换今日记录方向。</p></section>
-    <div v-if="authenticated" class="direction-actions">
-      <RouterLink class="direction-button outbound" to="/movements/new/warehouse-to-production"><span class="place">仓库</span><span class="arrow">→</span><span class="place">生产车间</span></RouterLink>
-      <RouterLink class="direction-button inbound" to="/movements/new/production-to-warehouse"><span class="place">生产车间</span><span class="arrow">→</span><span class="place">仓库</span></RouterLink>
-    </div>
-    <div class="record-filter">
-      <span class="filter-label">今日记录方向</span>
-      <div class="direction-toggle" role="group" aria-label="今日记录方向切换">
-        <button type="button" :class="{active:selectedDirection==='WAREHOUSE_TO_PRODUCTION'}" :aria-pressed="selectedDirection==='WAREHOUSE_TO_PRODUCTION'" @click="selectDirection('WAREHOUSE_TO_PRODUCTION')">仓库 → 车间</button>
-        <button type="button" class="return" :class="{active:selectedDirection==='PRODUCTION_TO_WAREHOUSE'}" :aria-pressed="selectedDirection==='PRODUCTION_TO_WAREHOUSE'" @click="selectDirection('PRODUCTION_TO_WAREHOUSE')">车间 → 仓库</button>
+  <div class="page">
+    <div class="section-head page-heading">
+      <h1 class="page-title">流转记录</h1>
+      <div v-if="authenticated" class="create-actions">
+        <RouterLink class="btn btn-primary" to="/movements/new/warehouse-to-production">新增出库</RouterLink>
+        <RouterLink class="btn btn-secondary" to="/movements/new/production-to-warehouse">新增入库 / 退回</RouterLink>
       </div>
     </div>
-    <section class="section stats-section">
-      <h2 class="section-title">今日统计</h2>
-      <div class="card stats-card">
-        <div v-if="loading" class="stats-empty">正在统计…</div>
-        <div v-else-if="!stats?.products.length" class="stats-empty">今日暂无数据</div>
-        <template v-else>
-          <div class="stats-total">{{stats.unknownItemCount ? '已知合计：' : '总计：'}}<strong>{{formatNumber(stats.totalCartons)}} 箱</strong><span>·</span><strong>{{formatNumber(stats.totalQuantity)}} 个</strong><span v-if="stats.unknownItemCount">· 含 {{stats.unknownItemCount}} 项数量不确定</span></div>
-          <div class="stats-products">
-            <div v-for="product in stats.products" :key="product.productName" class="stats-row">
-              <strong>{{product.productName}}<small v-if="product.unknownItemCount">（{{product.unknownItemCount}} 项不确定）</small></strong><span>{{formatNumber(product.fullCartons)}} 箱</span><span>{{formatNumber(product.totalQuantity)}} 个</span>
-            </div>
+    <section class="filters card card-pad">
+      <div class="preset">
+        <button class="quick-date" :class="{active:activePreset==='today'}" @click="preset('today')">今天</button
+        ><button class="quick-date" :class="{active:activePreset==='yesterday'}" @click="preset('yesterday')">昨天</button
+        ><button class="quick-date" :class="{active:activePreset==='week'}" @click="preset('week')">本周</button
+        ><button class="quick-date" :class="{active:activePreset==='twoWeeks'}" @click="preset('twoWeeks')">两周</button>
+      </div>
+      <div class="field">
+        <label>方向</label>
+        <div class="direction-choice" role="group" aria-label="流转方向筛选">
+          <button type="button" :class="{active:direction==='WAREHOUSE_TO_PRODUCTION'}" :aria-pressed="direction==='WAREHOUSE_TO_PRODUCTION'" @click="selectDirection('WAREHOUSE_TO_PRODUCTION')">仓库 → 生产车间</button>
+          <button type="button" class="return" :class="{active:direction==='PRODUCTION_TO_WAREHOUSE'}" :aria-pressed="direction==='PRODUCTION_TO_WAREHOUSE'" @click="selectDirection('PRODUCTION_TO_WAREHOUSE')">车间 → 仓库</button>
+        </div>
+      </div>
+      <button class="more-toggle" type="button" :aria-expanded="moreFilters" aria-controls="advanced-filters" @click="moreFilters=!moreFilters">
+        <span>更多筛选</span><span aria-hidden="true">{{moreFilters ? '收起' : '展开'}} {{moreFilters ? '⌃' : '⌄'}}</span>
+      </button>
+      <div v-show="moreFilters" id="advanced-filters" class="advanced-filters">
+        <div class="field">
+          <label>搜索</label
+          ><input class="input" v-model.trim="q" placeholder="产品、编码、批次或记录编号" @keyup.enter="load" />
+        </div>
+        <div class="grid-2">
+          <div class="field">
+            <label>开始日期</label
+            ><input class="input" type="date" v-model="from" @change="customDate" />
           </div>
-        </template>
+          <div class="field">
+            <label>结束日期</label
+            ><input class="input" type="date" v-model="to" @change="customDate" />
+          </div>
+        </div>
+        <div class="field">
+          <label>状态</label
+          ><select class="select" v-model="status" @change="load">
+            <option value="ACTIVE">正常记录</option>
+            <option value="VOID">已作废</option>
+          </select>
+        </div>
       </div>
     </section>
-    <section class="section"><div class="section-head"><h2 class="section-title">今日记录</h2><RouterLink to="/history" class="link">查看全部</RouterLink></div><div v-if="loading" class="card empty">正在读取记录…</div><div v-else-if="!rows.length" class="card empty">今天没有符合方向的记录。</div><div v-else class="stack"><MovementCard v-for="row in rows" :key="row.id" :movement="row"/></div></section>
-    <nav class="quick-links card"><RouterLink to="/history">历史记录</RouterLink><RouterLink to="/reports">导出 PDF</RouterLink><RouterLink to="/products">产品管理</RouterLink><RouterLink to="/persons">人员管理</RouterLink></nav>
+    <section class="section">
+      <div v-if="!loading && !error" class="query-stats card">
+        <div class="stats-heading">
+          <strong>查询范围统计</strong>
+          <span>{{ appliedFrom }} ～ {{ appliedTo }}</span>
+        </div>
+        <div v-if="!stats?.directions.length" class="stats-empty">当前查询范围暂无统计数据</div>
+        <div v-else>
+          <section v-for="group in stats.directions" :key="group.direction" class="direction-stat">
+            <h3>{{ directionLabel(group.direction) }}</h3>
+            <div class="stats-total">{{ group.unknownItemCount ? '已知合计：' : '总计：' }}<strong>{{ formatNumber(group.totalCartons) }} 箱</strong><span>·</span><strong>{{ formatNumber(group.totalQuantity) }} 个</strong><span v-if="group.unknownItemCount">· 含 {{ group.unknownItemCount }} 项数量不确定</span></div>
+            <div>
+              <div v-for="product in group.products" :key="product.productName" class="product-stat">
+                <strong>{{ product.productName }}<small v-if="product.unknownItemCount">（{{ product.unknownItemCount }} 项不确定）</small></strong>
+                <span>{{ formatNumber(product.fullCartons) }} 箱</span>
+                <span>{{ formatNumber(product.totalQuantity) }} 个</span>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+      <div class="section-head"><h2 class="section-title">记录列表</h2><span v-if="!loading && !error" class="hint">{{ rows.length }} 条</span></div>
+      <div v-if="error" class="card empty" role="alert">{{ error }} <button type="button" class="btn" @click="load">重试</button></div>
+      <div v-else-if="loading" class="card empty" role="status">正在查询…</div>
+      <div v-else-if="!rows.length" class="card empty">
+        没有符合条件的记录。
+      </div>
+      <div v-else class="stack">
+        <MovementCard v-for="row in rows" :key="row.id" :movement="row" show-date />
+      </div>
+    </section>
+    <nav class="quick-links card" aria-label="管理与导出"><RouterLink to="/reports">导出 PDF</RouterLink><RouterLink to="/products">产品管理</RouterLink><RouterLink to="/persons">人员管理</RouterLink></nav>
   </div>
 </template>
-
-<style scoped>.intro{padding-top:6px}.eyebrow{color:#174a68;font-size:12px;font-weight:760;letter-spacing:.08em;margin:0 0 8px}.direction-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px}.direction-button{min-height:88px;border-radius:12px;padding:15px;color:#fff;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:7px;box-shadow:0 5px 16px rgba(23,74,104,.16);text-decoration:none;transition:transform .15s,box-shadow .15s}.direction-button:hover{transform:translateY(-1px);box-shadow:0 9px 20px rgba(23,74,104,.22)}.direction-button:focus-visible{outline:4px solid rgba(31,107,138,.35);outline-offset:3px}.outbound{background:#174a68}.inbound{background:#267566}.place{font-size:18px;font-weight:800}.place:last-of-type{text-align:right}.arrow{text-align:center;font-size:25px}.record-filter{display:grid;gap:7px;margin-top:16px}.filter-label{font-size:13px;font-weight:760;color:#60737d}.direction-toggle{display:grid;grid-template-columns:repeat(2,1fr);gap:4px;padding:4px;background:#e3eaed;border-radius:11px}.direction-toggle button{min-height:44px;border:0;border-radius:8px;padding:8px 4px;background:transparent;color:#60737d;font:inherit;font-size:13px;font-weight:760;cursor:pointer}.direction-toggle button.active{background:#fff;color:#174a68;box-shadow:0 2px 8px rgba(32,53,64,.16)}.direction-toggle button.return.active{color:#267566}.direction-toggle button:focus-visible{outline:3px solid rgba(31,107,138,.35);outline-offset:1px}.stats-section>.section-title{margin-bottom:10px}.stats-card{overflow:hidden}.stats-empty{padding:24px;text-align:center;color:#66747c}.stats-total{display:flex;align-items:center;flex-wrap:wrap;gap:7px;padding:15px 16px;background:#f3f7f8;color:#52626b}.stats-total strong{font-size:18px;color:#174a68}.stats-products{padding:0 16px}.stats-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:16px;align-items:center;padding:11px 0;border-bottom:1px solid #e3e8ea;font-size:14px}.stats-row:last-child{border-bottom:0}.stats-row strong{overflow-wrap:anywhere}.stats-row span{color:#52626b;font-variant-numeric:tabular-nums;white-space:nowrap}.quick-links{margin-top:22px;display:grid;grid-template-columns:1fr 1fr}.quick-links a{min-height:52px;display:grid;place-items:center;font-weight:680;border-bottom:1px solid #dce2e5}.quick-links a:nth-child(odd){border-right:1px solid #dce2e5}.quick-links a:nth-last-child(-n+2){border-bottom:0}@media(max-width:560px){.direction-button{min-height:82px;padding:11px 8px}.place{font-size:14px}.arrow{font-size:20px}.direction-toggle button{font-size:11px}.stats-row{gap:8px;font-size:13px}}</style>
+<style scoped>
+.page-heading { flex-wrap: wrap; gap: 12px; }
+.page-heading .page-title { margin: 0; }
+.create-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.quick-links { margin-top: 22px; display: grid; grid-template-columns: repeat(3, 1fr); }
+.quick-links a { min-height: 52px; display: grid; place-items: center; font-weight: 680; }
+.quick-links a + a { border-left: 1px solid #dce2e5; }
+.filters {
+  display: grid;
+  gap: 13px;
+}
+.preset {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 5px;
+  padding: 4px;
+  border-radius: 11px;
+  background: #e7edef;
+}
+.quick-date {
+  min-height: 42px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #60737d;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 760;
+  cursor: pointer;
+}
+.quick-date.active { background: #fff; color: #174a68; box-shadow: 0 2px 8px rgba(32,53,64,.14); }
+.quick-date:focus-visible,.more-toggle:focus-visible,.direction-choice button:focus-visible { outline: 3px solid rgba(31,107,138,.3); outline-offset: 2px; }
+.direction-choice { display: grid; grid-template-columns: repeat(2,1fr); gap: 4px; padding: 4px; border-radius: 11px; background: #e7edef; }
+.direction-choice button { min-height: 44px; border: 0; border-radius: 8px; padding: 8px 4px; background: transparent; color: #60737d; font: inherit; font-size: 13px; font-weight: 760; cursor: pointer; }
+.direction-choice button.active { background: #fff; color: #174a68; box-shadow: 0 2px 8px rgba(32,53,64,.14); }
+.direction-choice button.return.active { color: #267566; }
+.more-toggle {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border: 0;
+  border-top: 1px solid #e1e7e9;
+  padding: 10px 2px 0;
+  background: transparent;
+  color: #174a68;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 720;
+  cursor: pointer;
+}
+.more-toggle span:last-child { color: #6c7d85; font-size: 12px; font-weight: 600; }
+.advanced-filters { display: grid; gap: 13px; padding: 13px; border-radius: 10px; background: #f4f7f8; }
+.query-stats { margin-bottom: 14px; overflow: hidden; }
+.stats-heading { display: flex; justify-content: space-between; gap: 12px; padding: 14px 16px; background: #f3f7f8; color: #174a68; }
+.stats-heading span { color: #687982; font-size: 13px; }
+.stats-empty { padding: 24px 16px; text-align: center; color: #66747c; }
+.direction-stat { padding: 15px 16px; border-top: 1px solid #e2e8ea; }
+.direction-stat:first-child { border-top: 0; }
+.direction-stat h3 { margin: 0 0 8px; font-size: 15px; color: #243e4b; }
+.stats-total { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; margin-bottom: 7px; color: #52626b; }
+.stats-total strong { color: #174a68; font-size: 17px; }
+.product-stat { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 16px; padding: 9px 0; border-top: 1px solid #edf0f1; font-size: 14px; }
+.product-stat strong { overflow-wrap: anywhere; }
+.product-stat span { color: #52626b; white-space: nowrap; font-variant-numeric: tabular-nums; }
+@media (max-width: 560px) {
+  .direction-choice button { font-size: 11px; }
+  .stats-heading { align-items: flex-start; flex-direction: column; gap: 4px; }
+  .product-stat { gap: 8px; font-size: 13px; }
+}
+</style>
