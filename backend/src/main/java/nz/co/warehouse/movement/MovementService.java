@@ -116,7 +116,7 @@ public class MovementService {
         Person sender=m.getId()!=null&&m.getSenderPerson().getId().equals(r.senderPersonId())?persons.getAny(r.senderPersonId()):persons.getActive(r.senderPersonId());
         Person receiver=m.getId()!=null&&m.getReceiverPerson().getId().equals(r.receiverPersonId())?persons.getAny(r.receiverPersonId()):persons.getActive(r.receiverPersonId());
         m.setDirection(r.direction());m.setReturnMovement(r.returnMovement());m.setMovementTime(r.movementTime());m.setSenderPerson(sender);m.setSenderNameSnapshot(sender.getName());m.setReceiverPerson(receiver);m.setReceiverNameSnapshot(receiver.getName());
-        m.setManufactureLot(r.direction()==MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION?r.manufactureLot().trim():null);m.setRemarks(blank(r.remarks()));
+        m.setManufactureLot(r.direction()==MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION||r.returnMovement()?r.manufactureLot().trim():null);m.setRemarks(blank(r.remarks()));
         Set<Long> existingProductIds=m.getItems().stream().map(x->x.getProduct().getId()).collect(java.util.stream.Collectors.toSet());
         m.getItems().clear();int cartons=0;int order=0;
         ProductUsage expectedUsage=r.returnMovement()?ProductUsage.WAREHOUSE_TO_PRODUCTION
@@ -137,8 +137,8 @@ public class MovementService {
     private void validateDirection(MovementDtos.SaveRequest r){
         if(r.returnMovement()&&r.direction()!=MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE)
             throw BusinessException.badRequest("RETURN_DIRECTION_INVALID","退回只能用于生产车间到仓库的记录。");
-        if(r.direction()==MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION&&(r.manufactureLot()==null||r.manufactureLot().isBlank()))
-            throw BusinessException.badRequest("MANUFACTURE_LOT_REQUIRED","仓库送往生产车间时必须填写物料批次。");
+        if((r.direction()==MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION||r.returnMovement())&&(r.manufactureLot()==null||r.manufactureLot().isBlank()))
+            throw BusinessException.badRequest("MANUFACTURE_LOT_REQUIRED","仓库送往生产车间或退回物料时必须填写物料批次。");
     }
     private Movement getActiveDetail(long id){Movement m=repository.findDetailById(id).orElseThrow(()->BusinessException.notFound("MOVEMENT_NOT_FOUND","找不到该流转记录。"));if(m.getStatus()==MovementEnums.Status.VOID)throw new BusinessException("MOVEMENT_VOID","已作废记录不能修改。",HttpStatus.CONFLICT);return m;}
     private String blank(String value){return value==null||value.isBlank()?null:value.trim();}

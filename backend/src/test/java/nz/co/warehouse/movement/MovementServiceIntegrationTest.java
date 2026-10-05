@@ -58,10 +58,16 @@ class MovementServiceIntegrationTest {
         assertThatThrownBy(()->movements.create(normal)).hasMessageContaining("不适用于当前流转类型");
 
         var returned=new MovementDtos.SaveRequest(UUID.randomUUID().toString(),MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE,
-                Instant.parse("2026-09-28T01:00:00Z"),sender,receiver,null,true,null,List.of(item));
+                Instant.parse("2026-09-28T01:00:00Z"),sender,receiver," RETURN-LOT ",true,null,List.of(item));
         var saved=movements.create(returned);
         assertThat(saved.returnMovement()).isTrue();
+        assertThat(movements.detail(saved.id()).manufactureLot()).isEqualTo("RETURN-LOT");
         assertThat(saved.items().getFirst().productId()).isEqualTo(product);
+        var changed=new MovementDtos.SaveRequest(returned.idempotencyKey(),returned.direction(),returned.movementTime(),sender,receiver,"RETURN-LOT-2",true,null,List.of(item));
+        movements.update(saved.id(),changed);
+        assertThat(movements.detail(saved.id()).manufactureLot()).isEqualTo("RETURN-LOT-2");
+        var missing=new MovementDtos.SaveRequest(UUID.randomUUID().toString(),returned.direction(),returned.movementTime(),sender,receiver,null,true,null,List.of(item));
+        assertThatThrownBy(()->movements.create(missing)).hasMessageContaining("必须填写物料批次");
     }
 
     @Test void returnFlagIsRejectedForWarehouseToProduction(){

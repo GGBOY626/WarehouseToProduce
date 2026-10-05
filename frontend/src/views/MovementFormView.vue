@@ -56,8 +56,10 @@ const savedMovementId = ref<number>();
 const draftKey = computed(() => `movement-draft:${direction.value}`);
 const allIssues = Object.entries(issueLabels) as [IssueType, string][];
 const productUsage = computed<Direction>(() => draft.value.returnMovement ? "WAREHOUSE_TO_PRODUCTION" : direction.value);
+const needsMaterialBatch = computed(() => direction.value === "WAREHOUSE_TO_PRODUCTION" || draft.value.returnMovement);
 function returnChanged() {
   draft.value.items = [blankItem()];
+  draft.value.manufactureLot = "";
 }
 function calculate(item: ItemInput) {
   if (item.quantityUnknown) return undefined;
@@ -76,7 +78,7 @@ function selectProduct(item: ItemInput, p?: Product) {
   item.batchNo = p?.materialCode || "";
   if (
     p?.materialBatch &&
-    direction.value === "WAREHOUSE_TO_PRODUCTION" &&
+    needsMaterialBatch.value &&
     !draft.value.manufactureLot
   )
     draft.value.manufactureLot = p.materialBatch;
@@ -134,7 +136,7 @@ function validate() {
   if (!draft.value.senderPersonId || !draft.value.receiverPersonId)
     return "请选择发送人和接收人。";
   if (
-    direction.value === "WAREHOUSE_TO_PRODUCTION" &&
+    needsMaterialBatch.value &&
     !draft.value.manufactureLot.trim()
   )
     return "请填写物料批次。";
@@ -162,7 +164,7 @@ function payload() {
     senderPersonId: draft.value.senderPersonId,
     receiverPersonId: draft.value.receiverPersonId,
     manufactureLot:
-      direction.value === "WAREHOUSE_TO_PRODUCTION"
+      needsMaterialBatch.value
         ? draft.value.manufactureLot
         : undefined,
     returnMovement: direction.value === "PRODUCTION_TO_WAREHOUSE" && draft.value.returnMovement,
@@ -387,7 +389,7 @@ onBeforeUnmount(() => {
             />
           </div>
           <div
-            v-if="index === 0 && direction === 'WAREHOUSE_TO_PRODUCTION'"
+            v-if="index === 0 && needsMaterialBatch"
             class="field"
           >
             <label class="required">物料批次</label
