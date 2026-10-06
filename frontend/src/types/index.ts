@@ -115,6 +115,11 @@ export interface ProductionTask {
   plannedDate: string; batchNo: string; status: ProductionTaskStatus; remarks?: string;
   completedQuantity: number; progressPercent: number; issueMovementCount: number; returnMovementCount: number;
   movements: ProductionTaskMovement[]; createdAt: string; updatedAt: string;
+  targets: ProductionTaskTarget[];
+}
+export interface ProductionTaskTarget {
+  productId: number; productName: string; materialCode: string; baseUnit?: string;
+  targetQuantity: number; completedQuantity: number; progressPercent: number;
 }
 export interface MovementSummary {
   id: number;

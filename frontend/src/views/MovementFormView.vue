@@ -347,7 +347,7 @@ onBeforeUnmount(() => {
         <label>关联生产任务</label>
         <select class="select" v-model="draft.productionTaskId">
           <option :value="undefined">不关联生产任务</option>
-          <option v-for="task in productionTasks" :key="task.id" :value="task.id" :disabled="task.status === 'COMPLETED' || task.status === 'CANCELLED'">{{ task.productName }} · {{ task.batchNo }} · 目标 {{ task.targetQuantity }} {{ task.baseUnit || '个' }}</option>
+          <option v-for="task in productionTasks" :key="task.id" :value="task.id" :disabled="task.status === 'COMPLETED' || task.status === 'CANCELLED'">{{ task.productName }} · {{ task.batchNo }} · {{ task.targets.length }} 项目标</option>
         </select>
         <small class="hint">关联后，发料、退料和成品入库会汇总到同一个生产任务。</small>
       </div>

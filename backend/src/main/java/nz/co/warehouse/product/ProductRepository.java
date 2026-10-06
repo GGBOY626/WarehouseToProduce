@@ -21,6 +21,6 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     @Query("select count(i) from MovementItem i where i.product.id = :productId")
     long countMovementItems(@Param("productId") long productId);
 
-    @Query("select count(t) from ProductionTask t where t.product.id = :productId")
+    @Query("select count(t) from ProductionTask t where t.product.id = :productId or exists (select x.id from ProductionTaskTarget x where x.task = t and x.product.id = :productId)")
     long countProductionTasks(@Param("productId") long productId);
 }
