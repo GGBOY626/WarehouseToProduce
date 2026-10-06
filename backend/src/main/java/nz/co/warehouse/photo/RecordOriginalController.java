@@ -31,7 +31,7 @@ public class RecordOriginalController {
     }
     @PostMapping
     public Response upload(@RequestParam LocalDate date,@RequestParam MovementEnums.Direction direction,@RequestParam MultipartFile file) throws IOException {
-        if(file.isEmpty()||file.getSize()>12L*1024*1024) throw BusinessException.badRequest("PHOTO_TOO_LARGE","请选择不超过 12MB 的原件照片。");
+        if(file.isEmpty()||file.getSize()>12L*1024*1024) throw BusinessException.badRequest("PHOTO_TOO_LARGE","请选择不超过 12MB 的记录表照片。");
         Path directory=resolve("record-originals/"+date);
         Files.createDirectories(directory);
         Path temp=Files.createTempFile(directory,"upload-",".tmp");
@@ -45,7 +45,7 @@ public class RecordOriginalController {
             Files.move(temp,target,StandardCopyOption.ATOMIC_MOVE);
             RecordOriginal value=new RecordOriginal();
             value.setRecordDate(date);value.setDirection(direction);value.setFilePath(relative);
-            String name=Optional.ofNullable(file.getOriginalFilename()).orElse("原件照片");
+            String name=Optional.ofNullable(file.getOriginalFilename()).orElse("记录表照片");
             value.setOriginalName(name.substring(0,Math.min(name.length(),255)));
             value.setMimeType(png?MediaType.IMAGE_PNG_VALUE:MediaType.IMAGE_JPEG_VALUE);
             return response(repository.saveAndFlush(value));
@@ -73,9 +73,9 @@ public class RecordOriginalController {
     }
     @GetMapping("/{id}/content")
     public ResponseEntity<Resource> content(@PathVariable long id) {
-        RecordOriginal value=repository.findById(id).orElseThrow(()->BusinessException.notFound("PHOTO_NOT_FOUND","找不到该原件照片。"));
+        RecordOriginal value=repository.findById(id).orElseThrow(()->BusinessException.notFound("PHOTO_NOT_FOUND","找不到该记录表照片。"));
         Path path=resolve(value.getFilePath());
-        if(!Files.isRegularFile(path)) throw BusinessException.notFound("PHOTO_NOT_FOUND","原件照片文件不存在。");
+        if(!Files.isRegularFile(path)) throw BusinessException.notFound("PHOTO_NOT_FOUND","记录表照片文件不存在。");
         return ResponseEntity.ok().contentType(MediaType.parseMediaType(value.getMimeType())).header("X-Content-Type-Options","nosniff")
                 .cacheControl(CacheControl.maxAge(Duration.ofDays(30)).cachePublic()).body(new FileSystemResource(path));
     }

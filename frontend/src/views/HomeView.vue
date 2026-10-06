@@ -179,8 +179,8 @@ const formatNumber = (value: number) => value.toLocaleString("zh-CN");
             <div>
               <button v-for="product in group.products" :key="product.productName" type="button" class="product-stat" :aria-label="`查看 ${product.productName} 的原始流转记录`" @click="openProduct(product)">
                 <strong>{{ product.productName }}<small v-if="product.unknownItemCount">（{{ product.unknownItemCount }} 项不确定）</small></strong>
-                <span>{{ formatNumber(product.fullCartons) }} 箱</span>
-                <span>{{ formatNumber(product.totalQuantity) }} 个</span>
+                <span class="carton-total">{{ formatNumber(product.fullCartons) }} 箱</span>
+                <span class="unit-total">{{ formatNumber(product.totalQuantity) }} 个</span>
                 <span class="record-arrow" aria-hidden="true">›</span>
               </button>
             </div>
@@ -193,7 +193,7 @@ const formatNumber = (value: number) => value.toLocaleString("zh-CN");
       <div v-else-if="!rows.length" class="card empty">
         没有符合条件的记录。
       </div>
-      <div v-else class="stack">
+      <div v-else class="stack record-stack">
         <MovementCard v-for="row in rows" :key="row.id" :movement="row" show-date />
       </div>
     </section>
@@ -274,7 +274,7 @@ const formatNumber = (value: number) => value.toLocaleString("zh-CN");
 .direction-stat h3 { margin: 0 0 8px; font-size: 15px; color: #243e4b; }
 .stats-total { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; margin-bottom: 7px; color: #52626b; }
 .stats-total strong { color: #174a68; font-size: 17px; }
-.product-stat { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; gap: 16px; padding: 12px 4px; border: 0; border-top: 1px solid #edf0f1; font: inherit; font-size: 14px; width: 100%; text-align: left; background: transparent; color: inherit; cursor: pointer; align-items: center; }
+.product-stat { display: grid; grid-template-columns: minmax(0, 1fr) minmax(70px,auto) minmax(88px,auto) auto; gap: 16px; padding: 12px 4px; border: 0; border-top: 1px solid #edf0f1; font: inherit; font-size: 14px; width: 100%; text-align: left; background: transparent; color: inherit; cursor: pointer; align-items: center; }
 .product-stat:hover,.source-record:hover { background: #edf5f7; }
 .product-stat:focus-visible,.source-record:focus-visible { outline: 3px solid #267566; outline-offset: -3px; }
 .product-stat .record-arrow { color: #174a68; font-size: 22px; }
@@ -287,8 +287,11 @@ const formatNumber = (value: number) => value.toLocaleString("zh-CN");
 .source-record { display: grid; gap: 8px; width: 100%; padding: 14px; border: 1px solid #dce2e5; border-radius: 9px; background: #fff; color: inherit; text-align: left; font: inherit; cursor: pointer; overflow-wrap: anywhere; }
 .source-record strong { display: flex; justify-content: space-between; color: #174a68; }
 .source-record > span { font-size: 13px; }
-.product-stat strong { overflow-wrap: anywhere; }
-.product-stat span { color: #52626b; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.product-stat strong { overflow-wrap: anywhere; color: #243e4b; font-weight: 760; }
+.product-stat span { color: #52626b; white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; }
+.product-stat .carton-total { color: #36515f; font-weight: 700; }
+.product-stat .unit-total { color: #75838a; font-size: 13px; }
+.record-stack { gap: 10px; }
 @media (max-width: 560px) {
   .direction-choice button { font-size: 11px; }
   .stats-heading { align-items: flex-start; flex-direction: column; gap: 4px; }

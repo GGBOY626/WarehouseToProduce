@@ -102,13 +102,13 @@ async function upload(event: Event) {
 <template>
   <section class="originals card card-pad">
     <button class="originals-toggle" type="button" :aria-expanded="expanded" aria-controls="record-originals-panel" @click="expanded = !expanded">
-      <strong>出入库记录表原件</strong><span>{{ loading ? '读取中…' : `${photos.length} 张` }} · {{ expanded ? '收起' : authenticated ? '查看 / 上传' : '查看' }} {{ expanded ? '⌃' : '⌄' }}</span>
+      <strong>记录表照片</strong><span>{{ loading ? '读取中…' : `${photos.length} 张` }} · {{ expanded ? '收起' : authenticated ? '查看 / 上传' : '查看' }} {{ expanded ? '⌃' : '⌄' }}</span>
     </button>
     <div v-show="expanded" id="record-originals-panel">
       <p class="hint">{{ from }} ～ {{ to }} · {{ directionLabel(direction) }}</p>
       <div v-if="authenticated" class="upload-originals">
-        <label>原件日期 <input class="input" type="date" v-model="uploadDate" :disabled="uploading" /></label>
-        <label class="btn btn-primary">{{ uploading ? '正在上传…' : '上传原件照片' }}<input class="sr-only" type="file" accept="image/*" multiple :disabled="uploading || !uploadDate" @change="upload" /></label>
+        <label>照片日期 <input class="input" type="date" v-model="uploadDate" :disabled="uploading" /></label>
+        <label class="btn btn-primary">{{ uploading ? '正在上传…' : '上传记录表照片' }}<input class="sr-only" type="file" accept="image/*" multiple :disabled="uploading || !uploadDate" @change="upload" /></label>
         <small class="hint">上传至{{ directionLabel(direction) }}，支持多张照片，每张原图不超过 12MB；上传前会优化为清晰的记录表照片。</small>
       </div>
       <div v-if="uploadItems.length" class="upload-progress" aria-live="polite">
@@ -122,14 +122,14 @@ async function upload(event: Event) {
       </div>
       <p v-if="message" role="status">{{ message }}</p>
       <p v-if="loadError" role="alert">{{ loadError }} <button class="btn" @click="load">重试</button></p>
-      <p v-else-if="loading" role="status">正在读取原件…</p>
-      <p v-else-if="!photos.length" class="hint">该日期范围及方向暂无原件照片。</p>
+      <p v-else-if="loading" role="status">正在读取记录表照片…</p>
+      <p v-else-if="!photos.length" class="hint">该日期范围及方向暂无记录表照片。</p>
       <div v-for="group in groups" :key="group.date" class="original-day">
         <h3>{{ group.date }}</h3>
         <div class="original-grid">
-          <a v-for="(photo, index) in group.photos" :key="photo.id" :href="photo.url" target="_blank" rel="noopener" :aria-label="`查看 ${group.date} ${directionLabel(photo.direction)} 原件 ${index + 1}`">
-            <img :src="photo.url" :alt="`${group.date} 原件 ${index + 1}`" loading="lazy" />
-            <span>原件 {{ index + 1 }} · 点击查看大图</span>
+          <a v-for="(photo, index) in group.photos" :key="photo.id" :href="photo.url" target="_blank" rel="noopener" :aria-label="`查看 ${group.date} ${directionLabel(photo.direction)} 记录表照片 ${index + 1}`">
+            <img :src="photo.url" :alt="`${group.date} 记录表照片 ${index + 1}`" loading="lazy" />
+            <span>照片 {{ index + 1 }} · 点击查看大图</span>
           </a>
         </div>
       </div>

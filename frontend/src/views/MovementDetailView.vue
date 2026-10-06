@@ -116,22 +116,8 @@ onMounted(()=>void load());
     <template v-else
       ><div class="detail-top">
         <div>
-          <span
-            :class="[
-              'status',
-              data.status === 'VOID'
-                ? 'neutral'
-                : data.missingPhoto
-                  ? 'danger'
-                  : 'ok',
-            ]"
-            >{{
-              data.status === "VOID"
-                ? "已作废"
-                : data.missingPhoto
-                  ? "缺少照片"
-                  : "有照片"
-            }}</span
+          <span v-if="data.status === 'VOID'" class="status neutral">已作废</span
+          ><span v-else-if="data.photos.length" class="status ok photo-count">{{ data.photos.length }} 张照片</span
           ><span v-if="data.hasIssues" class="status warn">存在异常</span>
           <h1 class="page-title mono">{{ data.recordNo }}</h1>
         </div>
@@ -185,7 +171,7 @@ onMounted(()=>void load());
           <div v-if="item.quantityUnknown" class="unknown-box">完整箱：{{ item.fullCartons }} 箱；数量不确定（未计入数量合计）</div>
           <div v-else class="quantities">
             <span
-              ><small>完整箱</small><b>{{ item.fullCartons }}</b></span
+              ><small>完整箱</small><b>{{ item.fullCartons }} 箱</b></span
             ><span
               ><small>散装</small
               ><b>{{ item.looseUnits }} {{ item.baseUnit }}</b></span
@@ -231,9 +217,7 @@ onMounted(()=>void load());
             </button>
           </figure>
         </div>
-        <div v-else class="missing-photo">
-          这条记录还没有照片，可以稍后补拍。
-        </div>
+        <p v-else class="no-photo">暂无照片</p>
         <label
           v-if="authenticated && data.status === 'ACTIVE' && data.photos.length < 10"
           class="btn btn-secondary btn-block upload"
@@ -248,7 +232,7 @@ onMounted(()=>void load());
         /></label>
       </section>
       <section class="section actions" v-if="authenticated">
-        <RouterLink v-if="data.status === 'ACTIVE'" class="btn btn-primary" :to="`/movements/${id}/edit`"
+        <RouterLink v-if="data.status === 'ACTIVE'" class="btn btn-secondary edit-action" :to="`/movements/${id}/edit`"
           >编辑记录</RouterLink
         ><button v-if="data.status === 'ACTIVE'" class="btn btn-secondary" @click="duplicate">复制记录</button
         ><button v-if="data.status === 'ACTIVE'" class="btn btn-danger" @click="voidRecord">作废记录</button
@@ -272,6 +256,7 @@ onMounted(()=>void load());
 .detail-top .status {
   margin: 0 6px 10px 0;
 }
+.detail-top .photo-count { min-height: 22px; padding: 2px 7px; font-size: 11px; font-weight: 600; opacity: .78; }
 .facts dl {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -372,21 +357,16 @@ onMounted(()=>void load());
   color: #fff;
   font-size: 20px;
 }
-.missing-photo {
-  border: 1px solid #f0c4c7;
-  background: #fdeced;
-  color: #8f1d25;
-  border-radius: 9px;
-  padding: 18px;
-  text-align: center;
-}
+.no-photo { margin: 4px 0; color: #78868d; font-size: 13px; }
 .upload {
   margin-top: 10px;
 }
 .actions {
-  display: grid;
+  display: flex;
+  flex-wrap: wrap;
   gap: 9px;
 }
+.edit-action { color: #174a68; }
 .permanent-delete { margin-top: 8px; border: 1px solid #f0c4c7; }
 @media (max-width: 380px) {
   .facts dl {
