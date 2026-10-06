@@ -9,6 +9,8 @@ import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import javax.imageio.ImageIO;
+import javax.imageio.ImageReader;
+import javax.imageio.stream.ImageInputStream;
 import java.io.*;
 import java.nio.file.*;
 import java.time.*;
@@ -30,26 +32,17 @@ public class RecordOriginalController {
     @PostMapping
     public Response upload(@RequestParam LocalDate date,@RequestParam MovementEnums.Direction direction,@RequestParam MultipartFile file) throws IOException {
         if(file.isEmpty()||file.getSize()>12L*1024*1024) throw BusinessException.badRequest("PHOTO_TOO_LARGE","请选择不超过 12MB 的原件照片。");
-        byte[] bytes=file.getBytes();
-        String format;
-        try(var input=ImageIO.createImageInputStream(new ByteArrayInputStream(bytes))) {
-            var readers=ImageIO.getImageReaders(input);
-            if(!readers.hasNext()) throw BusinessException.badRequest("PHOTO_FORMAT_UNSUPPORTED","请上传 JPEG 或 PNG 照片。");
-            var reader=readers.next();
-            try {
-                reader.setInput(input);
-                format=reader.getFormatName().toLowerCase(Locale.ROOT);
-                if(!Set.of("jpeg","jpg","png").contains(format)) throw BusinessException.badRequest("PHOTO_FORMAT_UNSUPPORTED","请上传 JPEG 或 PNG 照片。");
-                if((long)reader.getWidth(0)*reader.getHeight(0)>60_000_000L) throw BusinessException.badRequest("PHOTO_TOO_LARGE","图片尺寸过大，请选择较小的照片。");
-                reader.read(0);
-            } finally { reader.dispose(); }
-        }
-        boolean png=format.equals("png");
-        String relative="record-originals/"+date+"/"+UUID.randomUUID()+(png?".png":".jpg");
-        Path target=resolve(relative);
-        Files.createDirectories(target.getParent());
+        Path directory=resolve("record-originals/"+date);
+        Files.createDirectories(directory);
+        Path temp=Files.createTempFile(directory,"upload-",".tmp");
+        Path target=null;
         try {
-            Files.write(target,bytes,StandardOpenOption.CREATE_NEW);
+            file.transferTo(temp);
+            String format=readFormatAndValidate(temp);
+            boolean png=format.equals("png");
+            String relative="record-originals/"+date+"/"+UUID.randomUUID()+(png?".png":".jpg");
+            target=resolve(relative);
+            Files.move(temp,target,StandardCopyOption.ATOMIC_MOVE);
             RecordOriginal value=new RecordOriginal();
             value.setRecordDate(date);value.setDirection(direction);value.setFilePath(relative);
             String name=Optional.ofNullable(file.getOriginalFilename()).orElse("原件照片");
@@ -57,8 +50,25 @@ public class RecordOriginalController {
             value.setMimeType(png?MediaType.IMAGE_PNG_VALUE:MediaType.IMAGE_JPEG_VALUE);
             return response(repository.saveAndFlush(value));
         } catch(RuntimeException|IOException error) {
-            Files.deleteIfExists(target);
+            if(target!=null) Files.deleteIfExists(target);
             throw error;
+        } finally {
+            Files.deleteIfExists(temp);
+        }
+    }
+    private String readFormatAndValidate(Path path) throws IOException {
+        try(ImageInputStream input=ImageIO.createImageInputStream(path.toFile())) {
+            if(input==null) throw BusinessException.badRequest("PHOTO_FORMAT_UNSUPPORTED","暂不支持该照片格式，请使用 JPG 或 PNG。");
+            Iterator<ImageReader> readers=ImageIO.getImageReaders(input);
+            if(!readers.hasNext()) throw BusinessException.badRequest("PHOTO_FORMAT_UNSUPPORTED","暂不支持该照片格式，请使用 JPG 或 PNG。");
+            ImageReader reader=readers.next();
+            try {
+                reader.setInput(input,true,true);
+                String format=reader.getFormatName().toLowerCase(Locale.ROOT);
+                if(!Set.of("jpeg","jpg","png").contains(format)) throw BusinessException.badRequest("PHOTO_FORMAT_UNSUPPORTED","暂不支持该照片格式，请使用 JPG 或 PNG。");
+                if((long)reader.getWidth(0)*reader.getHeight(0)>60_000_000L) throw BusinessException.badRequest("PHOTO_TOO_LARGE","图片尺寸过大，请选择较小的照片。");
+                return format;
+            } finally { reader.dispose(); }
         }
     }
     @GetMapping("/{id}/content")

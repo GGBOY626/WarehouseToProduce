@@ -7,6 +7,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import java.util.List;
 
@@ -31,6 +32,12 @@ public class GlobalExceptionHandler {
         log.warn("数据库约束冲突", ex);
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(new ApiError("DATA_CONFLICT", "数据与现有记录冲突，请刷新后重试。", List.of()));
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    ResponseEntity<ApiError> handleUploadTooLarge(MaxUploadSizeExceededException ex) {
+        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
+                .body(new ApiError("PHOTO_TOO_LARGE", "照片超过服务器允许大小。", List.of()));
     }
 
     @ExceptionHandler(Exception.class)
