@@ -197,7 +197,7 @@ const formatNumber = (value: number) => value.toLocaleString("zh-CN");
         <MovementCard v-for="row in rows" :key="row.id" :movement="row" show-date />
       </div>
     </section>
-    <nav class="quick-links card" aria-label="管理与导出"><RouterLink to="/reports">导出 PDF</RouterLink><RouterLink v-if="authenticated" to="/products">产品管理</RouterLink><RouterLink v-if="authenticated" to="/persons">人员管理</RouterLink></nav>
+    <nav class="quick-links card" aria-label="管理与导出"><RouterLink to="/production-tasks">生产任务</RouterLink><RouterLink to="/reports">导出 PDF</RouterLink><RouterLink v-if="authenticated" to="/products">产品管理</RouterLink><RouterLink v-if="authenticated" to="/persons">人员管理</RouterLink></nav>
   </div>
     <dialog ref="recordDialog" class="record-dialog" aria-labelledby="record-dialog-title" @click="event => { if (event.target === recordDialog) recordDialog?.close(); }">
       <div class="dialog-heading"><h2 id="record-dialog-title">选择流转记录</h2><button type="button" class="btn" autofocus @click="recordDialog?.close()">关闭</button></div>

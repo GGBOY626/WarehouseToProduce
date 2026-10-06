@@ -1,6 +1,7 @@
 export type Direction = "WAREHOUSE_TO_PRODUCTION" | "PRODUCTION_TO_WAREHOUSE";
 export type ProductUsage = Direction;
 export type MovementStatus = "ACTIVE" | "VOID";
+export type ProductionTaskStatus = "PREPARING" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED";
 export type IssueType =
   | "MISSING_LABEL"
   | "WRONG_LABEL"
@@ -50,6 +51,7 @@ export interface MovementDraft {
   receiverPersonId?: number;
   manufactureLot: string;
   returnMovement: boolean;
+  productionTaskId?: number;
   remarks: string;
   items: ItemInput[];
 }
@@ -91,6 +93,8 @@ export interface MovementDetail {
   receiverName: string;
   manufactureLot?: string;
   returnMovement: boolean;
+  productionTaskId?: number;
+  productionTaskName?: string;
   totalCartons: number;
   remarks?: string;
   status: MovementStatus;
@@ -101,6 +105,16 @@ export interface MovementDetail {
   missingPhoto: boolean;
   createdAt: string;
   updatedAt: string;
+}
+export interface ProductionTaskMovement {
+  id: number; recordNo: string; direction: Direction; returnMovement: boolean; movementTime: string;
+  totalCartons: number; totalQuantity: number; productNames: string[];
+}
+export interface ProductionTask {
+  id: number; productId: number; productName: string; baseUnit?: string; targetQuantity: number;
+  plannedDate: string; batchNo: string; status: ProductionTaskStatus; remarks?: string;
+  completedQuantity: number; progressPercent: number; issueMovementCount: number; returnMovementCount: number;
+  movements: ProductionTaskMovement[]; createdAt: string; updatedAt: string;
 }
 export interface MovementSummary {
   id: number;

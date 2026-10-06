@@ -19,11 +19,15 @@ public final class MovementDtos {
     }
     public record SaveRequest(@NotBlank @Size(max=36) String idempotencyKey,@NotNull MovementEnums.Direction direction,
                               @NotNull Instant movementTime,@NotNull Long senderPersonId,@NotNull Long receiverPersonId,
-                              @Size(max=100) String manufactureLot,boolean returnMovement,@Size(max=2000) String remarks,
+                              @Size(max=100) String manufactureLot,boolean returnMovement,Long productionTaskId,@Size(max=2000) String remarks,
                               @NotEmpty List<@Valid ItemRequest> items) {
         public SaveRequest(String idempotencyKey,MovementEnums.Direction direction,Instant movementTime,Long senderPersonId,Long receiverPersonId,
                            String manufactureLot,String remarks,List<ItemRequest> items){
-            this(idempotencyKey,direction,movementTime,senderPersonId,receiverPersonId,manufactureLot,false,remarks,items);
+            this(idempotencyKey,direction,movementTime,senderPersonId,receiverPersonId,manufactureLot,false,null,remarks,items);
+        }
+        public SaveRequest(String idempotencyKey,MovementEnums.Direction direction,Instant movementTime,Long senderPersonId,Long receiverPersonId,
+                           String manufactureLot,boolean returnMovement,String remarks,List<ItemRequest> items){
+            this(idempotencyKey,direction,movementTime,senderPersonId,receiverPersonId,manufactureLot,returnMovement,null,remarks,items);
         }
     }
     public record VoidRequest(@NotBlank @Size(max=500) String reason) {}
@@ -35,7 +39,7 @@ public final class MovementDtos {
     public record PhotoResponse(Long id,String url,String originalName,String mimeType,long fileSize,int width,int height,Instant createdAt) {}
     public record DetailResponse(Long id,String recordNo,MovementEnums.Direction direction,Instant movementTime,
                                  Long senderPersonId,String senderName,Long receiverPersonId,String receiverName,
-                                 String manufactureLot,boolean returnMovement,int totalCartons,String remarks,MovementEnums.Status status,
+                                 String manufactureLot,boolean returnMovement,Long productionTaskId,String productionTaskName,int totalCartons,String remarks,MovementEnums.Status status,
                                  String voidReason,Instant voidedAt,List<ItemResponse> items,List<PhotoResponse> photos,
                                  boolean hasIssues,boolean missingPhoto,Instant createdAt,Instant updatedAt) {}
     public record ListResponse(Long id,String recordNo,MovementEnums.Direction direction,Instant movementTime,
@@ -57,7 +61,7 @@ public final class MovementDtos {
         List<ItemResponse> items=m.getItems().stream().map(i->new ItemResponse(i.getId(),i.getProduct().getId(),i.getProductNameSnapshot(),i.getSkuSnapshot(),i.getUnitsPerCartonSnapshot(),i.getBaseUnitSnapshot(),i.getBatchNo(),i.getFullCartons(),i.getLooseUnits(),i.getCalculatedTotalUnits(),i.getTotalUnits(),i.isTotalUnitsOverridden(),i.isQuantityUnknown(),i.getRemarks(),i.getIssues().stream().map(x->new IssueResponse(x.getId(),x.getIssueType(),x.getDescription())).toList())).toList();
         List<PhotoResponse> photos=m.getPhotos().stream().map(p->new PhotoResponse(p.getId(),"/api/movements/"+m.getId()+"/photos/"+p.getId()+"/content",p.getOriginalName(),p.getMimeType(),p.getFileSize(),p.getWidth(),p.getHeight(),p.getCreatedAt())).toList();
         boolean issues=items.stream().anyMatch(i->!i.issues().isEmpty());
-        return new DetailResponse(m.getId(),m.getRecordNo(),m.getDirection(),m.getMovementTime(),m.getSenderPerson().getId(),m.getSenderNameSnapshot(),m.getReceiverPerson().getId(),m.getReceiverNameSnapshot(),m.getManufactureLot(),m.isReturnMovement(),m.getTotalCartons(),m.getRemarks(),m.getStatus(),m.getVoidReason(),m.getVoidedAt(),items,photos,issues,photos.isEmpty(),m.getCreatedAt(),m.getUpdatedAt());
+        return new DetailResponse(m.getId(),m.getRecordNo(),m.getDirection(),m.getMovementTime(),m.getSenderPerson().getId(),m.getSenderNameSnapshot(),m.getReceiverPerson().getId(),m.getReceiverNameSnapshot(),m.getManufactureLot(),m.isReturnMovement(),m.getProductionTask()==null?null:m.getProductionTask().getId(),m.getProductionTask()==null?null:m.getProductionTask().getProduct().getName()+" · "+m.getProductionTask().getBatchNo(),m.getTotalCartons(),m.getRemarks(),m.getStatus(),m.getVoidReason(),m.getVoidedAt(),items,photos,issues,photos.isEmpty(),m.getCreatedAt(),m.getUpdatedAt());
     }
     static ListResponse summary(Movement m) {
         long totalQuantity=m.getItems().stream().map(MovementItem::getTotalUnits).filter(Objects::nonNull).mapToLong(Long::longValue).sum();

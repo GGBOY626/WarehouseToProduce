@@ -3,13 +3,14 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { onBeforeRouteLeave, useRoute, useRouter } from "vue-router";
 import SearchPicker from "../components/SearchPicker.vue";
 import { errorMessage } from "../api/http";
-import { movementsApi, personsApi, productsApi } from "../api";
+import { movementsApi, personsApi, productsApi, productionTasksApi } from "../api";
 import type {
   Direction,
   IssueType,
   ItemInput,
   MovementDraft,
   Product,
+  ProductionTask,
 } from "../types";
 import { issueLabels, directionLabel } from "../utils/labels";
 import { nowLocalInput, toInstant, toLocalInput } from "../utils/time";
@@ -38,6 +39,7 @@ const draft = ref<MovementDraft>({
   movementTime: nowLocalInput(),
   manufactureLot: "",
   returnMovement: false,
+  productionTaskId: undefined,
   remarks: "",
   items: [blankItem()],
 });
@@ -53,6 +55,7 @@ const saving = ref(false),
   dirty = ref(false),
   message = ref("");
 const savedMovementId = ref<number>();
+const productionTasks = ref<ProductionTask[]>([]);
 const draftKey = computed(() => `movement-draft:${direction.value}`);
 const allIssues = Object.entries(issueLabels) as [IssueType, string][];
 const productUsage = computed<Direction>(() => draft.value.returnMovement ? "WAREHOUSE_TO_PRODUCTION" : direction.value);
@@ -168,6 +171,7 @@ function payload() {
         ? draft.value.manufactureLot
         : undefined,
     returnMovement: direction.value === "PRODUCTION_TO_WAREHOUSE" && draft.value.returnMovement,
+    productionTaskId: draft.value.productionTaskId,
     remarks: draft.value.remarks,
     items: draft.value.items.map((x) => ({
       productId: x.productId,
@@ -253,6 +257,7 @@ watch(
 );
 onMounted(async () => {
   window.addEventListener("beforeunload", beforeUnload);
+  productionTasks.value = await productionTasksApi.list();
   if (editId) {
     const m = await movementsApi.detail(editId);
     direction.value = m.direction;
@@ -264,6 +269,7 @@ onMounted(async () => {
       receiverPersonId: m.receiverPersonId,
       manufactureLot: m.manufactureLot || "",
       returnMovement: m.returnMovement,
+      productionTaskId: m.productionTaskId,
       remarks: m.remarks || "",
       items: m.items.map((x) => ({
         productId: x.productId,
@@ -336,6 +342,14 @@ onBeforeUnmount(() => {
           type="datetime-local"
           v-model="draft.movementTime"
         />
+      </div>
+      <div class="field">
+        <label>关联生产任务</label>
+        <select class="select" v-model="draft.productionTaskId">
+          <option :value="undefined">不关联生产任务</option>
+          <option v-for="task in productionTasks" :key="task.id" :value="task.id" :disabled="task.status === 'COMPLETED' || task.status === 'CANCELLED'">{{ task.productName }} · {{ task.batchNo }} · 目标 {{ task.targetQuantity }} {{ task.baseUnit || '个' }}</option>
+        </select>
+        <small class="hint">关联后，发料、退料和成品入库会汇总到同一个生产任务。</small>
       </div>
       <div class="grid-2 people">
         <SearchPicker

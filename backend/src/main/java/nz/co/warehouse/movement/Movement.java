@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import lombok.*;
 import nz.co.warehouse.common.PersistentEntity;
 import nz.co.warehouse.person.Person;
+import nz.co.warehouse.production.ProductionTask;
 import org.hibernate.annotations.BatchSize;
 import java.time.Instant;
 import java.util.*;
@@ -22,6 +23,7 @@ public class Movement extends PersistentEntity {
     @Column(name="receiver_name_snapshot",nullable=false,length=100) private String receiverNameSnapshot;
     @Column(name="manufacture_lot",length=100) private String manufactureLot;
     @Column(name="is_return",nullable=false) private boolean returnMovement;
+    @ManyToOne(fetch=FetchType.LAZY) @JoinColumn(name="production_task_id") private ProductionTask productionTask;
     @Column(name="total_cartons",nullable=false) private int totalCartons;
     @Column(length=2000) private String remarks;
     @Enumerated(EnumType.STRING) @Column(nullable=false,length=20) private MovementEnums.Status status=MovementEnums.Status.ACTIVE;

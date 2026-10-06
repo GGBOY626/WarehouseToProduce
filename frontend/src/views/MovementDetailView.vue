@@ -146,6 +146,7 @@ onMounted(()=>void load());
             <dd>{{ data.receiverName }}</dd>
           </div>
         </dl>
+        <RouterLink v-if="data.productionTaskId" class="task-link" :to="`/production-tasks/${data.productionTaskId}`">生产任务：{{ data.productionTaskName }} ›</RouterLink>
         <p v-if="data.remarks" class="remark">{{ data.remarks }}</p>
         <div v-if="data.status === 'VOID'" class="void-box">
           作废原因：{{ data.voidReason }}
@@ -272,6 +273,7 @@ onMounted(()=>void load());
   margin: 4px 0 0;
   font-weight: 680;
 }
+.task-link { display: inline-flex; margin-top: 14px; color: #174a68; font-size: 13px; font-weight: 700; }
 .remark {
   white-space: pre-wrap;
   background: #f4f6f7;

@@ -2,6 +2,7 @@ package nz.co.warehouse.movement;
 
 import nz.co.warehouse.person.*;
 import nz.co.warehouse.product.*;
+import nz.co.warehouse.production.*;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -26,6 +27,7 @@ class MovementServiceIntegrationTest {
     @Autowired ProductService products;
     @Autowired PersonService persons;
     @Autowired JdbcTemplate jdbc;
+    @Autowired ProductionTaskService productionTasks;
     Long sender,receiver,product,inboundProduct;
 
     @BeforeEach void setup(){
@@ -44,6 +46,22 @@ class MovementServiceIntegrationTest {
     @Test void productionToWarehouseDoesNotStoreManufactureLot(){
         var saved=movements.create(request(UUID.randomUUID().toString(),MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE,1,0));
         assertThat(saved.manufactureLot()).isNull();
+    }
+
+    @Test void productionTaskLinksMovementsAndCountsOnlyTargetFinishedGoods(){
+        var task=productionTasks.create(new ProductionTaskService.SaveRequest(inboundProduct,1000,LocalDate.of(2026,9,28),"TASK-LOT",null));
+        var outboundItem=new MovementDtos.ItemRequest(product,"MAT-OUT",2,0,null,null,List.of());
+        movements.create(new MovementDtos.SaveRequest(UUID.randomUUID().toString(),MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,
+                Instant.parse("2026-09-28T00:00:00Z"),sender,receiver,"MAT-LOT",false,task.id(),null,List.of(outboundItem)));
+        var inboundItem=new MovementDtos.ItemRequest(inboundProduct,"FINISHED",2,5,null,null,List.of());
+        var inbound=movements.create(new MovementDtos.SaveRequest(UUID.randomUUID().toString(),MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE,
+                Instant.parse("2026-09-28T02:00:00Z"),sender,receiver,null,false,task.id(),null,List.of(inboundItem)));
+
+        var detail=productionTasks.detail(task.id());
+        assertThat(detail.completedQuantity()).isEqualTo(65);
+        assertThat(detail.progressPercent()).isEqualTo(6);
+        assertThat(detail.movements()).hasSize(2);
+        assertThat(inbound.productionTaskId()).isEqualTo(task.id());
     }
 
     @Test void productSearchFiltersByRequiredMovementDirection(){

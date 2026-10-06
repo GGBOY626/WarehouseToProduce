@@ -38,8 +38,8 @@ public class ProductService {
     @Transactional
     public void delete(long id) {
         Product product = get(id);
-        if (repository.countMovementItems(id) > 0)
-            throw new BusinessException("PRODUCT_IN_USE", "该产品已经存在流转记录，不能删除，请改为停用。", HttpStatus.CONFLICT);
+        if (repository.countMovementItems(id) > 0 || repository.countProductionTasks(id) > 0)
+            throw new BusinessException("PRODUCT_IN_USE", "该产品已经存在流转记录或生产任务，不能删除，请改为停用。", HttpStatus.CONFLICT);
         repository.delete(product);
     }
 

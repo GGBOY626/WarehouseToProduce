@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import nz.co.warehouse.common.BusinessException;
 import nz.co.warehouse.person.*;
 import nz.co.warehouse.product.*;
+import nz.co.warehouse.production.ProductionTaskService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.*;
@@ -26,6 +27,7 @@ public class MovementService {
     private final PersonService persons;
     private final RecordNumberService numbers;
     private final TransactionTemplate transactions;
+    private final ProductionTaskService productionTasks;
     @Value("${app.business-zone:Pacific/Auckland}") private String zone;
 
     public MovementDtos.DetailResponse create(MovementDtos.SaveRequest request) {
@@ -116,12 +118,16 @@ public class MovementService {
         Person sender=m.getId()!=null&&m.getSenderPerson().getId().equals(r.senderPersonId())?persons.getAny(r.senderPersonId()):persons.getActive(r.senderPersonId());
         Person receiver=m.getId()!=null&&m.getReceiverPerson().getId().equals(r.receiverPersonId())?persons.getAny(r.receiverPersonId()):persons.getActive(r.receiverPersonId());
         m.setDirection(r.direction());m.setReturnMovement(r.returnMovement());m.setMovementTime(r.movementTime());m.setSenderPerson(sender);m.setSenderNameSnapshot(sender.getName());m.setReceiverPerson(receiver);m.setReceiverNameSnapshot(receiver.getName());
+        m.setProductionTask(r.productionTaskId()==null?null:m.getProductionTask()!=null&&m.getProductionTask().getId().equals(r.productionTaskId())?m.getProductionTask():productionTasks.getLinkable(r.productionTaskId()));
         m.setManufactureLot(r.direction()==MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION||r.returnMovement()?r.manufactureLot().trim():null);m.setRemarks(blank(r.remarks()));
         Set<Long> existingProductIds=m.getItems().stream().map(x->x.getProduct().getId()).collect(java.util.stream.Collectors.toSet());
         m.getItems().clear();int cartons=0;int order=0;
         ProductUsage expectedUsage=r.returnMovement()?ProductUsage.WAREHOUSE_TO_PRODUCTION
                 :(r.direction()==MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION?ProductUsage.WAREHOUSE_TO_PRODUCTION:ProductUsage.PRODUCTION_TO_WAREHOUSE);
         for(var input:r.items()){MovementItem item=buildItem(input,order++,existingProductIds.contains(input.productId()),expectedUsage);m.addItem(item);cartons+=item.getFullCartons();}
+        if(m.getProductionTask()!=null&&m.getDirection()==MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE&&!m.isReturnMovement()
+                &&m.getItems().stream().noneMatch(i->i.getProduct().getId().equals(m.getProductionTask().getProduct().getId())))
+            throw BusinessException.badRequest("PRODUCTION_TASK_PRODUCT_MISMATCH","成品入库记录必须包含生产任务的目标产品。");
         m.setTotalCartons(cartons);
     }
 

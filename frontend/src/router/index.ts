@@ -10,7 +10,9 @@ const router=createRouter({history:createWebHistory(),scrollBehavior:()=>({top:0
   {path:'/history',redirect:'/'},
   {path:'/products',component:()=>import('../views/ProductView.vue')},
   {path:'/persons',component:()=>import('../views/PersonView.vue')},
-  {path:'/reports',component:()=>import('../views/ReportView.vue')}
+  {path:'/reports',component:()=>import('../views/ReportView.vue')},
+  {path:'/production-tasks',component:()=>import('../views/ProductionTaskView.vue')},
+  {path:'/production-tasks/:id',component:()=>import('../views/ProductionTaskDetailView.vue')}
 ]});
 router.beforeEach(async to=>!to.meta.requiresAuth||await ensureAuth()?true:{path:'/login',query:{redirect:to.fullPath}});
 export default router;
