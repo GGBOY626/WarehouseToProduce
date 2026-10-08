@@ -48,9 +48,10 @@ public final class MovementDtos {
     public record PageResponse(List<ListResponse> content,int page,int size,long totalElements,int totalPages) {}
     public record StatMovementResponse(Long id,String recordNo,Instant movementTime,MovementEnums.Direction direction,
                                        String senderName,String receiverName,long fullCartons,long totalQuantity,long unknownItemCount) {}
-    public record ProductStatResponse(String productName,long fullCartons,long totalQuantity,long unknownItemCount,List<StatMovementResponse> movements) {
+    public record ProductStatResponse(String productName,long fullCartons,long totalQuantity,long unknownItemCount,List<StatMovementResponse> movements,
+                                      String materialCode,String materialBatch) {
         public ProductStatResponse(String productName,long fullCartons,long totalQuantity,long unknownItemCount) {
-            this(productName,fullCartons,totalQuantity,unknownItemCount,List.of());
+            this(productName,fullCartons,totalQuantity,unknownItemCount,List.of(),null,null);
         }
     }
     public record TodayStatsResponse(long totalCartons,long totalQuantity,long unknownItemCount,List<ProductStatResponse> products) {}

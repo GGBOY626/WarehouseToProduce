@@ -93,17 +93,25 @@ public class MovementService {
     @Transactional(readOnly=true)
     public MovementDtos.QueryStatsResponse queryStats(LocalDate from,LocalDate to,MovementEnums.Direction direction,MovementEnums.Status status,Boolean missingPhoto,Boolean hasIssue,String q){
         ZoneId z=ZoneId.of(zone);Instant start=from.atStartOfDay(z).toInstant();Instant end=to.plusDays(1).atStartOfDay(z).toInstant();
-        Map<MovementEnums.Direction,Map<String,List<MovementDtos.StatMovementResponse>>> sources=new EnumMap<>(MovementEnums.Direction.class);
+        Map<MovementEnums.Direction,Map<MaterialStatsKey,MaterialStatsGroup>> sources=new EnumMap<>(MovementEnums.Direction.class);
         repository.summarizeSearch(start,end,direction,status,missingPhoto,hasIssue,q==null?"":q.trim()).forEach(row->{
             MovementEnums.Direction rowDirection=(MovementEnums.Direction)row[0];
-            sources.computeIfAbsent(rowDirection,key->new LinkedHashMap<>()).computeIfAbsent((String)row[1],key->new ArrayList<>())
-                    .add(new MovementDtos.StatMovementResponse(((Number)row[5]).longValue(),(String)row[6],(Instant)row[7],rowDirection,(String)row[8],(String)row[9],((Number)row[2]).longValue(),((Number)row[3]).longValue(),((Number)row[4]).longValue()));
+            String name=(String)row[1],code=(String)row[10],batch=(String)row[11];
+            // Use the values saved on the movement, not today's editable product defaults.
+            // Without both identity fields, retain name separation rather than guessing a match.
+            var key=new MaterialStatsKey(code,batch,code==null||code.isBlank()||batch==null||batch.isBlank()?name:null);
+            var group=sources.computeIfAbsent(rowDirection,ignored->new LinkedHashMap<>()).computeIfAbsent(key,ignored->new MaterialStatsGroup());
+            group.names.add(name);
+            var movement=new MovementDtos.StatMovementResponse(((Number)row[5]).longValue(),(String)row[6],(Instant)row[7],rowDirection,(String)row[8],(String)row[9],((Number)row[2]).longValue(),((Number)row[3]).longValue(),((Number)row[4]).longValue());
+            group.movements.merge(movement.id(),movement,(a,b)->new MovementDtos.StatMovementResponse(a.id(),a.recordNo(),a.movementTime(),a.direction(),a.senderName(),a.receiverName(),
+                    a.fullCartons()+b.fullCartons(),a.totalQuantity()+b.totalQuantity(),a.unknownItemCount()+b.unknownItemCount()));
         });
         Map<MovementEnums.Direction,List<MovementDtos.ProductStatResponse>> grouped=new EnumMap<>(MovementEnums.Direction.class);
         sources.forEach((key,products)->grouped.put(key,products.entrySet().stream().map(entry->new MovementDtos.ProductStatResponse(
-                entry.getKey(),entry.getValue().stream().mapToLong(MovementDtos.StatMovementResponse::fullCartons).sum(),
-                entry.getValue().stream().mapToLong(MovementDtos.StatMovementResponse::totalQuantity).sum(),
-                entry.getValue().stream().mapToLong(MovementDtos.StatMovementResponse::unknownItemCount).sum(),List.copyOf(entry.getValue()))).toList()));
+                String.join("、",entry.getValue().names),entry.getValue().movements.values().stream().mapToLong(MovementDtos.StatMovementResponse::fullCartons).sum(),
+                entry.getValue().movements.values().stream().mapToLong(MovementDtos.StatMovementResponse::totalQuantity).sum(),
+                entry.getValue().movements.values().stream().mapToLong(MovementDtos.StatMovementResponse::unknownItemCount).sum(),List.copyOf(entry.getValue().movements.values()),
+                entry.getKey().code(),entry.getKey().batch())).toList()));
         List<MovementDtos.DirectionStatResponse> directions=grouped.entrySet().stream().map(entry->{
             long cartons=entry.getValue().stream().mapToLong(MovementDtos.ProductStatResponse::fullCartons).sum();
             long quantity=entry.getValue().stream().mapToLong(MovementDtos.ProductStatResponse::totalQuantity).sum();
@@ -111,6 +119,12 @@ public class MovementService {
             return new MovementDtos.DirectionStatResponse(entry.getKey(),cartons,quantity,unknown,entry.getValue());
         }).toList();
         return new MovementDtos.QueryStatsResponse(directions);
+    }
+
+    private record MaterialStatsKey(String code,String batch,String fallbackName) {}
+    private static class MaterialStatsGroup {
+        final Set<String> names=new TreeSet<>();
+        final Map<Long,MovementDtos.StatMovementResponse> movements=new LinkedHashMap<>();
     }
 
     private void apply(Movement m,MovementDtos.SaveRequest r){

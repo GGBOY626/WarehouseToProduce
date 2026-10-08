@@ -18,7 +18,7 @@ function openProduct(product: QueryStats["directions"][number]["products"][numbe
     void router.push(`/movements/${product.movements[0].id}`);
     return;
   }
-  selectedProduct.value = product.productName;
+  selectedProduct.value = `${product.productName} · 编码 ${product.materialCode || '未填写'} · 批次 ${product.materialBatch || '未填写'}`;
   sourceMovements.value = product.movements;
   recordDialog.value?.showModal();
 }
@@ -177,8 +177,8 @@ const formatNumber = (value: number) => value.toLocaleString("zh-CN");
             <h3>{{ directionLabel(group.direction) }}</h3>
             <div class="stats-total"><strong>共 {{ formatNumber(group.products.length) }} 种物料</strong><span>·</span><strong>{{ formatNumber(group.totalCartons) }} 箱</strong><span v-if="group.unknownItemCount">· 含 {{ group.unknownItemCount }} 项数量不确定</span></div>
             <div>
-              <button v-for="product in group.products" :key="product.productName" type="button" class="product-stat" :aria-label="`查看 ${product.productName} 的原始流转记录`" @click="openProduct(product)">
-                <strong>{{ product.productName }}<small v-if="product.unknownItemCount">（{{ product.unknownItemCount }} 项不确定）</small></strong>
+              <button v-for="product in group.products" :key="JSON.stringify([product.materialCode, product.materialBatch, product.productName])" type="button" class="product-stat" :aria-label="`查看 ${product.productName}，编码 ${product.materialCode || '未填写'}，批次 ${product.materialBatch || '未填写'} 的原始流转记录`" @click="openProduct(product)">
+                <strong>{{ product.productName }}<small v-if="product.unknownItemCount">（{{ product.unknownItemCount }} 项不确定）</small><small class="material-identity">编码 {{ product.materialCode || '未填写' }} · 批次 {{ product.materialBatch || '未填写' }}</small></strong>
                 <span class="carton-total">{{ formatNumber(product.fullCartons) }} 箱</span>
                 <span class="unit-total">{{ formatNumber(product.totalQuantity) }} 个</span>
                 <span class="record-arrow" aria-hidden="true">›</span>
@@ -213,6 +213,7 @@ const formatNumber = (value: number) => value.toLocaleString("zh-CN");
     </dialog>
 </template>
 <style scoped>
+.material-identity{display:block;margin-top:4px;color:#66747c;font-size:12px;font-weight:400;overflow-wrap:anywhere}
 .page-heading { flex-wrap: wrap; gap: 12px; }
 .page-heading .page-title { margin: 0; }
 .create-actions { display: flex; flex-wrap: wrap; gap: 8px; }

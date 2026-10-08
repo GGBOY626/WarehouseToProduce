@@ -216,9 +216,9 @@ class MovementServiceIntegrationTest {
     }
 
     @Test void statisticsTraceDistinctOriginalMovementsAndTheirOwnMaterialAmounts(){
-        var firstItem=new MovementDtos.ItemRequest(product,"TRACE-A",2,0,null,null,List.of());
-        var secondItem=new MovementDtos.ItemRequest(product,"TRACE-B",3,0,null,null,List.of());
-        var first=movements.create(new MovementDtos.SaveRequest(UUID.randomUUID().toString(),MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,Instant.parse("2026-09-28T01:00:00Z"),sender,receiver,"TRACE-LOT",null,List.of(firstItem,secondItem)));
+        var firstItem=new MovementDtos.ItemRequest(product,"BATCH-001",2,0,null,null,List.of());
+        var secondItem=new MovementDtos.ItemRequest(product,"BATCH-001",3,0,null,null,List.of());
+        var first=movements.create(new MovementDtos.SaveRequest(UUID.randomUUID().toString(),MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,Instant.parse("2026-09-28T01:00:00Z"),sender,receiver,"CA202607006",null,List.of(firstItem,secondItem)));
         var single=movements.queryStats(LocalDate.of(2026,9,28),LocalDate.of(2026,9,28),MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,MovementEnums.Status.ACTIVE,null,null,first.recordNo()).directions().getFirst().products().getFirst();
         assertThat(single.movements()).hasSize(1);
         assertThat(single.movements().getFirst().id()).isEqualTo(first.id());
@@ -241,6 +241,50 @@ class MovementServiceIntegrationTest {
         assertThat(source.movementTime()).isEqualTo(second.movementTime());
         assertThat(source.senderName()).isEqualTo(second.senderName());
         assertThat(source.receiverName()).isEqualTo(second.receiverName());
+    }
+
+    @Test void rangeStatsMergeDifferentPackagingNamesOnlyWhenSavedCodeAndLotBothMatch(){
+        String code="MERGE-"+UUID.randomUUID();
+        var small=products.create(new ProductDtos.Request("WhatAPoo1400-"+code,"DEFAULT-A-"+code,"DEFAULT-LOT",ProductUsage.WAREHOUSE_TO_PRODUCTION,1400,"个"));
+        var large=products.create(new ProductDtos.Request("WhatAPoo1750-"+code,"DEFAULT-B-"+code,"OTHER-DEFAULT-LOT",ProductUsage.WAREHOUSE_TO_PRODUCTION,1750,"个"));
+        var first=statsMovement("26020053",new MovementDtos.ItemRequest(small.id(),code,1,0,null,null,List.of()),
+                new MovementDtos.ItemRequest(large.id(),code,1,0,null,null,List.of()),new MovementDtos.ItemRequest(small.id(),code,0,10,null,null,List.of()));
+        var second=statsMovement("26020053",new MovementDtos.ItemRequest(large.id(),code,2,0,null,null,List.of()));
+        var unknown=statsMovement("26020053",new MovementDtos.ItemRequest(small.id(),code,1,0,null,true,null,List.of()));
+        statsMovement("21867",new MovementDtos.ItemRequest(large.id(),code,2,0,null,null,List.of()));
+        statsMovement("26020053",new MovementDtos.ItemRequest(small.id(),code+"-OTHER",1,0,null,null,List.of()));
+        var voided=statsMovement("26020053",new MovementDtos.ItemRequest(small.id(),code,99,0,null,null,List.of()));
+        movements.voidMovement(voided.id(),"duplicate");
+        var stats=movements.queryStats(LocalDate.of(2026,9,28),LocalDate.of(2026,9,28),MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,MovementEnums.Status.ACTIVE,null,null,code);
+        var groups=stats.directions().getFirst().products();
+        assertThat(groups).hasSize(3);
+        var merged=groups.stream().filter(g->code.equals(g.materialCode())&&"26020053".equals(g.materialBatch())).findFirst().orElseThrow();
+        assertThat(merged.productName()).contains(small.name(),large.name());
+        assertThat(merged.fullCartons()).isEqualTo(5);
+        assertThat(merged.totalQuantity()).isEqualTo(6660);
+        assertThat(merged.unknownItemCount()).isEqualTo(1);
+        assertThat(merged.movements()).extracting(MovementDtos.StatMovementResponse::id).containsExactlyInAnyOrder(first.id(),second.id(),unknown.id());
+        var firstSource=merged.movements().stream().filter(m->m.id().equals(first.id())).findFirst().orElseThrow();
+        assertThat(firstSource.fullCartons()).isEqualTo(2);
+        assertThat(firstSource.totalQuantity()).isEqualTo(3160);
+        var sameCodeDifferentLot=groups.stream().filter(g->"21867".equals(g.materialBatch())).findFirst().orElseThrow();
+        assertThat(sameCodeDifferentLot.totalQuantity()).isEqualTo(3500);
+        assertThat(stats.directions().getFirst().totalQuantity()).isEqualTo(11560);
+    }
+
+    @Test void rangeStatsDoNotMergeDifferentNamesWhenMaterialLotIsMissing(){
+        String code="NO-LOT-"+UUID.randomUUID();
+        var other=products.create(new ProductDtos.Request("Other-"+code,code,null,ProductUsage.PRODUCTION_TO_WAREHOUSE,20,"个"));
+        var items=List.of(new MovementDtos.ItemRequest(inboundProduct,code,1,0,null,null,List.of()),new MovementDtos.ItemRequest(other.id(),code,1,0,null,null,List.of()));
+        var movement=movements.create(new MovementDtos.SaveRequest(UUID.randomUUID().toString(),MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE,Instant.parse("2026-09-28T01:00:00Z"),sender,receiver,null,null,items));
+        var groups=movements.queryStats(LocalDate.of(2026,9,28),LocalDate.of(2026,9,28),null,MovementEnums.Status.ACTIVE,null,null,movement.recordNo()).directions().getFirst().products();
+        assertThat(groups).hasSize(2);
+        assertThat(groups).allMatch(g->g.materialBatch()==null);
+    }
+
+    private MovementDtos.DetailResponse statsMovement(String lot,MovementDtos.ItemRequest... items){
+        return movements.create(new MovementDtos.SaveRequest(UUID.randomUUID().toString(),MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,
+                Instant.parse("2026-09-28T01:00:00Z"),sender,receiver,lot,null,List.of(items)));
     }
 
     @Test void detailDoesNotDuplicateItemWhenMovementHasMultiplePhotos(){
