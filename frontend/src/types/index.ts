@@ -120,6 +120,8 @@ export interface ProductionTask {
 export interface ProductionTaskTarget {
   productId: number; productName: string; materialCode: string; baseUnit?: string;
   targetQuantity: number; completedQuantity: number; progressPercent: number;
+  issuedQuantity: number; returnedQuantity: number; shortageQuantity: number;
+  unknownQuantityCount: number; materialTarget: boolean;
 }
 export interface MovementSummary {
   id: number;

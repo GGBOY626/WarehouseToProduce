@@ -26,7 +26,8 @@ public class ProductionTaskService {
         }
     }
     public record TargetResponse(Long productId,String productName,String materialCode,String baseUnit,long targetQuantity,
-                                 long completedQuantity,int progressPercent) {}
+                                 long completedQuantity,int progressPercent,long issuedQuantity,long returnedQuantity,
+                                 long shortageQuantity,int unknownQuantityCount,boolean materialTarget) {}
     public record MovementResponse(Long id,String recordNo,MovementEnums.Direction direction,boolean returnMovement,
                                    Instant movementTime,int totalCartons,long totalQuantity,List<String> productNames) {}
     public record Response(Long id,Long productId,String productName,String baseUnit,long targetQuantity,LocalDate plannedDate,
@@ -56,7 +57,7 @@ public class ProductionTaskService {
                 throw BusinessException.badRequest("TASK_TARGET_INVALID","每个目标产品都必须填写大于零的目标数量。");
             if(!seen.add(input.productId()))throw BusinessException.badRequest("TASK_TARGET_DUPLICATE","同一个目标产品不能重复添加。");
             ProductionTaskTarget target=existing.get(input.productId());
-            Product product=editing&&target!=null?products.getAny(input.productId()):products.getForMovement(input.productId(),ProductUsage.PRODUCTION_TO_WAREHOUSE,false);
+            Product product=products.getForMovement(input.productId(),ProductUsage.WAREHOUSE_TO_PRODUCTION,editing&&target!=null);
             if(target==null){target=new ProductionTaskTarget();target.setTask(t);}
             target.setProduct(product);target.setTargetQuantity(input.targetQuantity());target.setSortOrder(updated.size());updated.add(target);
         }
@@ -67,18 +68,31 @@ public class ProductionTaskService {
     }
     private Response response(ProductionTask t){
         List<Movement> rows=movements.findByProductionTaskIdOrderByMovementTimeAsc(t.getId());
-        Map<Long,Long> completedByProduct=new HashMap<>();
-        rows.stream().filter(m->m.getStatus()==MovementEnums.Status.ACTIVE&&m.getDirection()==MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE&&!m.isReturnMovement())
-                .flatMap(m->m.getItems().stream()).filter(i->i.getTotalUnits()!=null)
-                .forEach(i->completedByProduct.merge(i.getProduct().getId(),i.getTotalUnits(),Long::sum));
+        Map<Long,Long> issuedByProduct=new HashMap<>(),returnedByProduct=new HashMap<>();
+        Map<Long,Integer> unknownByProduct=new HashMap<>();
+        for(Movement movement:rows){
+            if(movement.getStatus()!=MovementEnums.Status.ACTIVE)continue;
+            boolean issue=movement.getDirection()==MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION;
+            boolean returned=movement.getDirection()==MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE&&movement.isReturnMovement();
+            if(!issue&&!returned)continue;
+            for(MovementItem item:movement.getItems()){
+                Long productId=item.getProduct().getId();
+                if(item.getTotalUnits()==null||item.isQuantityUnknown())unknownByProduct.merge(productId,1,Integer::sum);
+                else (issue?issuedByProduct:returnedByProduct).merge(productId,item.getTotalUnits(),Long::sum);
+            }
+        }
         List<TargetResponse> targets=t.getTargets().stream().map(target->{
-            Product p=target.getProduct();long completed=completedByProduct.getOrDefault(p.getId(),0L);
+            Product p=target.getProduct();
+            long issued=issuedByProduct.getOrDefault(p.getId(),0L),returned=returnedByProduct.getOrDefault(p.getId(),0L);
+            long completed=issued-returned;
+            boolean material=p.getMovementDirection()==ProductUsage.WAREHOUSE_TO_PRODUCTION;
             return new TargetResponse(p.getId(),p.getName(),p.getMaterialCode(),p.getBaseUnit(),target.getTargetQuantity(),completed,
-                    (int)Math.min(100,completed*100.0/target.getTargetQuantity()));
+                    material?(int)Math.max(0,Math.min(100,completed*100.0/target.getTargetQuantity())):0,
+                    issued,returned,Math.max(0,target.getTargetQuantity()-completed),unknownByProduct.getOrDefault(p.getId(),0),material);
         }).toList();
-        // Each target contributes equally; excess output cannot cover another unfinished target.
-        int progress=(int)targets.stream().mapToDouble(target->Math.min(100,target.completedQuantity()*100.0/target.targetQuantity())).average().orElse(0);
-        long completed=completedByProduct.getOrDefault(t.getProduct().getId(),0L);
+        // Material readiness is independent of finished-goods receipts and production status.
+        int progress=(int)targets.stream().mapToDouble(target->target.materialTarget()?Math.max(0,Math.min(100,target.completedQuantity()*100.0/target.targetQuantity())):0).average().orElse(0);
+        long completed=targets.isEmpty()?0:targets.getFirst().completedQuantity();
         int issues=(int)rows.stream().filter(m->m.getItems().stream().anyMatch(i->!i.getIssues().isEmpty())).count();
         int returns=(int)rows.stream().filter(Movement::isReturnMovement).count();
         List<MovementResponse> linked=rows.stream().map(m->new MovementResponse(m.getId(),m.getRecordNo(),m.getDirection(),m.isReturnMovement(),m.getMovementTime(),m.getTotalCartons(),m.getItems().stream().map(MovementItem::getTotalUnits).filter(Objects::nonNull).mapToLong(Long::longValue).sum(),m.getItems().stream().map(MovementItem::getProductNameSnapshot).distinct().toList())).toList();

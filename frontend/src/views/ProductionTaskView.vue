@@ -17,7 +17,7 @@ onMounted(load);
 </script>
 <template>
   <div class="page">
-    <div class="page-heading"><div><h1 class="page-title">生产任务</h1><p class="page-lead">用目标数量串联发料、退料和成品入库。</p></div><button v-if="authenticated" class="btn btn-primary" @click="showForm = !showForm">{{ showForm ? '收起' : '＋ 新建任务' }}</button></div>
+    <div class="page-heading"><div><h1 class="page-title">生产任务</h1><p class="page-lead">按所需物料和实际发料，查看每个任务还缺什么。</p></div><button v-if="authenticated" class="btn btn-primary" @click="showForm = !showForm">{{ showForm ? '收起' : '＋ 新建任务' }}</button></div>
     <p v-if="message" class="form-alert">{{ message }}</p>
     <ProductionTaskForm v-if="showForm && authenticated" @saved="showForm = false; load()" @cancel="showForm = false" />
     <section v-for="group in groups" :key="group.title" class="section">
@@ -26,7 +26,7 @@ onMounted(load);
       <div v-else class="task-list">
         <RouterLink v-for="task in group.tasks" :key="task.id" :to="`/production-tasks/${task.id}`" class="task-card card">
           <div class="task-info"><span class="task-status">{{ labels[task.status] }}</span><strong>{{ task.productName }}</strong><small>{{ task.batchNo }} · 计划 {{ task.plannedDate }}</small></div>
-          <div class="target"><b>{{ task.progressPercent }}%</b><span>整体进度</span></div>
+          <div class="target"><b>{{ task.progressPercent }}%</b><span>备料进度</span></div>
           <ProductionTaskTargets class="task-targets" :targets="task.targets" />
         </RouterLink>
       </div>

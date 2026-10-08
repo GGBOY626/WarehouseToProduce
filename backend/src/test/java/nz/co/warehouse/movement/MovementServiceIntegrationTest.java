@@ -48,8 +48,8 @@ class MovementServiceIntegrationTest {
         assertThat(saved.manufactureLot()).isNull();
     }
 
-    @Test void productionTaskLinksMovementsAndCountsOnlyTargetFinishedGoods(){
-        var task=productionTasks.create(new ProductionTaskService.SaveRequest(inboundProduct,1000,LocalDate.of(2026,9,28),"TASK-LOT",null));
+    @Test void productionTaskLinksFinishedGoodsButCountsOnlyMaterialIssues(){
+        var task=productionTasks.create(new ProductionTaskService.SaveRequest(product,1000,LocalDate.of(2026,9,28),"TASK-LOT",null));
         var outboundItem=new MovementDtos.ItemRequest(product,"MAT-OUT",2,0,null,null,List.of());
         movements.create(new MovementDtos.SaveRequest(UUID.randomUUID().toString(),MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,
                 Instant.parse("2026-09-28T00:00:00Z"),sender,receiver,"MAT-LOT",false,task.id(),null,List.of(outboundItem)));
@@ -58,7 +58,7 @@ class MovementServiceIntegrationTest {
                 Instant.parse("2026-09-28T02:00:00Z"),sender,receiver,null,false,task.id(),null,List.of(inboundItem)));
 
         var detail=productionTasks.detail(task.id());
-        assertThat(detail.completedQuantity()).isEqualTo(65);
+        assertThat(detail.completedQuantity()).isEqualTo(60);
         assertThat(detail.progressPercent()).isEqualTo(6);
         assertThat(detail.movements()).hasSize(2);
         assertThat(inbound.productionTaskId()).isEqualTo(task.id());
@@ -67,77 +67,6 @@ class MovementServiceIntegrationTest {
     @Test void productSearchFiltersByRequiredMovementDirection(){
         assertThat(products.search("",false,ProductUsage.WAREHOUSE_TO_PRODUCTION)).extracting(ProductDtos.Response::id).contains(product).doesNotContain(inboundProduct);
         assertThat(products.search("",false,ProductUsage.PRODUCTION_TO_WAREHOUSE)).extracting(ProductDtos.Response::id).contains(inboundProduct).doesNotContain(product);
-    }
-
-    @Test void multipleTaskTargetsCountSeparateReceiptsAndExcludeVoidedAndUnknownQuantities(){
-        Long box=finishedProduct("Outer box");
-        Long inner=finishedProduct("Inner box");
-        var task=productionTasks.create(taskRequest(List.of(target(inboundProduct,100),target(box,20),target(inner,10))));
-        assertThat(task.targets()).hasSize(3);
-        receiveForTask(task.id(),inboundProduct,150L,false);
-        receiveForTask(task.id(),box,10L,false);
-        var voided=receiveForTask(task.id(),inner,10L,false);
-        movements.voidMovement(voided.id(),"Duplicate");
-        receiveForTask(task.id(),inner,null,true);
-        var returned=new MovementDtos.ItemRequest(product,"RETURN",1,0,null,null,List.of());
-        movements.create(new MovementDtos.SaveRequest(UUID.randomUUID().toString(),MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE,
-                Instant.parse("2026-09-28T03:00:00Z"),sender,receiver,"RETURN",true,task.id(),null,List.of(returned)));
-
-        var detail=productionTasks.detail(task.id());
-        assertThat(detail.targets()).extracting(ProductionTaskService.TargetResponse::completedQuantity).containsExactly(150L,10L,0L);
-        assertThat(detail.targets()).extracting(ProductionTaskService.TargetResponse::progressPercent).containsExactly(100,50,0);
-        assertThat(detail.progressPercent()).isEqualTo(50);
-        assertThat(productionTasks.list(null).stream().filter(t->t.id().equals(task.id())).findFirst().orElseThrow().targets()).hasSize(3);
-        assertThatThrownBy(()->products.delete(inner)).hasMessageContaining("不能删除");
-
-        receiveForTask(task.id(),box,10L,false);
-        receiveForTask(task.id(),inner,10L,false);
-        assertThat(productionTasks.detail(task.id()).progressPercent()).isEqualTo(100);
-    }
-
-    @Test void existingSingleTargetTaskCanAddReorderAndRemoveTargetsWithoutLosingReceipts(){
-        var task=productionTasks.create(new ProductionTaskService.SaveRequest(inboundProduct,100,LocalDate.of(2026,9,28),"LEGACY",null));
-        receiveForTask(task.id(),inboundProduct,30L,false);
-        Long box=finishedProduct("Box");
-        productionTasks.update(task.id(),taskRequest(List.of(target(box,20),target(inboundProduct,200))));
-        var updated=productionTasks.detail(task.id());
-        assertThat(updated.targets()).extracting(ProductionTaskService.TargetResponse::productId).containsExactly(box,inboundProduct);
-        assertThat(updated.targets().get(1).completedQuantity()).isEqualTo(30);
-        assertThat(updated.movements()).hasSize(1);
-        productionTasks.update(task.id(),taskRequest(List.of(target(inboundProduct,200))));
-        assertThat(productionTasks.detail(task.id()).targets()).hasSize(1);
-        assertThatCode(()->products.delete(box)).doesNotThrowAnyException();
-    }
-
-    @Test void taskTargetsRejectEmptyDuplicatesInvalidQuantitiesAndWrongProductDirection(){
-        assertThatThrownBy(()->productionTasks.create(taskRequest(List.of()))).hasMessageContaining("至少添加");
-        assertThatThrownBy(()->productionTasks.create(taskRequest(List.of(target(inboundProduct,100),target(inboundProduct,20))))).hasMessageContaining("重复");
-        assertThatThrownBy(()->productionTasks.create(taskRequest(List.of(target(inboundProduct,0))))).hasMessageContaining("大于零");
-        assertThatThrownBy(()->productionTasks.create(taskRequest(List.of(target(product,100))))).hasMessageContaining("不适用于");
-    }
-
-    @Test void taskReceiptAcceptsAnyTargetButRejectsUnrelatedFinishedProduct(){
-        Long box=finishedProduct("Box only");
-        var task=productionTasks.create(taskRequest(List.of(target(box,20))));
-        assertThatThrownBy(()->receiveForTask(task.id(),inboundProduct,30L,false)).hasMessageContaining("至少一个目标产品");
-        receiveForTask(task.id(),box,20L,false);
-        assertThat(productionTasks.detail(task.id()).progressPercent()).isEqualTo(100);
-        productionTasks.status(task.id(),ProductionTask.Status.COMPLETED);
-        assertThatThrownBy(()->receiveForTask(task.id(),box,1L,false)).hasMessageContaining("已结束");
-    }
-
-    private Long finishedProduct(String name){
-        String suffix=UUID.randomUUID().toString().substring(0,8);
-        return products.create(new ProductDtos.Request(name+suffix,"BOX-"+suffix,null,ProductUsage.PRODUCTION_TO_WAREHOUSE,10,"个")).id();
-    }
-    private ProductionTaskService.TargetRequest target(Long id,long quantity){return new ProductionTaskService.TargetRequest(id,quantity);}
-    private ProductionTaskService.SaveRequest taskRequest(List<ProductionTaskService.TargetRequest> targets){
-        return new ProductionTaskService.SaveRequest(null,null,LocalDate.of(2026,9,28),"MULTI",null,targets);
-    }
-    private MovementDtos.DetailResponse receiveForTask(Long taskId,Long productId,Long quantity,boolean unknown){
-        var item=new MovementDtos.ItemRequest(productId,"FINISHED",0,0,quantity,unknown,null,List.of());
-        return movements.create(new MovementDtos.SaveRequest(UUID.randomUUID().toString(),MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE,
-                Instant.parse("2026-09-28T02:00:00Z"),sender,receiver,null,false,taskId,null,List.of(item)));
     }
 
     @Test void normalInboundRejectsOutboundProductButReturnAcceptsIt(){

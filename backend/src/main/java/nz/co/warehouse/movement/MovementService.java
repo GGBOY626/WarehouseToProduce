@@ -125,9 +125,6 @@ public class MovementService {
         ProductUsage expectedUsage=r.returnMovement()?ProductUsage.WAREHOUSE_TO_PRODUCTION
                 :(r.direction()==MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION?ProductUsage.WAREHOUSE_TO_PRODUCTION:ProductUsage.PRODUCTION_TO_WAREHOUSE);
         for(var input:r.items()){MovementItem item=buildItem(input,order++,existingProductIds.contains(input.productId()),expectedUsage);m.addItem(item);cartons+=item.getFullCartons();}
-        if(m.getProductionTask()!=null&&m.getDirection()==MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE&&!m.isReturnMovement()
-                &&m.getItems().stream().noneMatch(i->m.getProductionTask().containsTarget(i.getProduct().getId())))
-            throw BusinessException.badRequest("PRODUCTION_TASK_PRODUCT_MISMATCH","成品入库记录必须包含生产任务的至少一个目标产品。");
         m.setTotalCartons(cartons);
     }
 

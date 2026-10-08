@@ -22,6 +22,5 @@ public class ProductionTask extends PersistentEntity {
     @OrderBy("sortOrder ASC, id ASC")
     private List<ProductionTaskTarget> targets=new ArrayList<>();
     public String displayName(){return targets.stream().map(t->t.getProduct().getName()).collect(Collectors.joining("、"));}
-    public boolean containsTarget(long productId){return targets.stream().anyMatch(t->t.getProduct().getId().equals(productId));}
     public enum Status { PREPARING, IN_PROGRESS, COMPLETED, CANCELLED }
 }

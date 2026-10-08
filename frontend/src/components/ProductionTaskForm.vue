@@ -2,7 +2,7 @@
 import { ref } from "vue";
 import { productionTasksApi, productsApi } from "../api";
 import { errorMessage } from "../api/http";
-import type { ProductionTask } from "../types";
+import type { Product, ProductionTask } from "../types";
 import { today } from "../utils/time";
 import SearchPicker from "./SearchPicker.vue";
 
@@ -15,6 +15,10 @@ const form = ref({
   plannedDate: props.task?.plannedDate || today(), batchNo: props.task?.batchNo || "", remarks: props.task?.remarks || ""
 });
 const saving = ref(false), message = ref("");
+async function loadMaterials(q: string): Promise<Product[]> {
+  const rows = await productsApi.search(q, !!props.task, 'WAREHOUSE_TO_PRODUCTION');
+  return rows.filter(p => p.active || props.task?.targets.some(t => t.productId === p.id));
+}
 async function save() {
   if (saving.value) return;
   const targets = form.value.targets;
@@ -35,18 +39,19 @@ async function save() {
 
 <template>
   <form class="card card-pad task-form" @submit.prevent="save">
-    <p class="hint">按需添加成品、外盒或内盒，每项目标分别填写数量。</p>
+    <p class="hint">选择仓库 → 生产车间的物料，并填写本次生产所需数量。例如生产 12,000 个关节饮，需要内盒 400 个、外盒 400 个。</p>
+    <p v-if="task?.targets.some(t => !t.materialTarget)" class="form-alert">旧任务中有成品入库产品，请将它们替换为仓库 → 生产车间的物料，并核对所需数量。</p>
     <fieldset :disabled="saving">
       <div v-for="(target, index) in form.targets" :key="target.key" class="target-row">
-        <SearchPicker v-model="target.productId" :label="`目标产品 ${index + 1}`" placeholder="搜索成品、外盒或内盒"
-          :load="q => productsApi.search(q, !!task, 'PRODUCTION_TO_WAREHOUSE')"
+        <SearchPicker v-model="target.productId" :label="`所需物料 ${index + 1}`" placeholder="搜索发往车间的物料、内盒或外盒"
+          :load="loadMaterials"
           :display="p => `${p.name} · ${p.materialCode}`" @select="p => target.baseUnit = p?.baseUnit || ''" />
-        <label class="field"><span>目标数量 * {{ target.baseUnit ? `（${target.baseUnit}）` : '' }}</span>
+        <label class="field"><span>所需数量 * {{ target.baseUnit ? `（${target.baseUnit}）` : '' }}</span>
           <input class="input" type="number" min="1" step="1" required v-model.number="target.targetQuantity" />
         </label>
         <button type="button" class="btn btn-secondary" :disabled="form.targets.length === 1" :aria-label="`移除目标产品 ${index + 1}`" @click="form.targets.splice(index, 1)">移除</button>
       </div>
-      <button type="button" class="btn btn-secondary" @click="form.targets.push(newTarget())">＋ 添加目标产品</button>
+      <button type="button" class="btn btn-secondary" @click="form.targets.push(newTarget())">＋ 添加所需物料</button>
       <div class="grid-2">
         <label class="field"><span>计划日期 *</span><input class="input" type="date" required v-model="form.plannedDate" /></label>
         <label class="field"><span>生产批次 *</span><input class="input mono" maxlength="100" required v-model.trim="form.batchNo" /></label>
