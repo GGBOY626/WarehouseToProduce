@@ -8,7 +8,7 @@ withDefaults(defineProps<{ movement: MovementSummary; showDate?: boolean }>(), {
 <template>
   <RouterLink :to="`/movements/${movement.id}`" class="movement-card card">
     <div class="movement-items">
-      <MaterialSummary v-for="item in movement.items" :key="item.id" v-bind="item" />
+      <MaterialSummary v-for="item in movement.items" :key="item.id" v-bind="item" :show-material-code="false" />
     </div>
     <div class="record-footer">
       <time :datetime="movement.movementTime">{{ showDate ? showDateTime(movement.movementTime) : showTime(movement.movementTime) }}</time>

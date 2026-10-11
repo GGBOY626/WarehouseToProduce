@@ -2,9 +2,10 @@
 import type { Packaging } from '../types';
 import PackagingBreakdown from './PackagingBreakdown.vue';
 defineOptions({ inheritAttrs: false });
-defineProps<{
+withDefaults(defineProps<{
   productName: string;
   materialCode: string;
+  showMaterialCode?: boolean;
   materialBatch?: string | null;
   baseUnit: string;
   fullCartons: number;
@@ -15,7 +16,7 @@ defineProps<{
   totalQuantity?: number | null;
   unknownItemCount?: number;
   quantityUnknown?: boolean;
-}>();
+}>(), { showMaterialCode: true });
 const number = (value: number) => value.toLocaleString('zh-CN');
 </script>
 <template>
@@ -23,7 +24,7 @@ const number = (value: number) => value.toLocaleString('zh-CN');
     <div class="identity">
       <strong class="material-name">{{ productName }}</strong>
       <div class="material-identifiers">
-        <span>编码 <b class="mono">{{ materialCode }}</b></span>
+        <span v-if="showMaterialCode">编码 <b class="mono">{{ materialCode }}</b></span>
         <span>批次 <b class="mono">{{ materialBatch || '未记录' }}</b></span>
       </div>
     </div>
