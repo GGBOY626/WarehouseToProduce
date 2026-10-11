@@ -5,6 +5,7 @@ import { errorMessage } from "../api/http";
 import { useAuth } from "../auth";
 import type { ProductionTask, ProductionTaskStatus } from "../types";
 import ProductionTaskForm from "../components/ProductionTaskForm.vue";
+import ProductionTaskOutput from "../components/ProductionTaskOutput.vue";
 import ProductionTaskTargets from "../components/ProductionTaskTargets.vue";
 const { authenticated } = useAuth();
 const tasks = ref<ProductionTask[]>([]), message = ref(""), showForm = ref(false);
@@ -17,7 +18,7 @@ onMounted(load);
 </script>
 <template>
   <div class="page">
-    <div class="page-heading"><div><h1 class="page-title">生产任务</h1><p class="page-lead">按所需物料和实际发料，查看每个任务还缺什么。</p></div><button v-if="authenticated" class="btn btn-primary" @click="showForm = !showForm">{{ showForm ? '收起' : '＋ 新建任务' }}</button></div>
+    <div class="page-heading"><div><h1 class="page-title">生产任务</h1><p class="page-lead">查看任务备料情况、分批回仓产量及生产完成率。</p></div><button v-if="authenticated" class="btn btn-primary" @click="showForm = !showForm">{{ showForm ? '收起' : '＋ 新建任务' }}</button></div>
     <p v-if="message" class="form-alert">{{ message }}</p>
     <ProductionTaskForm v-if="showForm && authenticated" @saved="showForm = false; load()" @cancel="showForm = false" />
     <section v-for="group in groups" :key="group.title" class="section">
@@ -25,8 +26,9 @@ onMounted(load);
       <div v-if="!group.tasks.length" class="card empty">暂无{{ group.title }}。</div>
       <div v-else class="task-list">
         <RouterLink v-for="task in group.tasks" :key="task.id" :to="`/production-tasks/${task.id}`" class="task-card card">
-          <div class="task-info"><span class="task-status">{{ labels[task.status] }}</span><strong>{{ task.productName }}</strong><small>{{ task.batchNo }} · 计划 {{ task.plannedDate }}</small></div>
+          <div class="task-info"><span class="task-status">{{ labels[task.status] }}</span><strong>{{ task.output?.productName || task.productName }}</strong><small>{{ task.batchNo }} · 计划 {{ task.plannedDate }}</small></div>
           <div class="target"><b>{{ task.progressPercent }}%</b><span>备料进度</span></div>
+          <ProductionTaskOutput v-if="task.output" class="task-output" :output="task.output" />
           <ProductionTaskTargets class="task-targets" :targets="task.targets" />
         </RouterLink>
       </div>
@@ -34,5 +36,5 @@ onMounted(load);
   </div>
 </template>
 <style scoped>
-.page-heading{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}.page-heading>.btn{flex-shrink:0}.task-list{display:grid;gap:10px}.task-card{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px;padding:16px}.task-info{display:grid;gap:4px;min-width:0}.task-info strong{font-size:17px;overflow-wrap:anywhere}.task-info small,.target span{color:#66747c;font-size:12px}.task-status{width:max-content;color:#174a68;font-size:11px;font-weight:750}.target{display:grid;text-align:right;align-content:center}.target b{font-variant-numeric:tabular-nums;font-size:22px;color:#267566}.task-targets{grid-column:1/-1;padding-top:12px;border-top:1px solid #e5ecee}.form-alert{color:#8f1d25}
+.task-output{grid-column:1/-1;padding-top:12px;border-top:1px solid #e5ecee}.page-heading{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}.page-heading>.btn{flex-shrink:0}.task-list{display:grid;gap:10px}.task-card{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px;padding:16px}.task-info{display:grid;gap:4px;min-width:0}.task-info strong{font-size:17px;overflow-wrap:anywhere}.task-info small,.target span{color:#66747c;font-size:12px}.task-status{width:max-content;color:#174a68;font-size:11px;font-weight:750}.target{display:grid;text-align:right;align-content:center}.target b{font-variant-numeric:tabular-nums;font-size:22px;color:#267566}.task-targets{grid-column:1/-1;padding-top:12px;border-top:1px solid #e5ecee}.form-alert{color:#8f1d25}
 </style>

@@ -6,13 +6,12 @@ import { errorMessage } from "../api/http";
 import { movementsApi, personsApi, productsApi, productionTasksApi } from "../api";
 import type {
   Direction,
-  IssueType,
   ItemInput,
   MovementDraft,
   Product,
-  ProductionTask,
+  ProductionTaskOption,
 } from "../types";
-import { issueLabels, directionLabel } from "../utils/labels";
+import { directionLabel } from "../utils/labels";
 import { nowLocalInput, toInstant, toLocalInput } from "../utils/time";
 import { createUuid } from "../utils/uuid";
 import { calculateQuantity, quantityError, cartonCount } from "../utils/quantity";
@@ -57,9 +56,35 @@ const saving = ref(false),
   dirty = ref(false),
   message = ref("");
 const savedMovementId = ref<number>();
-const productionTasks = ref<ProductionTask[]>([]);
+const productionTasks = ref<ProductionTaskOption[]>([]);
+const taskLoading = ref(false), taskError = ref("");
+const initialized = ref(false);
+const originalTask = ref<{ id: number; name: string; selection: string }>();
+const taskSelection = computed(() => JSON.stringify([direction.value, draft.value.returnMovement,
+  [...new Set(draft.value.items.map(i => i.productId))].sort()]));
+const keepOriginalTask = computed(() => !!originalTask.value && originalTask.value.id === draft.value.productionTaskId && originalTask.value.selection === taskSelection.value);
+let taskRequest = 0;
+async function refreshTasks() {
+  if (!initialized.value) return;
+  const request = ++taskRequest;
+  const ids = [...new Set(draft.value.items.map(i => i.productId))];
+  productionTasks.value = []; taskError.value = "";
+  if (!ids.length || ids.some(id => !id)) {
+    taskLoading.value = false;
+    if (!keepOriginalTask.value) draft.value.productionTaskId = undefined;
+    return;
+  }
+  taskLoading.value = true;
+  try {
+    const options = await productionTasksApi.linkable(ids as number[], direction.value, draft.value.returnMovement);
+    if (request !== taskRequest) return;
+    productionTasks.value = options;
+    if (!keepOriginalTask.value && !options.some(t => t.id === draft.value.productionTaskId)) draft.value.productionTaskId = undefined;
+  } catch (e) { if (request === taskRequest) taskError.value = errorMessage(e); }
+  finally { if (request === taskRequest) taskLoading.value = false; }
+}
+watch(taskSelection, refreshTasks);
 const draftKey = computed(() => `movement-draft:${direction.value}`);
-const allIssues = Object.entries(issueLabels) as [IssueType, string][];
 const productUsage = computed<Direction>(() => draft.value.returnMovement ? "WAREHOUSE_TO_PRODUCTION" : direction.value);
 const needsMaterialBatch = computed(() => direction.value === "WAREHOUSE_TO_PRODUCTION" || draft.value.returnMovement);
 function returnChanged() {
@@ -102,13 +127,6 @@ function toggleUnknownQuantity(item: ItemInput) {
     item.manualTotal = false;
   }
 }
-function toggleIssue(item: ItemInput, type: IssueType, checked: boolean) {
-  if (checked) item.issues.push({ type });
-  else item.issues = item.issues.filter((x) => x.type !== type);
-}
-function issue(item: ItemInput, type: IssueType) {
-  return item.issues.find((x) => x.type === type);
-}
 async function pickFiles(event: Event) {
   const input = event.target as HTMLInputElement;
   for (const file of Array.from(input.files || [])) {
@@ -136,6 +154,8 @@ function removeFile(index: number) {
   files.value.splice(index, 1);
 }
 function validate() {
+  if (taskLoading.value) return "生产任务正在加载，请稍候。";
+  if (taskError.value && draft.value.productionTaskId && !keepOriginalTask.value) return "请重试加载生产任务后保存。";
   if (!draft.value.senderPersonId || !draft.value.receiverPersonId)
     return "请选择发送人和接收人。";
   if (needsMaterialBatch.value && !draft.value.manufactureLot.trim())
@@ -154,8 +174,6 @@ function validate() {
       (!x.totalUnits || x.totalUnits <= 0)
     )
       return `产品明细 ${i + 1} 至少填写一种数量。`;
-    if (issue(x, "OTHER") && !issue(x, "OTHER")?.description?.trim())
-      return `请填写产品明细 ${i + 1} 的“其他”异常说明。`;
   }
   return "";
 }
@@ -169,7 +187,7 @@ function payload() {
     manufactureLot: draft.value.manufactureLot || undefined,
     returnMovement: direction.value === "PRODUCTION_TO_WAREHOUSE" && draft.value.returnMovement,
     productionTaskId: draft.value.productionTaskId,
-    remarks: draft.value.remarks,
+    remarks: editId ? draft.value.remarks : undefined,
     items: draft.value.items.map((x) => ({
       id: x.id,
       productId: x.productId,
@@ -185,7 +203,7 @@ function payload() {
           : displayedTotal(x),
       quantityUnknown: x.quantityUnknown,
       remarks: x.remarks,
-      issues: x.issues,
+      issues: editId ? x.issues : [],
     })),
   };
 }
@@ -260,7 +278,6 @@ watch(
 );
 onMounted(async () => {
   window.addEventListener("beforeunload", beforeUnload);
-  productionTasks.value = await productionTasksApi.list();
   if (editId) {
     const m = await movementsApi.detail(editId);
     const catalog = await productsApi.search('', true);
@@ -305,6 +322,7 @@ onMounted(async () => {
         })),
       })),
     };
+    if (m.productionTaskId) originalTask.value = { id: m.productionTaskId, name: m.productionTaskName || '原关联任务', selection: taskSelection.value };
     dirty.value = false;
   } else {
     const cached = localStorage.getItem(draftKey.value);
@@ -324,6 +342,8 @@ onMounted(async () => {
     item.tailCartons ??= 0;
     if (!('unitsPerCarton' in item)) item.unitsPerCarton = item.product?.defaultUnitsPerCarton;
   });
+  initialized.value = true;
+  await refreshTasks();
   await nextTick();
   dirty.value = false;
 });
@@ -357,14 +377,6 @@ onBeforeUnmount(() => {
           type="datetime-local"
           v-model="draft.movementTime"
         />
-      </div>
-      <div class="field">
-        <label>关联生产任务</label>
-        <select class="select" v-model="draft.productionTaskId">
-          <option :value="undefined">不关联生产任务</option>
-          <option v-for="task in productionTasks" :key="task.id" :value="task.id" :disabled="task.status === 'COMPLETED' || task.status === 'CANCELLED'">{{ task.productName }} · {{ task.batchNo }} · {{ task.targets.length }} 项目标</option>
-        </select>
-        <small class="hint">关联后，发料、退料和成品入库会汇总到同一个生产任务。</small>
       </div>
       <div class="grid-2 people">
         <SearchPicker
@@ -485,33 +497,13 @@ onBeforeUnmount(() => {
               >此条记录未填写箱规，总数量未知。</small
             >
           </div>
-          <fieldset class="issues">
-            <legend>异常（可多选）</legend>
-            <label v-for="[type, label] in allIssues" :key="type"
-              ><input
-                type="checkbox"
-                :checked="!!issue(item, type)"
-                @change="
-                  toggleIssue(
-                    item,
-                    type,
-                    ($event.target as HTMLInputElement).checked,
-                  )
-                "
-              />{{ label }}</label
-            ><textarea
-              v-if="issue(item, 'OTHER')"
-              class="textarea"
-              v-model="issue(item, 'OTHER')!.description"
-              placeholder="请说明其他异常"
-            ></textarea>
-          </fieldset>
           <div class="field">
             <label>产品备注</label
             ><textarea
               class="textarea"
               v-model.trim="item.remarks"
-              placeholder="仅填写这个产品的补充情况"
+              maxlength="1000"
+              placeholder="填写这个产品的补充情况或异常说明"
             ></textarea>
           </div>
         </div>
@@ -525,14 +517,6 @@ onBeforeUnmount(() => {
       </button>
     </section>
     <section class="section card card-pad stack">
-      <div class="field">
-        <label>整单备注</label
-        ><textarea
-          class="textarea"
-          v-model.trim="draft.remarks"
-          placeholder="例如：10:20 送到车间门口"
-        ></textarea>
-      </div>
       <div>
         <div class="field-label">
           照片 <span class="hint">最多 10 张，可保存后补拍</span>
@@ -569,6 +553,21 @@ onBeforeUnmount(() => {
             ><span v-else class="failed">{{ entry.status === 'prepare-failed' ? '处理失败' : '上传失败' }}</span>
           </div>
         </div>
+      </div>
+    </section>
+    <section class="section card card-pad stack">
+      <div class="field">
+        <label for="production-task">关联生产任务（可选）</label>
+        <select id="production-task" class="select" v-model="draft.productionTaskId" :disabled="taskLoading">
+          <option :value="undefined">不关联生产任务</option>
+          <option v-if="keepOriginalTask && !productionTasks.some(t => t.id === originalTask?.id)" :value="originalTask!.id">{{ originalTask!.name }} · 原关联任务</option>
+          <option v-for="task in productionTasks" :key="task.id" :value="task.id">{{ task.productName }} · {{ task.batchNo }} · {{ task.status === 'PREPARING' ? '备料中' : task.status === 'COMPLETED' ? '已完成' : '生产中' }}</option>
+        </select>
+        <small v-if="taskLoading" class="hint">正在查找匹配任务…</small>
+        <small v-else-if="draft.items.some(i => !i.productId)" class="hint">先选择产品，再显示匹配的生产任务。</small>
+        <small v-else-if="!productionTasks.length && !keepOriginalTask" class="hint">没有匹配任务。{{ direction === 'WAREHOUSE_TO_PRODUCTION' ? '仅显示需要本单全部物料且备料中的任务。' : draft.returnMovement ? '仅显示需要本单物料且未取消的任务。' : '请先在任务中设置对应成品；备料中也可分批回仓。' }}</small>
+        <small v-else class="hint">{{ direction === 'WAREHOUSE_TO_PRODUCTION' ? '只显示需要本单全部物料且备料中的任务。' : draft.returnMovement ? '退料计入任务的净发料，不计入成品产量。' : '按任务对应成品累计回仓产量；备料中、生产中和已完成任务均可补登记。' }}</small>
+        <p v-if="taskError" class="form-alert" role="alert">{{ taskError }} <button type="button" class="btn btn-ghost" @click="refreshTasks">重试</button></p>
       </div>
     </section>
     <div class="sticky-actions">
@@ -644,37 +643,13 @@ onBeforeUnmount(() => {
   min-height: 34px;
 }
 .manual input,
-.unknown-quantity input,
-.issues input {
+.unknown-quantity input {
   width: 18px;
   height: 18px;
   accent-color: #174a68;
 }
 .unknown-quantity { display: flex; align-items: center; gap: 8px; min-height: 40px; font-size: 14px; font-weight: 680; color: #174a68; }
 .return-choice{display:flex;gap:10px;align-items:flex-start;padding:12px;border:1px solid #e3b56d;background:#fff8e8;border-radius:9px;color:#744a10}.return-choice input{width:20px;height:20px;accent-color:#b75b18}.return-choice span{display:grid;gap:3px}.return-choice small{font-weight:400;color:#806239}
-.issues {
-  border: 0;
-  padding: 0;
-  margin: 0;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 7px;
-}
-.issues legend {
-  font-size: 14px;
-  font-weight: 680;
-  margin-bottom: 8px;
-}
-.issues label {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  min-height: 38px;
-  font-size: 14px;
-}
-.issues .textarea {
-  grid-column: 1/-1;
-}
 .add-item {
   border-style: dashed;
 }

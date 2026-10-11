@@ -10,6 +10,7 @@ defineProps<{ targets: ProductionTaskTarget[] }>();
       <template v-else>
         <div class="target-values"><span>净发料 / 所需</span><b>{{ target.completedQuantity.toLocaleString() }} / {{ target.targetQuantity.toLocaleString() }} {{ target.baseUnit || '个' }}</b></div>
         <small class="quantities">已发 {{ target.issuedQuantity.toLocaleString() }} · 已退 {{ target.returnedQuantity.toLocaleString() }} {{ target.baseUnit || '个' }}</small>
+        <small v-if="target.estimatedUsedQuantity != null" class="quantities">按回仓产量预计耗用 {{ target.estimatedUsedQuantity.toLocaleString(undefined, { maximumFractionDigits: 6 }) }} {{ target.baseUnit || '个' }}</small>
         <p v-if="target.shortageQuantity > 0" class="shortage">{{ target.unknownQuantityCount ? '按已知数量还缺' : '还缺' }} {{ target.shortageQuantity.toLocaleString() }} {{ target.baseUnit || '个' }}</p>
         <p v-else-if="!target.unknownQuantityCount" class="ready">已备齐</p>
         <p v-if="target.unknownQuantityCount" class="shortage">有 {{ target.unknownQuantityCount }} 条发料或退料明细数量不确定，请核对后确认是否备齐。</p>

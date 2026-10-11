@@ -14,6 +14,14 @@ const form = ref({
   targets: props.task?.targets.map(t => ({ key: nextKey++, productId: t.productId as number | undefined, targetQuantity: t.targetQuantity, baseUnit: t.baseUnit || "" })) || [newTarget()],
   plannedDate: props.task?.plannedDate || today(), batchNo: props.task?.batchNo || "", remarks: props.task?.remarks || ""
 });
+const outputEnabled = ref(!!props.task?.output);
+const outputProductId = ref<number | undefined>(props.task?.output?.productId);
+const outputQuantity = ref(props.task?.output?.targetQuantity || 0);
+const outputUnit = ref(props.task?.output?.baseUnit || "");
+async function loadOutputs(q: string): Promise<Product[]> {
+  return (await productsApi.search(q, !!props.task, 'PRODUCTION_TO_WAREHOUSE'))
+    .filter(p => !p.quantityUnknown && (p.active || p.id === props.task?.output?.productId));
+}
 const saving = ref(false), message = ref("");
 async function loadMaterials(q: string): Promise<Product[]> {
   const rows = await productsApi.search(q, !!props.task, 'WAREHOUSE_TO_PRODUCTION');
@@ -28,9 +36,12 @@ async function save() {
   if (new Set(targets.map(t => t.productId)).size !== targets.length) {
     message.value = "同一个目标产品不能重复添加。"; return;
   }
+  if (outputEnabled.value && (!outputProductId.value || !Number.isSafeInteger(outputQuantity.value) || outputQuantity.value <= 0)) {
+    message.value = "请选择成品，并填写大于零的整数计划产量。"; return;
+  }
   saving.value = true; message.value = "";
   try {
-    const payload = { ...form.value, targets: targets.map(t => ({ productId: t.productId, targetQuantity: t.targetQuantity })) };
+    const payload = { ...form.value, outputProductId: outputEnabled.value ? outputProductId.value : null, targetOutputQuantity: outputEnabled.value ? outputQuantity.value : null, targets: targets.map(t => ({ productId: t.productId, targetQuantity: t.targetQuantity })) };
     const result = props.task ? await productionTasksApi.update(props.task.id, payload) : await productionTasksApi.create(payload);
     emit("saved", result);
   } catch (e) { message.value = errorMessage(e); } finally { saving.value = false; }
@@ -52,6 +63,13 @@ async function save() {
         <button type="button" class="btn btn-secondary" :disabled="form.targets.length === 1" :aria-label="`移除目标产品 ${index + 1}`" @click="form.targets.splice(index, 1)">移除</button>
       </div>
       <button type="button" class="btn btn-secondary" @click="form.targets.push(newTarget())">＋ 添加所需物料</button>
+      <label class="output-choice"><input type="checkbox" v-model="outputEnabled" /> 记录成品回仓及生产完成率</label>
+      <div v-if="outputEnabled" class="output-plan">
+        <SearchPicker v-model="outputProductId" label="成品产品" placeholder="选择车间送回仓库的成品" :load="loadOutputs"
+          :display="p => `${p.name} · ${p.materialCode}`" @select="p => outputUnit = p?.baseUnit || ''" />
+        <label class="field"><span>计划产量 * {{ outputUnit ? `（${outputUnit}）` : '' }}</span><input class="input" type="number" min="1" step="1" required v-model.number="outputQuantity" /></label>
+        <p class="hint">按成品基础单位填写，回仓时使用同一单位。例如成品以盒计量：计划 500 盒，所需关节饮 15,000 个、内盒和外盒各 500 个；若成品以个计量，计划产量填 15,000。装箱规格只表示运输包装，不用于推断生产配比。</p>
+      </div>
       <div class="grid-2">
         <label class="field"><span>计划日期 *</span><input class="input" type="date" required v-model="form.plannedDate" /></label>
         <label class="field"><span>生产批次 *</span><input class="input mono" maxlength="100" required v-model.trim="form.batchNo" /></label>
@@ -64,5 +82,5 @@ async function save() {
 </template>
 
 <style scoped>
-.task-form,fieldset{display:grid;gap:16px}.task-form{margin-top:16px}fieldset{padding:0;border:0;min-width:0}.target-row{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr) auto;gap:12px;align-items:end;border-bottom:1px solid #e5ecee;padding-bottom:16px}.target-row>*{min-width:0}fieldset>.btn{justify-self:start}.form-actions{display:flex;gap:10px}.form-alert{color:#8f1d25}.hint{margin:0}@media(max-width:600px){.target-row{grid-template-columns:minmax(0,1fr) auto}.target-row>:first-child{grid-column:1/-1}}
+.output-choice{display:flex;align-items:center;gap:8px}.output-choice input{width:18px;height:18px}.output-plan{display:grid;gap:12px;padding:14px;background:#f3f7f8;border-radius:8px}.task-form,fieldset{display:grid;gap:16px}.task-form{margin-top:16px}fieldset{padding:0;border:0;min-width:0}.target-row{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr) auto;gap:12px;align-items:end;border-bottom:1px solid #e5ecee;padding-bottom:16px}.target-row>*{min-width:0}fieldset>.btn{justify-self:start}.form-actions{display:flex;gap:10px}.form-alert{color:#8f1d25}.hint{margin:0}@media(max-width:600px){.target-row{grid-template-columns:minmax(0,1fr) auto}.target-row>:first-child{grid-column:1/-1}}
 </style>

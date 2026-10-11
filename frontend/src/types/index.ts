@@ -117,20 +117,26 @@ export interface MovementDetail {
 }
 export interface ProductionTaskMovement {
   id: number; recordNo: string; direction: Direction; returnMovement: boolean; movementTime: string;
-  totalCartons: number; totalQuantity: number; productNames: string[];
+  totalCartons: number; totalQuantity: number; productNames: string[]; status: MovementStatus; unknownQuantityCount: number; quantityUnit?: string;
 }
+export interface ProductionTaskOutput {
+  productId: number; productName: string; materialCode: string; baseUnit: string;
+  targetQuantity: number; receivedQuantity: number; progressPercent: number; unknownQuantityCount: number;
+}
+export interface ProductionTaskOption { id: number; productName: string; batchNo: string; status: ProductionTaskStatus }
 export interface ProductionTask {
   id: number; productId: number; productName: string; baseUnit?: string; targetQuantity: number;
   plannedDate: string; batchNo: string; status: ProductionTaskStatus; remarks?: string;
   completedQuantity: number; progressPercent: number; issueMovementCount: number; returnMovementCount: number;
   movements: ProductionTaskMovement[]; createdAt: string; updatedAt: string;
   targets: ProductionTaskTarget[];
+  output?: ProductionTaskOutput;
 }
 export interface ProductionTaskTarget {
   productId: number; productName: string; materialCode: string; baseUnit?: string;
   targetQuantity: number; completedQuantity: number; progressPercent: number;
   issuedQuantity: number; returnedQuantity: number; shortageQuantity: number;
-  unknownQuantityCount: number; materialTarget: boolean;
+  unknownQuantityCount: number; materialTarget: boolean; estimatedUsedQuantity?: number | null;
 }
 export interface Packaging { type: 'FULL' | 'TAIL'; unitsPerCarton: number | null; cartons: number }
 export interface MaterialSummary {

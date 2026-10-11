@@ -18,6 +18,8 @@ public class ProductionTask extends PersistentEntity {
     @Column(name="batch_no",nullable=false,length=100) private String batchNo;
     @Enumerated(EnumType.STRING) @Column(nullable=false,length=20) private Status status=Status.PREPARING;
     @Column(length=1000) private String remarks;
+    @ManyToOne(fetch=FetchType.LAZY) @JoinColumn(name="output_product_id") private Product outputProduct;
+    @Column(name="target_output_quantity") private Long targetOutputQuantity;
     @OneToMany(mappedBy="task",cascade=CascadeType.ALL,orphanRemoval=true)
     @OrderBy("sortOrder ASC, id ASC")
     private List<ProductionTaskTarget> targets=new ArrayList<>();

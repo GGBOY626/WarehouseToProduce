@@ -52,7 +52,7 @@ class MovementServiceIntegrationTest {
     }
 
     @Test void productionTaskLinksFinishedGoodsButCountsOnlyMaterialIssues(){
-        var task=productionTasks.create(new ProductionTaskService.SaveRequest(product,1000,LocalDate.of(2026,9,28),"TASK-LOT",null));
+        var task=productionTasks.create(new ProductionTaskService.SaveRequest(product,1000L,LocalDate.of(2026,9,28),"TASK-LOT",null,null,inboundProduct,1000L));
         var outboundItem=new MovementDtos.ItemRequest(product,"MAT-OUT",2,0,null,null,List.of());
         movements.create(new MovementDtos.SaveRequest(UUID.randomUUID().toString(),MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,
                 Instant.parse("2026-09-28T00:00:00Z"),sender,receiver,"MAT-LOT",false,task.id(),null,List.of(outboundItem)));

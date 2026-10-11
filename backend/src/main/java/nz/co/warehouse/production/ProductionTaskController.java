@@ -9,6 +9,9 @@ import java.util.List;
 public class ProductionTaskController {
     private final ProductionTaskService service;
     @GetMapping public List<ProductionTaskService.Response> list(@RequestParam(required=false) ProductionTask.Status status){return service.list(status);}
+    @GetMapping("/linkable") public List<ProductionTaskService.LinkOption> linkable(
+            @RequestParam List<Long> productIds,@RequestParam nz.co.warehouse.movement.MovementEnums.Direction direction,
+            @RequestParam(defaultValue="false") boolean returnMovement){return service.linkable(productIds,direction,returnMovement);}
     @GetMapping("/{id}") public ProductionTaskService.Response detail(@PathVariable long id){return service.detail(id);}
     @PostMapping public ProductionTaskService.Response create(@Valid @RequestBody ProductionTaskService.SaveRequest r){return service.create(r);}
     @PutMapping("/{id}") public ProductionTaskService.Response update(@PathVariable long id,@Valid @RequestBody ProductionTaskService.SaveRequest r){return service.update(id,r);}

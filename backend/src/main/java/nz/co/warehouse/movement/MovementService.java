@@ -125,8 +125,12 @@ public class MovementService {
         validateDirection(r);
         Person sender=m.getId()!=null&&m.getSenderPerson().getId().equals(r.senderPersonId())?persons.getAny(r.senderPersonId()):persons.getActive(r.senderPersonId());
         Person receiver=m.getId()!=null&&m.getReceiverPerson().getId().equals(r.receiverPersonId())?persons.getAny(r.receiverPersonId()):persons.getActive(r.receiverPersonId());
+        Set<Long> selectedProductIds=r.items().stream().map(MovementDtos.ItemRequest::productId).collect(java.util.stream.Collectors.toSet());
+        boolean keepTask=m.getProductionTask()!=null&&m.getProductionTask().getId().equals(r.productionTaskId())
+                &&m.getDirection()==r.direction()&&m.isReturnMovement()==r.returnMovement()
+                &&m.getItems().stream().map(i->i.getProduct().getId()).collect(java.util.stream.Collectors.toSet()).equals(selectedProductIds);
         m.setDirection(r.direction());m.setReturnMovement(r.returnMovement());m.setMovementTime(r.movementTime());m.setSenderPerson(sender);m.setSenderNameSnapshot(sender.getName());m.setReceiverPerson(receiver);m.setReceiverNameSnapshot(receiver.getName());
-        m.setProductionTask(r.productionTaskId()==null?null:m.getProductionTask()!=null&&m.getProductionTask().getId().equals(r.productionTaskId())?m.getProductionTask():productionTasks.getLinkable(r.productionTaskId()));
+        m.setProductionTask(r.productionTaskId()==null?null:keepTask?m.getProductionTask():productionTasks.getLinkable(r.productionTaskId(),new ArrayList<>(selectedProductIds),r.direction(),r.returnMovement()));
         m.setManufactureLot(blank(r.manufactureLot()));m.setRemarks(blank(r.remarks()));
         Set<Long> existingProductIds=m.getItems().stream().map(x->x.getProduct().getId()).collect(java.util.stream.Collectors.toSet());
         Map<Long,MovementItem> originals=new HashMap<>();
