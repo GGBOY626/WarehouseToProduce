@@ -4,6 +4,7 @@ import com.openhtmltopdf.pdfboxout.PdfRendererBuilder;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import nz.co.warehouse.common.BusinessException;
+import nz.co.warehouse.movement.MaterialQuantity;
 import nz.co.warehouse.movement.Movement;
 import nz.co.warehouse.movement.MovementEnums;
 import nz.co.warehouse.movement.MovementItem;
@@ -82,14 +83,14 @@ public class PdfReportService {
                 table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{border:1px solid #bcc8cd;padding:4px;vertical-align:middle;word-wrap:break-word}
                 th{background:#e9f2f6;text-align:center;font-weight:bold}.text{text-align:left}.center{text-align:center}.number{text-align:right}
                 .date-group td{background:#dcecf3;color:#174a68;text-align:center;font-size:10px;font-weight:bold;padding:4px}
-                .carton-spec{font-size:7.5px;color:#718188;white-space:nowrap}.empty{text-align:center;padding:12px;color:#66777f}
+                .carton-spec{font-size:7.5px;color:#718188;white-space:normal}.empty{text-align:center;padding:12px;color:#66777f}
                 .direction-block+.direction-block{page-break-before:always}
                 </style></head><body>
                 """);
         html.append("<h1>仓库 / 生产车间物料流转记录</h1><div class='range'>日期范围：")
                 .append(REPORT_DATE.format(from)).append(" 至 ").append(REPORT_DATE.format(to)).append("　导出范围：")
                 .append(selectedDirection == null ? "全部方向" : directionText(selectedDirection)).append("</div>")
-                .append("<div class='formula'><strong>数量计算：</strong>总数量 = 完整箱 × 每箱数量 + 散装数量（例：3 × 10 + 2 = 32）。</div>");
+                .append("<div class='formula'><strong>数量计算：</strong>总箱数 = 满箱 + 尾箱；总数量 = 各规格完整箱数量 + 尾箱实际数量 + 真正散装数量。</div>");
         if (selectedDirection == null || selectedDirection == MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION)
             appendDirectionBlock(html, rows, MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION, businessZone);
         if ((selectedDirection == null || selectedDirection == MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION)
@@ -123,7 +124,7 @@ public class PdfReportService {
                                    String heading, ZoneId businessZone) {
         html.append("<section class='report-section'><h2 class='section-title'>").append(heading).append(" 明细表</h2>")
                 .append("<table><thead><tr><th style='width:9%'>日期</th><th style='width:15%'>产品</th><th style='width:12%'>物料编码</th>")
-                .append("<th style='width:11%'>物料批次</th><th style='width:11%'>完整箱</th><th style='width:8%'>散装数量</th>")
+                .append("<th style='width:11%'>物料批次</th><th style='width:11%'>总箱数 / 包装明细</th><th style='width:8%'>散装数量</th>")
                 .append("<th style='width:9%'>总数量</th><th style='width:10%'>产品备注</th><th style='width:7.5%'>出货人</th><th style='width:7.5%'>收货人</th></tr></thead><tbody>");
         int itemCount = 0;
         Map<LocalDate, Integer> dailyCounts = new LinkedHashMap<>();
@@ -154,30 +155,32 @@ public class PdfReportService {
     }
 
     private void appendTotalTable(StringBuilder html, List<Movement> rows, String heading) {
-        Map<TotalKey, TotalRow> totals = new LinkedHashMap<>();
-        for (Movement movement : rows) for (MovementItem item : movement.getItems()) {
-            TotalKey key = new TotalKey(item.getProductNameSnapshot(), item.getBatchNo(), movement.getManufactureLot(), item.getUnitsPerCartonSnapshot(), item.getBaseUnitSnapshot());
-            totals.computeIfAbsent(key, ignored -> new TotalRow()).add(item);
-        }
+        var totals=MaterialQuantity.group(rows.stream().flatMap(m->m.getItems().stream()).toList());
         int recordCount = rows.stream().mapToInt(movement -> movement.getItems().size()).sum();
         html.append("<section class='report-section totals'><h2 class='section-title'>").append(heading).append(" 总计表")
                 .append("<span class='section-summary'>共 ").append(totals.size()).append(" 种物料 / ").append(recordCount).append(" 条记录</span></h2>")
-                .append("<table><thead><tr><th>产品</th><th>物料编码</th><th>物料批次</th><th>每箱数量</th><th>完整箱合计</th><th>散装合计</th><th>总数量合计</th></tr></thead><tbody>");
-        for (Map.Entry<TotalKey, TotalRow> entry : totals.entrySet()) {
-            TotalKey key = entry.getKey(); TotalRow total = entry.getValue();
-            html.append("<tr><td class='text'>").append(e(key.product())).append("</td><td class='center'>").append(e(key.materialCode())).append("</td><td class='center'>").append(e(key.batch()))
-                    .append("</td><td class='number'>").append(key.unitsPerCarton() == null ? "-" : key.unitsPerCarton() + " " + e(key.unit()))
-                    .append("</td><td class='number'>").append(total.cartons).append(" 箱</td><td class='number'>").append(total.loose).append(" ").append(e(key.unit()))
-                    .append("</td><td class='number'>").append(total.unknown ? "含数量不确定项" : total.total + " " + e(key.unit())).append("</td></tr>");
+                .append("<table><thead><tr><th>产品</th><th>物料编码</th><th>物料批次</th><th style='width:22%'>装箱规格明细</th><th>总箱数</th><th>散装合计</th><th>总数量合计</th></tr></thead><tbody>");
+        for (var entry : totals.entrySet()) {
+            var key=entry.getKey();var total=MaterialQuantity.of(entry.getValue());
+            html.append("<tr><td class='text'>").append(e(entry.getValue().getFirst().getProductNameSnapshot())).append("</td><td class='center'>").append(e(key.materialCode())).append("</td><td class='center'>").append(e(key.materialBatch()))
+                    .append("</td><td class='text'>").append(packaging(total,key.baseUnit()))
+                    .append("</td><td class='number'>").append(total.totalCartons()).append(" 箱");
+            if(total.tailCartons()>0)html.append("<br/>").append(total.fullCartons()).append(" 满箱 + ").append(total.tailCartons()).append(" 尾箱");
+            html.append("</td><td class='number'>").append(total.looseUnits()).append(" ").append(e(key.baseUnit()))
+                    .append("</td><td class='number'>").append(total.totalQuantity()).append(" ").append(e(key.baseUnit()))
+                    .append(total.unknownItemCount()>0?"<br/>（已知数量，含不确定项）":"").append("</td></tr>");
         }
         if (totals.isEmpty()) html.append("<tr><td colspan='7' class='empty'>该方向暂无记录</td></tr>");
         html.append("</tbody></table></section>");
     }
 
     private String fullCartons(MovementItem item) {
-        if (item.isQuantityUnknown()) return item.getFullCartons() + " 箱";
-        String cartonSize = item.getUnitsPerCartonSnapshot() == null ? "规格未设置" : item.getUnitsPerCartonSnapshot() + " " + e(item.getBaseUnitSnapshot()) + "/箱";
-        return item.getFullCartons() + " 箱<br/><span class='carton-spec'>" + cartonSize + "</span>";
+        var totals=MaterialQuantity.of(List.of(item));
+        return totals.totalCartons()+" 箱<br/><span class='carton-spec'>"+packaging(totals,item.getBaseUnitSnapshot())+"</span>";
+    }
+    private String packaging(MaterialQuantity totals,String unit){
+        return totals.packaging().stream().map(spec->(spec.unitsPerCarton()==null?"规格未记录":spec.unitsPerCarton()+" "+e(unit)+"/箱")
+                +" × "+spec.cartons()+(spec.type().equals("TAIL")?" 尾箱":" 满箱")).collect(java.util.stream.Collectors.joining("<br/>"));
     }
     private String quantity(MovementItem item, long value) { return item.isQuantityUnknown() ? "数量不确定" : value + " " + e(item.getBaseUnitSnapshot()); }
     private String totalQuantity(MovementItem item) {
@@ -194,12 +197,4 @@ public class PdfReportService {
     }
     private String e(String value) { return value == null ? "" : value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;"); }
 
-    private record TotalKey(String product, String materialCode, String batch, Integer unitsPerCarton, String unit) {}
-    private static final class TotalRow {
-        private int cartons; private long loose; private long total; private boolean unknown;
-        private void add(MovementItem item) {
-            cartons += item.getFullCartons(); loose += item.getLooseUnits();
-            if (item.isQuantityUnknown() || item.getTotalUnits() == null) unknown = true; else total += item.getTotalUnits();
-        }
-    }
 }

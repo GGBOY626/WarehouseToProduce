@@ -82,9 +82,8 @@ public class MovementService {
     @Transactional(readOnly=true)
     public MovementDtos.TodayStatsResponse todayStats(LocalDate date,MovementEnums.Direction direction){
         ZoneId z=ZoneId.of(zone);Instant start=date.atStartOfDay(z).toInstant();Instant end=date.plusDays(1).atStartOfDay(z).toInstant();
-        List<MovementDtos.ProductStatResponse> productStats=repository.summarizeItems(start,end,direction,MovementEnums.Status.ACTIVE).stream()
-                .map(row->new MovementDtos.ProductStatResponse((String)row[0],(String)row[4],(String)row[5],(String)row[6],((Number)row[1]).longValue(),((Number)row[7]).longValue(),((Number)row[2]).longValue(),((Number)row[3]).longValue(),List.of())).toList();
-        long cartons=productStats.stream().mapToLong(MovementDtos.ProductStatResponse::fullCartons).sum();
+        List<MovementDtos.ProductStatResponse> productStats=productStats(repository.findStatisticItems(start,end,direction,MovementEnums.Status.ACTIVE,null,null,""),false);
+        long cartons=productStats.stream().mapToLong(MovementDtos.ProductStatResponse::totalCartons).sum();
         long quantity=productStats.stream().mapToLong(MovementDtos.ProductStatResponse::totalQuantity).sum();
         long unknown=productStats.stream().mapToLong(MovementDtos.ProductStatResponse::unknownItemCount).sum();
         return new MovementDtos.TodayStatsResponse(cartons,quantity,unknown,productStats);
@@ -93,26 +92,33 @@ public class MovementService {
     @Transactional(readOnly=true)
     public MovementDtos.QueryStatsResponse queryStats(LocalDate from,LocalDate to,MovementEnums.Direction direction,MovementEnums.Status status,Boolean missingPhoto,Boolean hasIssue,String q){
         ZoneId z=ZoneId.of(zone);Instant start=from.atStartOfDay(z).toInstant();Instant end=to.plusDays(1).atStartOfDay(z).toInstant();
-        record MaterialKey(String name,String code,String batch,String unit) {}
-        Map<MovementEnums.Direction,Map<MaterialKey,List<MovementDtos.StatMovementResponse>>> sources=new EnumMap<>(MovementEnums.Direction.class);
-        repository.summarizeSearch(start,end,direction,status,missingPhoto,hasIssue,q==null?"":q.trim()).forEach(row->{
-            MovementEnums.Direction rowDirection=(MovementEnums.Direction)row[0];
-            sources.computeIfAbsent(rowDirection,key->new LinkedHashMap<>()).computeIfAbsent(new MaterialKey((String)row[1],(String)row[10],(String)row[11],(String)row[12]),key->new ArrayList<>())
-                    .add(new MovementDtos.StatMovementResponse(((Number)row[5]).longValue(),(String)row[6],(Instant)row[7],rowDirection,(String)row[8],(String)row[9],((Number)row[2]).longValue(),((Number)row[3]).longValue(),((Number)row[4]).longValue(),((Number)row[13]).longValue(),(Boolean)row[14],((Number)row[15]).intValue()));
-        });
+        Map<MovementEnums.Direction,List<MovementItem>> sources=new EnumMap<>(MovementEnums.Direction.class);
+        repository.findStatisticItems(start,end,direction,status,missingPhoto,hasIssue,q==null?"":q.trim())
+                .forEach(item->sources.computeIfAbsent(item.getMovement().getDirection(),ignored->new ArrayList<>()).add(item));
         Map<MovementEnums.Direction,List<MovementDtos.ProductStatResponse>> grouped=new EnumMap<>(MovementEnums.Direction.class);
-        sources.forEach((key,products)->grouped.put(key,products.entrySet().stream().map(entry->new MovementDtos.ProductStatResponse(
-                entry.getKey().name(),entry.getKey().code(),entry.getKey().batch(),entry.getKey().unit(),entry.getValue().stream().mapToLong(MovementDtos.StatMovementResponse::fullCartons).sum(),
-                entry.getValue().stream().mapToLong(MovementDtos.StatMovementResponse::looseUnits).sum(),
-                entry.getValue().stream().mapToLong(MovementDtos.StatMovementResponse::totalQuantity).sum(),
-                entry.getValue().stream().mapToLong(MovementDtos.StatMovementResponse::unknownItemCount).sum(),List.copyOf(entry.getValue()))).toList()));
+        sources.forEach((key,items)->grouped.put(key,productStats(items,true)));
         List<MovementDtos.DirectionStatResponse> directions=grouped.entrySet().stream().map(entry->{
-            long cartons=entry.getValue().stream().mapToLong(MovementDtos.ProductStatResponse::fullCartons).sum();
+            long cartons=entry.getValue().stream().mapToLong(MovementDtos.ProductStatResponse::totalCartons).sum();
             long quantity=entry.getValue().stream().mapToLong(MovementDtos.ProductStatResponse::totalQuantity).sum();
             long unknown=entry.getValue().stream().mapToLong(MovementDtos.ProductStatResponse::unknownItemCount).sum();
             return new MovementDtos.DirectionStatResponse(entry.getKey(),cartons,quantity,unknown,entry.getValue());
         }).toList();
         return new MovementDtos.QueryStatsResponse(directions);
+    }
+
+    private List<MovementDtos.ProductStatResponse> productStats(List<MovementItem> items,boolean includeSources){
+        return MaterialQuantity.group(items).entrySet().stream().map(entry->{
+            var key=entry.getKey();var totals=MaterialQuantity.of(entry.getValue());
+            Map<Long,List<MovementItem>> records=new LinkedHashMap<>();
+            if(includeSources)entry.getValue().forEach(item->records.computeIfAbsent(item.getMovement().getId(),ignored->new ArrayList<>()).add(item));
+            List<MovementDtos.StatMovementResponse> movements=records.values().stream().map(recordItems->{
+                Movement m=recordItems.getFirst().getMovement();var quantity=MaterialQuantity.of(recordItems);
+                return new MovementDtos.StatMovementResponse(m.getId(),m.getRecordNo(),m.getMovementTime(),m.getDirection(),m.getSenderNameSnapshot(),m.getReceiverNameSnapshot(),
+                        quantity.fullCartons(),quantity.totalQuantity(),quantity.unknownItemCount(),quantity.looseUnits(),m.isReturnMovement(),m.getPhotos().size(),quantity.tailCartons(),quantity.totalCartons(),quantity.packaging());
+            }).toList();
+            return new MovementDtos.ProductStatResponse(entry.getValue().getFirst().getProductNameSnapshot(),key.materialCode(),key.materialBatch(),key.baseUnit(),
+                    totals.fullCartons(),totals.looseUnits(),totals.totalQuantity(),totals.unknownItemCount(),movements,totals.tailCartons(),totals.totalCartons(),totals.packaging());
+        }).toList();
     }
 
     private void apply(Movement m,MovementDtos.SaveRequest r){
@@ -121,21 +127,41 @@ public class MovementService {
         Person receiver=m.getId()!=null&&m.getReceiverPerson().getId().equals(r.receiverPersonId())?persons.getAny(r.receiverPersonId()):persons.getActive(r.receiverPersonId());
         m.setDirection(r.direction());m.setReturnMovement(r.returnMovement());m.setMovementTime(r.movementTime());m.setSenderPerson(sender);m.setSenderNameSnapshot(sender.getName());m.setReceiverPerson(receiver);m.setReceiverNameSnapshot(receiver.getName());
         m.setProductionTask(r.productionTaskId()==null?null:m.getProductionTask()!=null&&m.getProductionTask().getId().equals(r.productionTaskId())?m.getProductionTask():productionTasks.getLinkable(r.productionTaskId()));
-        m.setManufactureLot(r.direction()==MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION||r.returnMovement()?r.manufactureLot().trim():null);m.setRemarks(blank(r.remarks()));
+        m.setManufactureLot(blank(r.manufactureLot()));m.setRemarks(blank(r.remarks()));
         Set<Long> existingProductIds=m.getItems().stream().map(x->x.getProduct().getId()).collect(java.util.stream.Collectors.toSet());
-        m.getItems().clear();int cartons=0;int order=0;
+        Map<Long,MovementItem> originals=new HashMap<>();
+        m.getItems().forEach(item->originals.put(item.getId(),item));
+        m.getItems().clear();int cartons=0;int order=0;long knownQuantity=0;
         ProductUsage expectedUsage=r.returnMovement()?ProductUsage.WAREHOUSE_TO_PRODUCTION
                 :(r.direction()==MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION?ProductUsage.WAREHOUSE_TO_PRODUCTION:ProductUsage.PRODUCTION_TO_WAREHOUSE);
-        for(var input:r.items()){MovementItem item=buildItem(input,order++,existingProductIds.contains(input.productId()),expectedUsage);m.addItem(item);cartons+=item.getFullCartons();}
+        for(var input:r.items()){
+            MovementItem original=input.id()==null?null:originals.get(input.id());
+            if(input.id()!=null&&original==null)throw BusinessException.badRequest("ITEM_NOT_FOUND","明细不属于当前流转记录，请刷新后重试。");
+            if(original!=null&&!original.getProduct().getId().equals(input.productId()))original=null;
+            MovementItem item=buildItem(input,order++,existingProductIds.contains(input.productId()),expectedUsage,original);
+            m.addItem(item);
+            try{cartons=Math.addExact(cartons,item.getTotalCartons());knownQuantity=Math.addExact(knownQuantity,item.getTotalUnits()==null?0:item.getTotalUnits());}
+            catch(ArithmeticException ex){throw BusinessException.badRequest("QUANTITY_OVERFLOW","箱数或数量超出可保存范围。");}
+        }
         m.setTotalCartons(cartons);
     }
 
-    private MovementItem buildItem(MovementDtos.ItemRequest r,int order,boolean allowInactive,ProductUsage expectedUsage){
-        Product p=products.getForMovement(r.productId(),expectedUsage,allowInactive);MovementItem i=new MovementItem();i.setProduct(p);i.setProductNameSnapshot(p.getName());i.setSkuSnapshot(null);i.setUnitsPerCartonSnapshot(p.getDefaultUnitsPerCarton());i.setBatchNo(r.batchNo().trim());i.setSortOrder(order);i.setRemarks(blank(r.remarks()));
-        boolean quantityUnknown=p.isQuantityUnknown()||r.quantityUnknown();
-        if(!quantityUnknown&&!QuantityRules.hasQuantity(r.fullCartons(),r.looseUnits(),r.totalUnits()))throw BusinessException.badRequest("QUANTITY_REQUIRED","每个产品至少填写一种数量，或选择数量不确定。");
-        i.setBaseUnitSnapshot(p.getBaseUnit()==null?"—":p.getBaseUnit());i.setFullCartons(r.fullCartons());i.setLooseUnits(quantityUnknown?0:r.looseUnits());
-        Long calculated=quantityUnknown?null:QuantityRules.calculate(p.getDefaultUnitsPerCarton(),r.fullCartons(),r.looseUnits());
+    private MovementItem buildItem(MovementDtos.ItemRequest r,int order,boolean allowInactive,ProductUsage expectedUsage,MovementItem original){
+        Product p=products.getForMovement(r.productId(),expectedUsage,allowInactive);MovementItem i=new MovementItem();i.setProduct(p);i.setProductNameSnapshot(original==null?p.getName():original.getProductNameSnapshot());i.setSkuSnapshot(original==null?null:original.getSkuSnapshot());i.setUnitsPerCartonSnapshot(r.unitsPerCarton()!=null?r.unitsPerCarton():original==null?p.getDefaultUnitsPerCarton():original.getUnitsPerCartonSnapshot());i.setBatchNo(r.batchNo().trim());i.setSortOrder(order);i.setRemarks(blank(r.remarks()));
+        boolean quantityUnknown=(original==null&&p.isQuantityUnknown())||r.quantityUnknown();
+        if(r.fullCartons()<0||r.tailCartons()<0||r.looseUnits()<0||(r.unitsPerCarton()!=null&&r.unitsPerCarton()<=0)||(r.totalUnits()!=null&&r.totalUnits()<0))
+            throw BusinessException.badRequest("QUANTITY_INVALID","箱数和数量不能为负数，每箱数量必须为正整数。");
+        if((r.tailCartons()>0&&(r.tailUnitsPerCarton()==null||r.tailUnitsPerCarton()<=0))||(r.tailCartons()==0&&r.tailUnitsPerCarton()!=null))
+            throw BusinessException.badRequest("TAIL_QUANTITY_INVALID","有尾箱时请填写尾箱箱数及每箱实际数量；没有尾箱时请清空尾箱数量。");
+        i.setTailCartons(r.tailCartons());i.setTailUnitsPerCarton(r.tailUnitsPerCarton());
+        if(!quantityUnknown&&r.tailCartons()==0&&!QuantityRules.hasQuantity(r.fullCartons(),r.looseUnits(),r.totalUnits()))throw BusinessException.badRequest("QUANTITY_REQUIRED","每个产品至少填写一种数量，或选择数量不确定。");
+        i.setBaseUnitSnapshot(original==null?(p.getBaseUnit()==null?"—":p.getBaseUnit()):original.getBaseUnitSnapshot());i.setFullCartons(r.fullCartons());i.setLooseUnits(r.looseUnits());
+        Long calculated;
+        try {
+            i.getTotalCartons();
+            calculated=QuantityRules.calculate(i.getUnitsPerCartonSnapshot(),r.fullCartons(),r.tailCartons(),r.tailUnitsPerCarton(),r.looseUnits());
+        } catch(ArithmeticException ex){throw BusinessException.badRequest("QUANTITY_OVERFLOW","数量超出可保存范围。");}
+        if(quantityUnknown)calculated=null;
         i.setCalculatedTotalUnits(calculated);i.setTotalUnits(quantityUnknown?null:(r.totalUnits()!=null?r.totalUnits():calculated));i.setTotalUnitsOverridden(!quantityUnknown&&i.getTotalUnits()!=null&&!Objects.equals(i.getTotalUnits(),calculated));i.setQuantityUnknown(quantityUnknown);
         Set<MovementEnums.IssueType> seen=new HashSet<>();for(var issue:Optional.ofNullable(r.issues()).orElse(List.of())){if(!seen.add(issue.type()))throw BusinessException.badRequest("DUPLICATE_ISSUE","同一种异常不能重复选择。");if(issue.type()==MovementEnums.IssueType.OTHER&&(issue.description()==null||issue.description().isBlank()))throw BusinessException.badRequest("ISSUE_DESCRIPTION_REQUIRED","选择“其他”异常时必须填写说明。");MovementItemIssue entity=new MovementItemIssue();entity.setIssueType(issue.type());entity.setDescription(blank(issue.description()));i.addIssue(entity);}return i;
     }

@@ -19,6 +19,8 @@ public class MovementItem extends PersistentEntity {
     @Column(name="base_unit_snapshot",nullable=false,length=20) private String baseUnitSnapshot;
     @Column(name="batch_no",nullable=false,length=100) private String batchNo;
     @Column(name="full_cartons",nullable=false) private int fullCartons;
+    @Column(name="tail_cartons",nullable=false) private int tailCartons;
+    @Column(name="tail_units_per_carton") private Long tailUnitsPerCarton;
     @Column(name="loose_units",nullable=false) private long looseUnits;
     @Column(name="calculated_total_units") private Long calculatedTotalUnits;
     @Column(name="total_units") private Long totalUnits;
@@ -30,4 +32,5 @@ public class MovementItem extends PersistentEntity {
     @BatchSize(size=100)
     private Set<MovementItemIssue> issues=new LinkedHashSet<>();
     public void addIssue(MovementItemIssue issue){issues.add(issue);issue.setMovementItem(this);}
+    public int getTotalCartons(){return Math.addExact(fullCartons,tailCartons);}
 }

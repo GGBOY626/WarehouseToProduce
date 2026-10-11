@@ -11,14 +11,17 @@ public final class ProductDtos {
                           @NotNull ProductUsage movementDirection,
                           @Positive Integer defaultUnitsPerCarton,
                           @Size(max=20) String baseUnit,
-                          boolean quantityUnknown) {
+                          boolean quantityUnknown, java.util.List<@NotNull @Positive Integer> cartonSpecs) {
+        public Request(String name,String materialCode,String materialBatch,ProductUsage movementDirection,Integer defaultUnitsPerCarton,String baseUnit,boolean quantityUnknown){
+            this(name,materialCode,materialBatch,movementDirection,defaultUnitsPerCarton,baseUnit,quantityUnknown,null);
+        }
         public Request(String name,String materialCode,String materialBatch,ProductUsage movementDirection,Integer defaultUnitsPerCarton,String baseUnit){
             this(name,materialCode,materialBatch,movementDirection,defaultUnitsPerCarton,baseUnit,false);
         }
     }
     public record Response(Long id, String name, String materialCode, String materialBatch, Integer defaultUnitsPerCarton,
-                           String baseUnit, boolean quantityUnknown, ProductUsage movementDirection, boolean active, boolean duplicateName, Instant createdAt, Instant updatedAt) {
+                           String baseUnit, boolean quantityUnknown, ProductUsage movementDirection, boolean active, boolean duplicateName, Instant createdAt, Instant updatedAt, java.util.List<Integer> cartonSpecs) {
         static Response from(Product p) { return from(p, false); }
-        static Response from(Product p, boolean duplicateName) { return new Response(p.getId(), p.getName(), p.getMaterialCode(), p.getMaterialBatch(), p.getDefaultUnitsPerCarton(), p.getBaseUnit(), p.isQuantityUnknown(), p.getMovementDirection(), p.isActive(), duplicateName, p.getCreatedAt(), p.getUpdatedAt()); }
+        static Response from(Product p, boolean duplicateName) { return new Response(p.getId(), p.getName(), p.getMaterialCode(), p.getMaterialBatch(), p.getDefaultUnitsPerCarton(), p.getBaseUnit(), p.isQuantityUnknown(), p.getMovementDirection(), p.isActive(), duplicateName, p.getCreatedAt(), p.getUpdatedAt(), p.getCartonSpecs().stream().sorted().toList()); }
     }
 }

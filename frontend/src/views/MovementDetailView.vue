@@ -9,6 +9,8 @@ import { showDateTime, nowLocalInput } from "../utils/time";
 import { createUuid } from "../utils/uuid";
 import { preparePhoto } from "../utils/photo";
 import { useAuth } from "../auth";
+import MaterialSummary from "../components/MaterialSummary.vue";
+import PackagingBreakdown from "../components/PackagingBreakdown.vue";
 import CopyButton from "../components/CopyButton.vue";
 const route = useRoute(),
   router = useRouter(),
@@ -94,6 +96,8 @@ function duplicate() {
           movementDirection: m.returnMovement ? "WAREHOUSE_TO_PRODUCTION" : m.direction,
         },
         batchNo: x.batchNo,
+        unitsPerCarton: x.unitsPerCarton,
+        tailCartons: 0,
         fullCartons: 0,
         looseUnits: 0,
         quantityUnknown: false,
@@ -153,7 +157,11 @@ onMounted(()=>void load());
         </div>
       </section>
       <section class="section">
-        <h2 class="section-title">产品明细</h2>
+        <h2 class="section-title">物料汇总</h2>
+        <article v-for="material in data.materials" :key="material.id" class="card card-pad item"><MaterialSummary v-bind="material" /></article>
+      </section>
+      <section class="section">
+        <h2 class="section-title">登记明细 <small class="hint">总箱数 {{data.totalCartons}} 箱</small></h2>
         <article
           v-for="item in data.items"
           :key="item.id"
@@ -169,10 +177,10 @@ onMounted(()=>void load());
           >
             <span>物料批次：{{ data.manufactureLot }}</span><CopyButton :value="data.manufactureLot" label="物料批次" />
           </div>
-          <div v-if="item.quantityUnknown" class="unknown-box">完整箱：{{ item.fullCartons }} 箱；数量不确定（未计入数量合计）</div>
+          <div v-if="item.quantityUnknown" class="unknown-box">总箱数：{{ item.totalCartons }} 箱；数量不确定（未计入数量合计）</div>
           <div v-else class="quantities">
             <span
-              ><small>完整箱</small><b>{{ item.fullCartons }} 箱</b></span
+              ><small>总箱数</small><b>{{ item.totalCartons }} 箱</b></span
             ><span
               ><small>散装</small
               ><b>{{ item.looseUnits }} {{ item.baseUnit }}</b></span
@@ -185,6 +193,13 @@ onMounted(()=>void load());
                 ></b
               ></span
             >
+          </div>
+          <div class="detail-packing">
+            <p v-if="item.tailCartons">{{item.fullCartons}} 满箱 + {{item.tailCartons}} 尾箱</p>
+            <PackagingBreakdown :base-unit="item.baseUnit" :packaging="[
+              ...(item.fullCartons ? [{type:'FULL' as const, unitsPerCarton:item.unitsPerCarton ?? null, cartons:item.fullCartons}] : []),
+              ...(item.tailCartons ? [{type:'TAIL' as const, unitsPerCarton:item.tailUnitsPerCarton ?? null, cartons:item.tailCartons}] : [])
+            ]" />
           </div>
           <p v-if="item.totalUnitsOverridden" class="adjusted">
             人工调整；按箱规应为 {{ item.calculatedTotalUnits ?? "未知" }}
@@ -247,6 +262,7 @@ onMounted(()=>void load());
   </div>
 </template>
 <style scoped>
+.detail-packing{margin-top:10px}.detail-packing p{font-size:13px;margin:0 0 4px}
 .trace-reference { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:22px; color:var(--muted); font-size:12px; overflow-wrap:anywhere; }
 .form-alert {
   background: #fdeced;

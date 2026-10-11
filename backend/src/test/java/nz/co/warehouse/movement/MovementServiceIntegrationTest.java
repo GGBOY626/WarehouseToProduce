@@ -21,6 +21,7 @@ import static org.assertj.core.api.Assertions.*;
         "spring.jpa.hibernate.ddl-auto=create-drop",
         "spring.flyway.enabled=false"
 })
+@org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc
 @Sql(statements="CREATE TABLE IF NOT EXISTS movement_daily_sequence (sequence_date DATE PRIMARY KEY, next_value INT NOT NULL)", executionPhase=Sql.ExecutionPhase.BEFORE_TEST_METHOD)
 class MovementServiceIntegrationTest {
     @Autowired MovementService movements;
@@ -28,6 +29,8 @@ class MovementServiceIntegrationTest {
     @Autowired PersonService persons;
     @Autowired JdbcTemplate jdbc;
     @Autowired ProductionTaskService productionTasks;
+    @Autowired org.springframework.test.web.servlet.MockMvc mvc;
+    @Autowired com.fasterxml.jackson.databind.ObjectMapper objectMapper;
     Long sender,receiver,product,inboundProduct;
 
     @BeforeEach void setup(){
@@ -306,6 +309,117 @@ class MovementServiceIntegrationTest {
         assertThat(jdbc.queryForObject("select count(*) from movement where id=?",Long.class,saved.id())).isZero();
         assertThat(jdbc.queryForObject("select count(*) from movement_item where movement_id=?",Long.class,saved.id())).isZero();
         assertThatCode(()->products.delete(product)).doesNotThrowAnyException();
+    }
+
+    @Test void oneProductSupportsMultipleSpecificationsAndKeepsOneSourcePerMovement(){
+        var first=packagingItem(1000,3,0,null,0);
+        var second=packagingItem(1800,5,0,null,0);
+        var saved=movements.create(packagingRequest(List.of(first,second),false));
+        assertThat(saved.items()).extracting(MovementDtos.ItemResponse::productId).containsOnly(product);
+        assertThat(saved.items()).extracting(MovementDtos.ItemResponse::unitsPerCarton).containsExactly(1000,1800);
+        assertThat(saved.items()).extracting(MovementDtos.ItemResponse::totalUnits).containsExactly(3000L,9000L);
+        assertThat(saved.totalCartons()).isEqualTo(8);
+        assertThat(saved.materials()).hasSize(1);
+        assertThat(saved.materials().getFirst().totalQuantity()).isEqualTo(12000);
+        assertThat(saved.materials().getFirst().packaging()).hasSize(2);
+        var list=movements.search(LocalDate.of(2026,9,28),LocalDate.of(2026,9,28),null,null,null,null,saved.recordNo(),0,10).content().getFirst();
+        assertThat(list.items()).hasSize(1);
+        assertThat(list.totalQuantity()).isEqualTo(12000);
+        assertThat(list.items().getFirst().packaging()).containsExactly(new MaterialQuantity.Packaging("FULL",1000L,3),new MaterialQuantity.Packaging("FULL",1800L,5));
+        var stat=movements.queryStats(LocalDate.of(2026,9,28),LocalDate.of(2026,9,28),null,null,null,null,saved.recordNo()).directions().getFirst().products().getFirst();
+        assertThat(stat.totalCartons()).isEqualTo(8);
+        assertThat(stat.totalQuantity()).isEqualTo(12000);
+        assertThat(stat.packaging()).hasSize(2);
+        assertThat(stat.movements()).hasSize(1);
+        assertThat(stat.movements().getFirst().packaging()).hasSize(2);
+    }
+
+    @Test void tailCartonsAndLooseUnitsAreExplicitAndCountedAcrossEveryReadModel(){
+        var saved=movements.create(packagingRequest(List.of(packagingItem(1000,15,1,3L,2)),true));
+        var detail=movements.detail(saved.id());
+        assertThat(detail.totalCartons()).isEqualTo(16);
+        assertThat(detail.items().getFirst().totalUnits()).isEqualTo(15005);
+        assertThat(detail.items().getFirst().looseUnits()).isEqualTo(2);
+        assertThat(detail.items().getFirst().tailCartons()).isEqualTo(1);
+        var list=movements.search(LocalDate.of(2026,9,28),LocalDate.of(2026,9,28),null,null,null,null,saved.recordNo(),0,10).content().getFirst();
+        assertThat(list.totalCartons()).isEqualTo(16);
+        assertThat(list.totalQuantity()).isEqualTo(15005);
+        assertThat(list.items().getFirst().packaging()).contains(new MaterialQuantity.Packaging("TAIL",3L,1));
+        var stats=movements.queryStats(LocalDate.of(2026,9,28),LocalDate.of(2026,9,28),null,null,null,null,saved.recordNo()).directions().getFirst();
+        assertThat(stats.totalCartons()).isEqualTo(16);
+        assertThat(stats.totalQuantity()).isEqualTo(15005);
+        assertThat(stats.products().getFirst().movements().getFirst().tailCartons()).isEqualTo(1);
+        var daily=movements.todayStats(LocalDate.of(2026,9,28),MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE).products().stream().filter(p->p.materialCode().equals("PACK-"+product)).findFirst().orElseThrow();
+        assertThat(daily.totalCartons()).isEqualTo(16);
+        assertThat(daily.totalQuantity()).isEqualTo(15005);
+
+        var loose=movements.create(packagingRequest(List.of(packagingItem(1000,15,0,null,3)),true));
+        assertThat(loose.totalCartons()).isEqualTo(15);
+        assertThat(loose.items().getFirst().totalUnits()).isEqualTo(15003);
+        var tail=movements.create(packagingRequest(List.of(packagingItem(1000,15,1,3L,0)),true));
+        assertThat(tail.totalCartons()).isEqualTo(16);
+        assertThat(tail.items().getFirst().totalUnits()).isEqualTo(15003);
+        var onlyTails=movements.create(packagingRequest(List.of(packagingItem(null,0,2,7L,0)),false));
+        assertThat(onlyTails.totalCartons()).isEqualTo(2);
+        assertThat(onlyTails.items().getFirst().totalUnits()).isEqualTo(14);
+    }
+
+    @Test void oldLooseRecordsKeepSnapshotsAndCanBeExplicitlyReclassifiedAsTailCartons(){
+        var old=movements.create(request(UUID.randomUUID().toString(),MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,15,3));
+        var item=old.items().getFirst();
+        var catalog=products.search(item.productName(),true,null).getFirst();
+        var updated=products.update(product,new ProductDtos.Request(catalog.name(),catalog.materialCode(),catalog.materialBatch(),ProductUsage.WAREHOUSE_TO_PRODUCTION,1000,"袋",false,List.of(1000,1800,2000)));
+        assertThat(products.search(catalog.name(),true,null).getFirst().cartonSpecs()).containsExactly(1000,1800,2000);
+        assertThat(updated.id()).isEqualTo(product);
+        var unchanged=new MovementDtos.ItemRequest(product,item.batchNo(),15,3,item.totalUnits(),false,"编辑备注",List.of(),null,0,null,item.id());
+        var edited=movements.update(old.id(),new MovementDtos.SaveRequest(UUID.randomUUID().toString(),old.direction(),old.movementTime(),sender,receiver,old.manufactureLot(),null,List.of(unchanged)));
+        assertThat(edited.totalCartons()).isEqualTo(15);
+        assertThat(edited.items().getFirst().unitsPerCarton()).isEqualTo(30);
+        assertThat(edited.items().getFirst().baseUnit()).isEqualTo("个");
+        assertThat(edited.items().getFirst().tailCartons()).isZero();
+        assertThat(edited.items().getFirst().looseUnits()).isEqualTo(3);
+        var classified=new MovementDtos.ItemRequest(product,item.batchNo(),15,0,null,false,null,List.of(),30,1,3L,edited.items().getFirst().id());
+        var reclassified=movements.update(old.id(),new MovementDtos.SaveRequest(UUID.randomUUID().toString(),old.direction(),old.movementTime(),sender,receiver,old.manufactureLot(),null,List.of(classified)));
+        assertThat(reclassified.totalCartons()).isEqualTo(16);
+        assertThat(reclassified.items().getFirst().totalUnits()).isEqualTo(453);
+        assertThat(reclassified.items().getFirst().looseUnits()).isZero();
+        assertThat(reclassified.recordNo()).isEqualTo(old.recordNo());
+    }
+
+    @Test void invalidTailInputsAndOverflowAreRejectedWithoutSaving(){
+        assertThatThrownBy(()->movements.create(packagingRequest(List.of(packagingItem(1000,0,1,null,0)),false))).hasMessageContaining("尾箱");
+        assertThatThrownBy(()->movements.create(packagingRequest(List.of(packagingItem(1000,0,0,3L,0)),false))).hasMessageContaining("尾箱");
+        assertThatThrownBy(()->movements.create(packagingRequest(List.of(packagingItem(1000,0,-1,3L,0)),false))).hasMessageContaining("负数");
+        assertThatThrownBy(()->movements.create(packagingRequest(List.of(packagingItem(1000,0,2,Long.MAX_VALUE,0)),false))).hasMessageContaining("超出");
+        assertThatThrownBy(()->movements.create(packagingRequest(List.of(packagingItem(1,Integer.MAX_VALUE,1,1L,0)),false))).hasMessageContaining("超出");
+    }
+
+    @Test void apiRoundTripKeepsPackagingAndRejectsFractionalCartons() throws Exception {
+        var session=new org.springframework.mock.web.MockHttpSession();
+        session.setAttribute(nz.co.warehouse.auth.AuthController.AUTH_SESSION_KEY,true);
+        var request=packagingRequest(List.of(packagingItem(1000,15,1,3L,2)),true);
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/movements").session(session)
+                .contentType("application/json").content(objectMapper.writeValueAsBytes(request)))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.totalCartons").value(16))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.items[0].totalUnits").value(15005))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.items[0].tailUnitsPerCarton").value(3))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.materials[0].packaging[1].type").value("TAIL"));
+        for(String field:List.of("fullCartons","tailCartons","unitsPerCarton","tailUnitsPerCarton","looseUnits")) {
+            var json=objectMapper.valueToTree(request);
+            ((com.fasterxml.jackson.databind.node.ObjectNode)json.get("items").get(0)).put(field,1.5);
+            mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/movements").session(session)
+                    .contentType("application/json").content(objectMapper.writeValueAsBytes(json)))
+                    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isBadRequest());
+        }
+    }
+
+    private MovementDtos.ItemRequest packagingItem(Integer size,int full,int tail,Long actual,long loose){
+        return new MovementDtos.ItemRequest(product,"PACK-"+product,full,loose,null,false,null,List.of(),size,tail,actual,null);
+    }
+    private MovementDtos.SaveRequest packagingRequest(List<MovementDtos.ItemRequest> items,boolean returned){
+        return new MovementDtos.SaveRequest(UUID.randomUUID().toString(),returned?MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE:MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,
+                Instant.parse("2026-09-28T04:00:00Z"),sender,receiver,"A001",returned,null,items);
     }
 
     private MovementDtos.SaveRequest request(String key,MovementEnums.Direction direction,int cartons,long loose){

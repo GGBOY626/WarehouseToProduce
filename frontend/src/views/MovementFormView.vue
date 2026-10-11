@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { onBeforeRouteLeave, useRoute, useRouter } from "vue-router";
 import SearchPicker from "../components/SearchPicker.vue";
 import { errorMessage } from "../api/http";
@@ -15,6 +15,7 @@ import type {
 import { issueLabels, directionLabel } from "../utils/labels";
 import { nowLocalInput, toInstant, toLocalInput } from "../utils/time";
 import { createUuid } from "../utils/uuid";
+import { calculateQuantity, quantityError, cartonCount } from "../utils/quantity";
 import { preparePhoto } from "../utils/photo";
 const route = useRoute(),
   router = useRouter();
@@ -27,6 +28,7 @@ const direction = ref<Direction>(
 const blankItem = (): ItemInput => ({
   batchNo: "",
   fullCartons: 0,
+  tailCartons: 0,
   looseUnits: 0,
   quantityUnknown: false,
   remarks: "",
@@ -64,32 +66,31 @@ function returnChanged() {
   draft.value.items = [blankItem()];
   draft.value.manufactureLot = "";
 }
-function calculate(item: ItemInput) {
-  if (item.quantityUnknown) return undefined;
-  const size = item.product?.defaultUnitsPerCarton;
-  if (size != null) return item.fullCartons * size + item.looseUnits;
-  if (item.fullCartons === 0) return item.looseUnits;
-  return undefined;
+const calculate = calculateQuantity;
+function commonSpecs(item: ItemInput) {
+  return [...new Set([item.product?.defaultUnitsPerCarton, ...(item.product?.cartonSpecs || [])].filter((n): n is number => !!n))];
+}
+function addSpecification(item: ItemInput) {
+  draft.value.items.push({ ...blankItem(), productId: item.productId, product: item.product, batchNo: item.batchNo, unitsPerCarton: item.unitsPerCarton, quantityUnknown: item.quantityUnknown });
 }
 function displayedTotal(item: ItemInput) {
   if (item.quantityUnknown) return undefined;
   return item.manualTotal ? item.totalUnits : calculate(item);
 }
 function selectProduct(item: ItemInput, p?: Product) {
+  item.id = undefined;
+  item.unitsPerCarton = p?.defaultUnitsPerCarton;
   item.product = p;
   item.productId = p?.id;
   item.batchNo = p?.materialCode || "";
   if (
     p?.materialBatch &&
-    needsMaterialBatch.value &&
     !draft.value.manufactureLot
   )
     draft.value.manufactureLot = p.materialBatch;
   item.manualTotal = false;
   item.quantityUnknown = !!p?.quantityUnknown;
-  if (item.quantityUnknown) {
-    item.looseUnits = 0;
-  }
+
   item.totalUnits = calculate(item);
 }
 function quantityChanged(item: ItemInput) {
@@ -97,7 +98,6 @@ function quantityChanged(item: ItemInput) {
 }
 function toggleUnknownQuantity(item: ItemInput) {
   if (item.quantityUnknown) {
-    item.looseUnits = 0;
     item.totalUnits = undefined;
     item.manualTotal = false;
   }
@@ -138,18 +138,18 @@ function removeFile(index: number) {
 function validate() {
   if (!draft.value.senderPersonId || !draft.value.receiverPersonId)
     return "请选择发送人和接收人。";
-  if (
-    needsMaterialBatch.value &&
-    !draft.value.manufactureLot.trim()
-  )
+  if (needsMaterialBatch.value && !draft.value.manufactureLot.trim())
     return "请填写物料批次。";
   for (let i = 0; i < draft.value.items.length; i++) {
     const x = draft.value.items[i];
+    const invalidQuantity = quantityError(x);
+    if (invalidQuantity) return `产品明细 ${i + 1}：${invalidQuantity}`;
     if (!x.productId) return `请选择产品明细 ${i + 1} 的产品。`;
     if (!x.batchNo.trim()) return `请填写产品明细 ${i + 1} 的物料编码。`;
     if (
       !x.quantityUnknown &&
       x.fullCartons <= 0 &&
+      x.tailCartons <= 0 &&
       x.looseUnits <= 0 &&
       (!x.totalUnits || x.totalUnits <= 0)
     )
@@ -166,15 +166,16 @@ function payload() {
     movementTime: toInstant(draft.value.movementTime),
     senderPersonId: draft.value.senderPersonId,
     receiverPersonId: draft.value.receiverPersonId,
-    manufactureLot:
-      needsMaterialBatch.value
-        ? draft.value.manufactureLot
-        : undefined,
+    manufactureLot: draft.value.manufactureLot || undefined,
     returnMovement: direction.value === "PRODUCTION_TO_WAREHOUSE" && draft.value.returnMovement,
     productionTaskId: draft.value.productionTaskId,
     remarks: draft.value.remarks,
     items: draft.value.items.map((x) => ({
+      id: x.id,
       productId: x.productId,
+      unitsPerCarton: x.unitsPerCarton || null,
+      tailCartons: Number(x.tailCartons) || 0,
+      tailUnitsPerCarton: x.tailCartons > 0 ? Number(x.tailUnitsPerCarton) : null,
       batchNo: x.batchNo,
       fullCartons: Number(x.fullCartons) || 0,
       looseUnits: Number(x.looseUnits) || 0,
@@ -212,6 +213,7 @@ async function save() {
       ? await movementsApi.update(movementId, payload())
       : await movementsApi.create(payload());
     savedMovementId.value = result.id;
+    result.items.forEach((saved, index) => { draft.value.items[index].id = saved.id; });
     for (const entry of files.value) {
       if (entry.status === "uploaded") continue;
       entry.status = "uploading";
@@ -224,11 +226,12 @@ async function save() {
         throw error;
       }
     }
-    localStorage.removeItem(draftKey.value);
     localStorage.setItem(`last-persons:${direction.value}`, JSON.stringify({
       sender: result.senderPersonId,
       receiver: result.receiverPersonId,
     }));
+    await nextTick();
+    localStorage.removeItem(draftKey.value);
     dirty.value = false;
     await router.replace(`/movements/${result.id}`);
   } catch (e) {
@@ -260,6 +263,7 @@ onMounted(async () => {
   productionTasks.value = await productionTasksApi.list();
   if (editId) {
     const m = await movementsApi.detail(editId);
+    const catalog = await productsApi.search('', true);
     direction.value = m.direction;
     draft.value = {
       idempotencyKey: createUuid(),
@@ -272,12 +276,17 @@ onMounted(async () => {
       productionTaskId: m.productionTaskId,
       remarks: m.remarks || "",
       items: m.items.map((x) => ({
+        id: x.id,
+        unitsPerCarton: x.unitsPerCarton ?? null,
+        tailCartons: x.tailCartons || 0,
+        tailUnitsPerCarton: x.tailUnitsPerCarton,
         productId: x.productId,
         product: {
           id: x.productId,
           name: x.productName,
           materialCode: x.batchNo,
           defaultUnitsPerCarton: x.unitsPerCarton,
+          cartonSpecs: catalog.find(p => p.id === x.productId)?.cartonSpecs,
           baseUnit: x.baseUnit,
           quantityUnknown: false,
           movementDirection: m.returnMovement ? "WAREHOUSE_TO_PRODUCTION" : m.direction,
@@ -311,6 +320,12 @@ onMounted(async () => {
       dirty.value = false;
     }
   }
+  draft.value.items.forEach(item => {
+    item.tailCartons ??= 0;
+    if (!('unitsPerCarton' in item)) item.unitsPerCarton = item.product?.defaultUnitsPerCarton;
+  });
+  await nextTick();
+  dirty.value = false;
 });
 onBeforeUnmount(() => {
   window.removeEventListener("beforeunload", beforeUnload);
@@ -403,10 +418,10 @@ onBeforeUnmount(() => {
             />
           </div>
           <div
-            v-if="index === 0 && needsMaterialBatch"
+            v-if="index === 0"
             class="field"
           >
-            <label class="required">物料批次</label
+            <label :class="{required:needsMaterialBatch}">物料批次{{needsMaterialBatch ? '' : '（可选）'}}</label
             ><input
               class="input mono"
               v-model.trim="draft.manufactureLot"
@@ -414,41 +429,31 @@ onBeforeUnmount(() => {
             />
             <small class="hint">本次流转的所有产品共用</small>
           </div>
-          <div class="grid-2">
-            <div class="field">
-              <label>完整箱</label
-              ><input
-                class="input mono"
-                type="number"
-                inputmode="numeric"
-                min="0"
-                step="1"
-                v-model.number="item.fullCartons"
-                @input="quantityChanged(item)"
-              />
+          <div class="packing-fields">
+            <div class="grid-2">
+              <div class="field"><label :for="`size-${index}`">完整箱每箱数量</label><input :id="`size-${index}`" class="input mono" type="number" min="1" step="1" inputmode="numeric" v-model.number="item.unitsPerCarton" @input="quantityChanged(item)" placeholder="选择或输入，例如 1000" /></div>
+              <div class="field"><label :for="`full-${index}`">完整箱数</label><input :id="`full-${index}`" class="input mono" type="number" min="0" step="1" inputmode="numeric" v-model.number="item.fullCartons" @input="quantityChanged(item)" /></div>
             </div>
-            <div class="field">
-              <label
-                >散装数量<span v-if="item.product"
-                  >（{{ item.product.baseUnit }}）</span
-                ></label
-              ><input
-                class="input mono"
-                type="number"
-                inputmode="numeric"
-                min="0"
-                step="1"
-                v-model.number="item.looseUnits"
-                :disabled="item.quantityUnknown"
-                @input="quantityChanged(item)"
-              />
+            <div v-if="commonSpecs(item).length" class="spec-options" aria-label="常用装箱规格">
+              <small class="hint">常用规格</small><button v-for="size in commonSpecs(item)" :key="size" type="button" :class="{active:item.unitsPerCarton===size}" @click="item.unitsPerCarton=size;quantityChanged(item)">{{size}} {{item.product?.baseUnit || '个'}}/箱</button>
             </div>
+            <details :open="item.tailCartons>0 || item.looseUnits>0" class="optional-packing">
+              <summary>尾箱 / 真正散装（可选）</summary>
+              <div class="grid-2">
+                <div class="field"><label :for="`tail-${index}`">尾箱箱数</label><input :id="`tail-${index}`" class="input mono" type="number" min="0" step="1" inputmode="numeric" v-model.number="item.tailCartons" @input="quantityChanged(item)" /></div>
+                <div class="field"><label :for="`tail-size-${index}`">每个尾箱实际数量</label><input :id="`tail-size-${index}`" class="input mono" type="number" min="1" step="1" inputmode="numeric" v-model.number="item.tailUnitsPerCarton" @input="quantityChanged(item)" placeholder="例如 3" /></div>
+              </div>
+              <small class="hint">尾箱计入总箱数。尾箱数量不同时，点击“添加同物料规格”分开填写。</small>
+              <div class="field"><label :for="`loose-${index}`">真正散装（未装箱的{{item.product?.baseUnit || '数量'}}）</label><input :id="`loose-${index}`" class="input mono" type="number" min="0" step="1" inputmode="numeric" v-model.number="item.looseUnits" @input="quantityChanged(item)" /></div>
+            </details>
+            <button v-if="item.productId" class="btn btn-ghost" type="button" @click="addSpecification(item)">＋ 添加同物料规格</button>
           </div>
           <label class="unknown-quantity">
             <input type="checkbox" v-model="item.quantityUnknown" :disabled="item.product?.quantityUnknown" @change="toggleUnknownQuantity(item)" />
             {{item.product?.quantityUnknown ? '该产品已设置为数量不确定' : '数量不确定（无法清点或没有数量标识）'}}
           </label>
           <div class="total-box">
+            <span>总箱数：{{ cartonCount(item) }} 箱（{{ item.fullCartons || 0 }} 满箱 + {{ item.tailCartons || 0 }} 尾箱）</span>
             <span>总数量</span
             ><strong class="mono"
               >{{ displayedTotal(item) ?? "未知"
@@ -473,11 +478,11 @@ onBeforeUnmount(() => {
             ><small
               v-else-if="
                 item.product &&
-                !item.product.defaultUnitsPerCarton &&
+                !item.unitsPerCarton &&
                 item.fullCartons > 0
               "
               class="hint"
-              >此产品没有默认箱规，可保存为总数量未知。</small
+              >此条记录未填写箱规，总数量未知。</small
             >
           </div>
           <fieldset class="issues">
@@ -581,6 +586,9 @@ onBeforeUnmount(() => {
   </div>
 </template>
 <style scoped>
+.packing-fields{display:grid;gap:12px}.spec-options{display:flex;flex-wrap:wrap;gap:6px;align-items:center}.spec-options button{border:1px solid var(--line);background:#fff;border-radius:6px;padding:7px 10px;min-height:36px;font-size:12px}.spec-options button.active{background:var(--soft-blue);border-color:var(--blue);color:var(--blue)}
+.optional-packing{border:1px solid var(--line);border-radius:9px;padding:12px}.optional-packing summary{cursor:pointer;color:var(--blue);font-weight:650}.optional-packing[open] summary{margin-bottom:12px}.optional-packing>.hint{display:block;margin:8px 0 12px}
+
 .form-alert {
   background: #fdeced;
   color: #8f1d25;

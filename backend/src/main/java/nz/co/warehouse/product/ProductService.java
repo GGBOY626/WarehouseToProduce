@@ -69,6 +69,11 @@ public class ProductService {
                 :repository.existsByNameIgnoreCaseAndMaterialCodeIgnoreCaseAndActiveTrueAndIdNot(name,materialCode,p.getId());
         if(duplicate)throw new BusinessException("PRODUCT_DUPLICATE", "已有相同名称和物料编码的启用产品。", HttpStatus.CONFLICT);
         if(!r.quantityUnknown()&&(r.baseUnit()==null||r.baseUnit().isBlank()))throw BusinessException.badRequest("BASE_UNIT_REQUIRED", "数量确定的产品必须填写基础单位。");
+        if(r.cartonSpecs()!=null){
+            if(r.cartonSpecs().size()>50||r.cartonSpecs().stream().anyMatch(n->n==null||n<=0))
+                throw BusinessException.badRequest("CARTON_SPECS_INVALID", "常用箱规最多 50 项，每箱数量必须为正整数。");
+            p.getCartonSpecs().clear();p.getCartonSpecs().addAll(r.cartonSpecs());
+        }
         p.setName(name);p.setMaterialCode(materialCode);p.setMaterialBatch(blankToNull(r.materialBatch()));p.setMovementDirection(r.movementDirection());p.setQuantityUnknown(r.quantityUnknown());p.setDefaultUnitsPerCarton(r.quantityUnknown()?null:r.defaultUnitsPerCarton());p.setBaseUnit(r.quantityUnknown()?null:r.baseUnit().trim());
     }
     private String blankToNull(String s) { return s == null || s.isBlank() ? null : s.trim(); }

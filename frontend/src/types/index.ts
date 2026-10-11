@@ -15,6 +15,7 @@ export interface Product {
   materialCode: string;
   materialBatch?: string;
   defaultUnitsPerCarton?: number;
+  cartonSpecs?: number[];
   baseUnit?: string;
   quantityUnknown: boolean;
   movementDirection?: ProductUsage;
@@ -32,6 +33,10 @@ export interface IssueInput {
   description?: string;
 }
 export interface ItemInput {
+  id?: number;
+  unitsPerCarton?: number | null;
+  tailCartons: number;
+  tailUnitsPerCarton?: number | null;
   productId?: number;
   product?: Product;
   batchNo: string;
@@ -66,6 +71,9 @@ export interface Photo {
   createdAt: string;
 }
 export interface MovementItem {
+  tailCartons: number;
+  tailUnitsPerCarton?: number | null;
+  totalCartons: number;
   id: number;
   productId: number;
   productName: string;
@@ -83,6 +91,7 @@ export interface MovementItem {
   issues: { id: number; type: IssueType; description?: string }[];
 }
 export interface MovementDetail {
+  materials: (MaterialSummary & { id: number; unknownItemCount: number })[];
   id: number;
   recordNo: string;
   direction: Direction;
@@ -123,7 +132,11 @@ export interface ProductionTaskTarget {
   issuedQuantity: number; returnedQuantity: number; shortageQuantity: number;
   unknownQuantityCount: number; materialTarget: boolean;
 }
+export interface Packaging { type: 'FULL' | 'TAIL'; unitsPerCarton: number | null; cartons: number }
 export interface MaterialSummary {
+  tailCartons: number;
+  totalCartons: number;
+  packaging: Packaging[];
   productName: string;
   materialCode: string;
   materialBatch?: string | null;
@@ -173,6 +186,9 @@ export interface QueryStats {
   }[];
 }
 export interface StatMovement {
+  tailCartons: number;
+  totalCartons: number;
+  packaging: Packaging[];
   looseUnits: number;
   returnMovement: boolean;
   photoCount: number;

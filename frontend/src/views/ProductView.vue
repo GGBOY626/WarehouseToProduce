@@ -19,6 +19,7 @@ const rows = ref<Product[]>([]),
     quantityUnknown: false,
   }),
   message = ref("");
+const cartonSpecsText = ref("");
 const editorSection = ref<HTMLElement>();
 async function load() {
   rows.value = await productsApi.search(q.value, true);
@@ -26,6 +27,7 @@ async function load() {
 function open(p?: Product) {
   showEditor.value = true;
   editing.value = p;
+  cartonSpecsText.value = (p?.cartonSpecs || []).join("、");
   form.value = p
     ? {
         name: p.name,
@@ -59,8 +61,13 @@ async function save() {
     return;
   }
   try {
-    if (editing.value) await productsApi.update(editing.value.id, form.value);
-    else await productsApi.create(form.value);
+    const cartonSpecs = cartonSpecsText.value.split(/[,，、\s]+/).filter(Boolean).map(Number);
+    if (cartonSpecs.length > 50 || cartonSpecs.some(n => !Number.isInteger(n) || n <= 0 || n > 2147483647)) {
+      message.value = "常用规格最多 50 项，请输入正整数，用逗号或空格分隔。"; return;
+    }
+    const payload = { ...form.value, defaultUnitsPerCarton: form.value.defaultUnitsPerCarton || null, cartonSpecs: [...new Set(cartonSpecs)] };
+    if (editing.value) await productsApi.update(editing.value.id, payload);
+    else await productsApi.create(payload);
     showEditor.value = false;
     editing.value = undefined;
     await load();
@@ -90,7 +97,7 @@ onMounted(load);
   <div class="page">
     <h1 class="page-title">产品管理</h1>
     <p class="page-lead">
-      同名产品可按不同物料编码分别维护，登记时请核对编码。
+      同一物料只需维护一个产品，可设置多个常用箱规，流转时也可临时输入。
     </p>
     <div v-if="message" class="error-text">{{ message }}</div>
     <div class="row">
@@ -155,6 +162,11 @@ onMounted(load);
           />
         </div>
       </div>
+      <div class="field">
+        <label for="carton-specs">其他常用每箱数量（可选）</label>
+        <input id="carton-specs" class="input" v-model="cartonSpecsText" placeholder="例如 1000、1800、2000" />
+        <small class="hint">用逗号或空格分隔。默认规格也会出现在流转登记的快捷选项中。</small>
+      </div>
       <label class="unknown-quantity">
         <input type="checkbox" v-model="form.quantityUnknown" @change="quantityTypeChanged" />
         该产品数量不确定（无固定计量单位或无法清点）
@@ -179,6 +191,7 @@ onMounted(load);
           <div v-if="p.duplicateName" class="duplicate-warning">
             同名产品，请核对物料编码
           </div>
+          <div v-if="p.cartonSpecs?.length" class="hint">常用规格：{{ p.cartonSpecs.join(" / ") }} {{ p.baseUnit }}/箱</div>
           <div class="hint">
             {{
               p.quantityUnknown

@@ -114,6 +114,36 @@ class PdfReportServiceTest {
         assertThat((String) ReflectionTestUtils.invokeMethod(service, "totalQuantity", row.getItems().getFirst())).isEqualTo("数量不确定");
     }
 
+    @Test void exportsMixedSpecificationsTailCartonsAndLooseWithCombinedMaterialTotals() throws Exception {
+        Movement mixed=movement(MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,"2026-09-01T01:00:00Z","关节饮外盒","PACK-A",3,0,3000);
+        mixed.setManufactureLot("A001");mixed.getItems().getFirst().setUnitsPerCartonSnapshot(1000);
+        Movement other=movement(MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,"2026-09-01T02:00:00Z","关节饮外盒","PACK-A",5,0,9000);
+        other.setManufactureLot("A001");other.getItems().getFirst().setUnitsPerCartonSnapshot(1800);
+        Movement tail=movement(MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE,"2026-09-01T03:00:00Z","关节饮外盒","PACK-A",15,2,15005);
+        tail.setReturnMovement(true);tail.setManufactureLot("A001");
+        tail.getItems().getFirst().setUnitsPerCartonSnapshot(1000);
+        tail.getItems().getFirst().setTailCartons(1);tail.getItems().getFirst().setTailUnitsPerCarton(3L);
+        Movement legacy=movement(MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE,"2026-09-01T04:00:00Z","旧散装记录","LEGACY",15,3,15003);
+        legacy.getItems().getFirst().setUnitsPerCartonSnapshot(1000);
+        MovementRepository repository=mock(MovementRepository.class);
+        when(repository.findReportRows(any(),any(),any(MovementEnums.Status.class))).thenReturn(List.of(mixed,other,tail,legacy));
+        PdfReportService service=new PdfReportService(repository);
+        ReflectionTestUtils.setField(service,"zone","Pacific/Auckland");
+        byte[] pdf=service.generate(LocalDate.of(2026,9,1),LocalDate.of(2026,9,1));
+        String text=pdfText(pdf);
+        assertThat(text).contains("1000 个/箱", "1800 个/箱", "3 满箱", "5 满箱", "8 箱", "12000 个", "16 箱", "15005 个", "1 尾箱", "3 个/箱", "旧散装记录", "15003 个").doesNotContain("#");
+        String oldPacking=ReflectionTestUtils.invokeMethod(service,"fullCartons",legacy.getItems().getFirst());
+        assertThat(oldPacking).contains("15 箱").doesNotContain("尾箱","16 箱");
+        if(Boolean.getBoolean("warehouse.pdf.preview")) {
+            java.nio.file.Files.write(java.nio.file.Path.of("target/packaging-preview.pdf"),pdf);
+            try(PDDocument document=PDDocument.load(pdf)) {
+                var renderer=new org.apache.pdfbox.rendering.PDFRenderer(document);
+                for(int page=0;page<document.getNumberOfPages();page++)
+                    javax.imageio.ImageIO.write(renderer.renderImageWithDPI(page,130),"png",new java.io.File("target/packaging-preview-"+page+".png"));
+            }
+        }
+    }
+
     private Movement movement(MovementEnums.Direction direction, String time, String product, String code,
                               int cartons, long loose, long total) {
         Movement movement = new Movement();
