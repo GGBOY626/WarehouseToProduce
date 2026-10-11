@@ -44,15 +44,16 @@ public final class MovementDtos {
                                  boolean hasIssues,boolean missingPhoto,Instant createdAt,Instant updatedAt) {}
     public record ListResponse(Long id,String recordNo,MovementEnums.Direction direction,Instant movementTime,
                                String senderName,String receiverName,boolean returnMovement,int totalCartons,long totalQuantity,MovementEnums.Status status,
-                               List<String> productNames,int itemCount,int photoCount,boolean hasIssues,boolean hasUnknownQuantity) {}
+                               List<String> productNames,int itemCount,int photoCount,boolean hasIssues,boolean hasUnknownQuantity,List<ListItemResponse> items) {}
+    // Existing record snapshots: batchNo is the material code; manufactureLot is the material batch.
+    public record ListItemResponse(Long id,String productName,String materialCode,String materialBatch,String baseUnit,
+                                   int fullCartons,long looseUnits,Long totalQuantity,boolean quantityUnknown) {}
     public record PageResponse(List<ListResponse> content,int page,int size,long totalElements,int totalPages) {}
     public record StatMovementResponse(Long id,String recordNo,Instant movementTime,MovementEnums.Direction direction,
-                                       String senderName,String receiverName,long fullCartons,long totalQuantity,long unknownItemCount) {}
-    public record ProductStatResponse(String productName,long fullCartons,long totalQuantity,long unknownItemCount,List<StatMovementResponse> movements) {
-        public ProductStatResponse(String productName,long fullCartons,long totalQuantity,long unknownItemCount) {
-            this(productName,fullCartons,totalQuantity,unknownItemCount,List.of());
-        }
-    }
+                                       String senderName,String receiverName,long fullCartons,long totalQuantity,long unknownItemCount,
+                                       long looseUnits,boolean returnMovement,int photoCount) {}
+    public record ProductStatResponse(String productName,String materialCode,String materialBatch,String baseUnit,
+                                      long fullCartons,long looseUnits,long totalQuantity,long unknownItemCount,List<StatMovementResponse> movements) {}
     public record TodayStatsResponse(long totalCartons,long totalQuantity,long unknownItemCount,List<ProductStatResponse> products) {}
     public record DirectionStatResponse(MovementEnums.Direction direction,long totalCartons,long totalQuantity,long unknownItemCount,List<ProductStatResponse> products) {}
     public record QueryStatsResponse(List<DirectionStatResponse> directions) {}
@@ -65,6 +66,8 @@ public final class MovementDtos {
     }
     static ListResponse summary(Movement m) {
         long totalQuantity=m.getItems().stream().map(MovementItem::getTotalUnits).filter(Objects::nonNull).mapToLong(Long::longValue).sum();
-        return new ListResponse(m.getId(),m.getRecordNo(),m.getDirection(),m.getMovementTime(),m.getSenderNameSnapshot(),m.getReceiverNameSnapshot(),m.isReturnMovement(),m.getTotalCartons(),totalQuantity,m.getStatus(),m.getItems().stream().map(MovementItem::getProductNameSnapshot).distinct().limit(3).toList(),m.getItems().size(),m.getPhotos().size(),m.getItems().stream().anyMatch(i->!i.getIssues().isEmpty()),m.getItems().stream().anyMatch(MovementItem::isQuantityUnknown));
+        return new ListResponse(m.getId(),m.getRecordNo(),m.getDirection(),m.getMovementTime(),m.getSenderNameSnapshot(),m.getReceiverNameSnapshot(),m.isReturnMovement(),m.getTotalCartons(),totalQuantity,m.getStatus(),m.getItems().stream().map(MovementItem::getProductNameSnapshot).distinct().limit(3).toList(),m.getItems().size(),m.getPhotos().size(),m.getItems().stream().anyMatch(i->!i.getIssues().isEmpty()),m.getItems().stream().anyMatch(MovementItem::isQuantityUnknown),
+                m.getItems().stream().map(i->new ListItemResponse(i.getId(),i.getProductNameSnapshot(),i.getBatchNo(),m.getManufactureLot(),
+                        i.getBaseUnitSnapshot(),i.getFullCartons(),i.getLooseUnits(),i.getTotalUnits(),i.isQuantityUnknown())).toList());
     }
 }

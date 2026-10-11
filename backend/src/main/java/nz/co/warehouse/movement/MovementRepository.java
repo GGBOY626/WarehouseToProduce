@@ -40,11 +40,11 @@ public interface MovementRepository extends JpaRepository<Movement,Long> {
                           @Param("hasIssue") Boolean hasIssue,@Param("q") String q, Pageable pageable);
 
     @Query("""
-        select i.productNameSnapshot, sum(i.fullCartons), coalesce(sum(i.totalUnits), 0), sum(case when i.quantityUnknown=true then 1 else 0 end)
+        select i.productNameSnapshot, sum(i.fullCartons), coalesce(sum(i.totalUnits), 0), sum(case when i.quantityUnknown=true then 1 else 0 end), i.batchNo, i.movement.manufactureLot, i.baseUnitSnapshot, sum(i.looseUnits)
         from MovementItem i
         where i.movement.movementTime >= :from and i.movement.movementTime < :to
           and (:direction is null or i.movement.direction = :direction) and i.movement.status = :status
-        group by i.productNameSnapshot
+        group by i.productNameSnapshot, i.batchNo, i.movement.manufactureLot, i.baseUnitSnapshot
         order by i.productNameSnapshot
         """)
     List<Object[]> summarizeItems(@Param("from") Instant from,@Param("to") Instant to,
@@ -53,7 +53,9 @@ public interface MovementRepository extends JpaRepository<Movement,Long> {
 
     @Query("""
         select i.movement.direction, i.productNameSnapshot, sum(i.fullCartons), coalesce(sum(i.totalUnits), 0), sum(case when i.quantityUnknown=true then 1 else 0 end),
-               i.movement.id, i.movement.recordNo, i.movement.movementTime, i.movement.senderNameSnapshot, i.movement.receiverNameSnapshot
+               i.movement.id, i.movement.recordNo, i.movement.movementTime, i.movement.senderNameSnapshot, i.movement.receiverNameSnapshot,
+               i.batchNo, i.movement.manufactureLot, i.baseUnitSnapshot, sum(i.looseUnits), i.movement.returnMovement,
+               (select count(photo.id) from MovementPhoto photo where photo.movement=i.movement)
         from MovementItem i
         where i.movement.movementTime >= :from and i.movement.movementTime < :to
           and (:direction is null or i.movement.direction = :direction)
@@ -64,7 +66,7 @@ public interface MovementRepository extends JpaRepository<Movement,Long> {
               select matched.id from MovementItem matched where matched.movement=i.movement and
               (lower(matched.productNameSnapshot) like lower(concat('%',:q,'%')) or lower(coalesce(matched.skuSnapshot,'')) like lower(concat('%',:q,'%')) or lower(matched.batchNo) like lower(concat('%',:q,'%')))
           ))
-        group by i.movement.direction, i.productNameSnapshot, i.movement.id, i.movement.recordNo, i.movement.movementTime, i.movement.senderNameSnapshot, i.movement.receiverNameSnapshot
+        group by i.movement.direction, i.productNameSnapshot, i.movement.id, i.movement.recordNo, i.movement.movementTime, i.movement.senderNameSnapshot, i.movement.receiverNameSnapshot, i.batchNo, i.movement.manufactureLot, i.baseUnitSnapshot, i.movement.returnMovement
         order by i.movement.direction, i.productNameSnapshot, i.movement.movementTime desc, i.movement.id desc
         """)
     List<Object[]> summarizeSearch(@Param("from") Instant from,@Param("to") Instant to,

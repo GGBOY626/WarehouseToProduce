@@ -1,3 +1,27 @@
-<script setup lang="ts">import type{MovementSummary}from'../types';import{directionLabel}from'../utils/labels';import{showMonthDay,showTime}from'../utils/time';withDefaults(defineProps<{movement:MovementSummary;showDate?:boolean}>(),{showDate:false});</script>
-<template><RouterLink :to="`/movements/${movement.id}`" class="movement-card card"><div :class="['time','mono',showDate&&'with-date']"><template v-if="showDate"><span>{{showMonthDay(movement.movementTime)}}</span><strong>{{showTime(movement.movementTime)}}</strong></template><template v-else>{{showTime(movement.movementTime)}}</template></div><div class="grow"><div :class="['direction-strip',movement.direction==='PRODUCTION_TO_WAREHOUSE'&&'return']">{{directionLabel(movement.direction)}}<span v-if="movement.returnMovement" class="return-tag">退回</span></div><div class="products">{{movement.productNames.join('、')}}<span v-if="movement.itemCount>movement.productNames.length"> 等 {{movement.itemCount}} 项</span></div><div class="meta"><span v-if="movement.hasUnknownQuantity">已知：</span><template v-if="movement.totalCartons===0">散装 {{movement.totalQuantity}} 个</template><template v-else>{{movement.totalCartons}} 箱 · {{movement.totalQuantity}} 个</template><span v-if="movement.hasUnknownQuantity"> · 含数量不确定</span></div><div v-if="movement.status==='VOID'||movement.photoCount>0||movement.hasIssues||movement.hasUnknownQuantity" class="badges"><span v-if="movement.status==='VOID'" class="status neutral">已作废</span><span v-else-if="movement.photoCount>0" class="status ok photo-status">{{movement.photoCount}} 张照片</span><span v-if="movement.hasIssues" class="status warn">有异常</span><span v-if="movement.hasUnknownQuantity" class="status warn">数量不确定</span></div></div><span class="chevron">›</span></RouterLink></template>
-<style scoped>.movement-card{display:flex;gap:12px;padding:11px 14px;align-items:flex-start}.time{font-size:16px;font-weight:760;width:48px;padding-top:3px}.time.with-date{width:72px;display:grid;gap:2px;font-size:12px;line-height:1.35;white-space:nowrap}.time.with-date strong{font-size:16px}.products{font-weight:700;margin:6px 0 2px;line-height:1.4;overflow-wrap:anywhere}.meta{font-size:12px;color:#66747c;line-height:1.45}.badges{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px}.photo-status{min-height:22px;padding:2px 7px;font-size:11px;font-weight:600;opacity:.78}.chevron{font-size:26px;color:#8b969c;align-self:center}.return-tag{display:inline-block;margin-left:7px;padding:2px 7px;border-radius:999px;background:#fff0d6;color:#8a5714;font-size:11px}</style>
+<script setup lang="ts">
+import type { MovementSummary } from '../types';
+import { directionLabel } from '../utils/labels';
+import { showDateTime, showTime } from '../utils/time';
+import MaterialSummary from './MaterialSummary.vue';
+withDefaults(defineProps<{ movement: MovementSummary; showDate?: boolean }>(), { showDate: false });
+</script>
+<template>
+  <RouterLink :to="`/movements/${movement.id}`" class="movement-card card">
+    <div class="movement-items">
+      <MaterialSummary v-for="item in movement.items" :key="item.id" v-bind="item" />
+    </div>
+    <div class="record-footer">
+      <time :datetime="movement.movementTime">{{ showDate ? showDateTime(movement.movementTime) : showTime(movement.movementTime) }}</time>
+      <span :class="['movement-direction', {return:movement.direction==='PRODUCTION_TO_WAREHOUSE'}]">{{ directionLabel(movement.direction) }}<span v-if="movement.returnMovement"> · 退回</span></span>
+      <span v-if="movement.photoCount" class="photo-tag">照片 {{ movement.photoCount }}</span>
+      <span v-if="movement.status==='VOID'" class="status neutral">已作废</span>
+      <span v-if="movement.hasIssues" class="status warn">有异常</span>
+    </div>
+  </RouterLink>
+</template>
+<style scoped>
+.movement-card{display:block;padding:12px 14px}.movement-items{display:grid;gap:10px}.movement-items>:not(:first-child){border-top:1px solid var(--line);padding-top:10px}
+.record-footer{display:flex;flex-wrap:wrap;gap:5px 12px;align-items:center;margin-top:9px;font-size:12px;color:var(--muted)}
+.movement-direction{color:var(--blue)}.movement-direction.return{color:var(--green)}.photo-tag{padding:2px 6px;background:#edf0f2;border-radius:5px;font-size:11px}
+.record-footer .status{min-height:20px;font-size:11px;padding:2px 6px}
+</style>

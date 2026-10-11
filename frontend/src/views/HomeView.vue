@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
+import MaterialSummary from "../components/MaterialSummary.vue";
 import MovementCard from "../components/MovementCard.vue";
 import RecordOriginals from "../components/RecordOriginals.vue";
 import { movementsApi } from "../api";
@@ -11,14 +12,15 @@ import { errorMessage } from "../api/http";
 const { authenticated } = useAuth();
 const router = useRouter();
 const recordDialog = ref<HTMLDialogElement>();
-const selectedProduct = ref("");
+type ProductStat = QueryStats["directions"][number]["products"][number];
+const selectedProduct = ref<ProductStat>();
 const sourceMovements = ref<StatMovement[]>([]);
-function openProduct(product: QueryStats["directions"][number]["products"][number]) {
+function openProduct(product: ProductStat) {
   if (product.movements.length === 1) {
     void router.push(`/movements/${product.movements[0].id}`);
     return;
   }
-  selectedProduct.value = product.productName;
+  selectedProduct.value = product;
   sourceMovements.value = product.movements;
   recordDialog.value?.showModal();
 }
@@ -149,14 +151,14 @@ const formatNumber = (value: number) => value.toLocaleString("zh-CN");
           <button type="button" class="return" :class="{active:direction==='PRODUCTION_TO_WAREHOUSE'}" :aria-pressed="direction==='PRODUCTION_TO_WAREHOUSE'" @click="selectDirection('PRODUCTION_TO_WAREHOUSE')">车间 → 仓库</button>
         </div>
       </div>
+      <div class="field">
+        <label for="material-search">搜索物料</label>
+        <input id="material-search" class="input" v-model.trim="q" placeholder="物料名称、物料编码或批次" @keyup.enter="load" />
+      </div>
       <button class="more-toggle" type="button" :aria-expanded="moreFilters" aria-controls="advanced-filters" @click="moreFilters=!moreFilters">
         <span>更多筛选</span><span aria-hidden="true">{{moreFilters ? '收起' : '展开'}} {{moreFilters ? '⌃' : '⌄'}}</span>
       </button>
       <div v-show="moreFilters" id="advanced-filters" class="advanced-filters">
-        <div class="field">
-          <label>搜索</label
-          ><input class="input" v-model.trim="q" placeholder="产品、编码、批次或记录编号" @keyup.enter="load" />
-        </div>
         <div class="field">
           <label>开始日期</label
           ><input class="input" type="date" v-model="from" :max="today()" @change="customDate" />
@@ -175,12 +177,10 @@ const formatNumber = (value: number) => value.toLocaleString("zh-CN");
         <div v-else>
           <section v-for="group in stats.directions" :key="group.direction" class="direction-stat">
             <h3>{{ directionLabel(group.direction) }}</h3>
-            <div class="stats-total"><strong>共 {{ formatNumber(group.products.length) }} 种物料</strong><span>·</span><strong>{{ formatNumber(group.totalCartons) }} 箱</strong><span v-if="group.unknownItemCount">· 含 {{ group.unknownItemCount }} 项数量不确定</span></div>
+            <div class="stats-total"><strong>共 {{ formatNumber(group.products.length) }} 组物料 / 批次</strong><span>·</span><strong>{{ formatNumber(group.totalCartons) }} 箱</strong><span v-if="group.unknownItemCount">· 含 {{ group.unknownItemCount }} 项数量不确定</span></div>
             <div>
-              <button v-for="product in group.products" :key="product.productName" type="button" class="product-stat" :aria-label="`查看 ${product.productName} 的原始流转记录`" @click="openProduct(product)">
-                <strong>{{ product.productName }}<small v-if="product.unknownItemCount">（{{ product.unknownItemCount }} 项不确定）</small></strong>
-                <span class="carton-total">{{ formatNumber(product.fullCartons) }} 箱</span>
-                <span class="unit-total">{{ formatNumber(product.totalQuantity) }} 个</span>
+              <button v-for="product in group.products" :key="JSON.stringify([product.productName, product.materialCode, product.materialBatch, product.baseUnit])" type="button" class="product-stat" :aria-label="`查看 ${product.productName}，编码 ${product.materialCode}，批次 ${product.materialBatch || '未记录'} 的原始流转记录`" @click="openProduct(product)">
+                <MaterialSummary v-bind="product" />
                 <span class="record-arrow" aria-hidden="true">›</span>
               </button>
             </div>
@@ -201,13 +201,15 @@ const formatNumber = (value: number) => value.toLocaleString("zh-CN");
   </div>
     <dialog ref="recordDialog" class="record-dialog" aria-labelledby="record-dialog-title" @click="event => { if (event.target === recordDialog) recordDialog?.close(); }">
       <div class="dialog-heading"><h2 id="record-dialog-title">选择流转记录</h2><button type="button" class="btn" autofocus @click="recordDialog?.close()">关闭</button></div>
-      <p class="dialog-summary">{{ selectedProduct }} · 共 {{ sourceMovements.length }} 个流转单</p>
+      <p class="dialog-summary">{{ selectedProduct?.productName }} · 共 {{ sourceMovements.length }} 个流转单</p>
       <div class="source-list">
         <button v-for="movement in sourceMovements" :key="movement.id" type="button" class="source-record" @click="openMovement(movement.id)">
-          <strong>{{ movement.recordNo }} <span aria-hidden="true">›</span></strong>
-          <span>{{ showDateTime(movement.movementTime) }} · {{ directionLabel(movement.direction) }}</span>
-          <span>本单该物料：{{ formatNumber(movement.fullCartons) }} 箱 · {{ movement.unknownItemCount ? '已知数量 ' : '' }}{{ formatNumber(movement.totalQuantity) }} 个<span v-if="movement.unknownItemCount">（含 {{ movement.unknownItemCount }} 项数量不确定）</span></span>
-          <span>{{ movement.senderName }} → {{ movement.receiverName }}</span>
+          <MaterialSummary v-if="selectedProduct" :product-name="selectedProduct.productName" :material-code="selectedProduct.materialCode" :material-batch="selectedProduct.materialBatch" :base-unit="selectedProduct.baseUnit" :full-cartons="movement.fullCartons" :loose-units="movement.looseUnits" :total-quantity="movement.totalQuantity" :unknown-item-count="movement.unknownItemCount" />
+          <div class="source-meta">
+            <time :datetime="movement.movementTime">{{ showDateTime(movement.movementTime) }}</time>
+            <span :class="{ 'return-direction': movement.direction === 'PRODUCTION_TO_WAREHOUSE' }">{{ directionLabel(movement.direction) }}<template v-if="movement.returnMovement"> · 退回</template></span>
+            <small v-if="movement.photoCount" class="photo-tag">照片 {{ movement.photoCount }}</small>
+          </div>
         </button>
       </div>
     </dialog>
@@ -274,7 +276,7 @@ const formatNumber = (value: number) => value.toLocaleString("zh-CN");
 .direction-stat h3 { margin: 0 0 8px; font-size: 15px; color: #243e4b; }
 .stats-total { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; margin-bottom: 7px; color: #52626b; }
 .stats-total strong { color: #174a68; font-size: 17px; }
-.product-stat { display: grid; grid-template-columns: minmax(0, 1fr) minmax(70px,auto) minmax(88px,auto) auto; gap: 16px; padding: 12px 4px; border: 0; border-top: 1px solid #edf0f1; font: inherit; font-size: 14px; width: 100%; text-align: left; background: transparent; color: inherit; cursor: pointer; align-items: center; }
+.product-stat { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 16px; padding: 12px 4px; border: 0; border-top: 1px solid #edf0f1; font: inherit; font-size: 14px; width: 100%; text-align: left; background: transparent; color: inherit; cursor: pointer; align-items: center; }
 .product-stat:hover,.source-record:hover { background: #edf5f7; }
 .product-stat:focus-visible,.source-record:focus-visible { outline: 3px solid #267566; outline-offset: -3px; }
 .product-stat .record-arrow { color: #174a68; font-size: 22px; }
@@ -285,16 +287,15 @@ const formatNumber = (value: number) => value.toLocaleString("zh-CN");
 .dialog-summary { overflow-wrap: anywhere; color: #60737d; }
 .source-list { display: grid; gap: 10px; }
 .source-record { display: grid; gap: 8px; width: 100%; padding: 14px; border: 1px solid #dce2e5; border-radius: 9px; background: #fff; color: inherit; text-align: left; font: inherit; cursor: pointer; overflow-wrap: anywhere; }
-.source-record strong { display: flex; justify-content: space-between; color: #174a68; }
-.source-record > span { font-size: 13px; }
-.product-stat strong { overflow-wrap: anywhere; color: #243e4b; font-weight: 760; }
-.product-stat span { color: #52626b; white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; }
-.product-stat .carton-total { color: #36515f; font-weight: 700; }
-.product-stat .unit-total { color: #75838a; font-size: 13px; }
+.source-meta { display:flex; flex-wrap:wrap; align-items:center; gap:5px 12px; font-size:12px; color:var(--muted); }
+.source-meta .return-direction { color:var(--green); }
+.photo-tag { padding:2px 6px; border-radius:5px; background:#edf0f2; font-size:11px; }
 .record-stack { gap: 10px; }
 @media (max-width: 560px) {
   .direction-choice button { font-size: 11px; }
   .stats-heading { align-items: flex-start; flex-direction: column; gap: 4px; }
   .product-stat { gap: 8px; font-size: 13px; }
+  .record-dialog { padding: 14px; }
+  .source-record { padding: 11px; }
 }
 </style>

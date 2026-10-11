@@ -123,6 +123,15 @@ export interface ProductionTaskTarget {
   issuedQuantity: number; returnedQuantity: number; shortageQuantity: number;
   unknownQuantityCount: number; materialTarget: boolean;
 }
+export interface MaterialSummary {
+  productName: string;
+  materialCode: string;
+  materialBatch?: string | null;
+  baseUnit: string;
+  fullCartons: number;
+  looseUnits: number;
+  totalQuantity?: number | null;
+}
 export interface MovementSummary {
   id: number;
   recordNo: string;
@@ -139,6 +148,7 @@ export interface MovementSummary {
   photoCount: number;
   hasIssues: boolean;
   hasUnknownQuantity: boolean;
+  items: (MaterialSummary & { id: number; quantityUnknown: boolean })[];
 }
 export interface MovementPage {
   content: MovementSummary[];
@@ -159,10 +169,13 @@ export interface QueryStats {
     totalCartons: number;
     totalQuantity: number;
     unknownItemCount: number;
-    products: { productName: string; fullCartons: number; totalQuantity: number; unknownItemCount: number; movements: StatMovement[] }[];
+    products: (MaterialSummary & { totalQuantity: number; unknownItemCount: number; movements: StatMovement[] })[];
   }[];
 }
 export interface StatMovement {
+  looseUnits: number;
+  returnMovement: boolean;
+  photoCount: number;
   id: number;
   recordNo: string;
   movementTime: string;

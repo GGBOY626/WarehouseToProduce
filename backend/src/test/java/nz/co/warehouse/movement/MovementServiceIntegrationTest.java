@@ -216,9 +216,9 @@ class MovementServiceIntegrationTest {
     }
 
     @Test void statisticsTraceDistinctOriginalMovementsAndTheirOwnMaterialAmounts(){
-        var firstItem=new MovementDtos.ItemRequest(product,"TRACE-A",2,0,null,null,List.of());
-        var secondItem=new MovementDtos.ItemRequest(product,"TRACE-B",3,0,null,null,List.of());
-        var first=movements.create(new MovementDtos.SaveRequest(UUID.randomUUID().toString(),MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,Instant.parse("2026-09-28T01:00:00Z"),sender,receiver,"TRACE-LOT",null,List.of(firstItem,secondItem)));
+        var firstItem=new MovementDtos.ItemRequest(product,"BATCH-001",2,0,null,null,List.of());
+        var secondItem=new MovementDtos.ItemRequest(product,"BATCH-001",3,0,null,null,List.of());
+        var first=movements.create(new MovementDtos.SaveRequest(UUID.randomUUID().toString(),MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,Instant.parse("2026-09-28T01:00:00Z"),sender,receiver,"CA202607006",null,List.of(firstItem,secondItem)));
         var single=movements.queryStats(LocalDate.of(2026,9,28),LocalDate.of(2026,9,28),MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,MovementEnums.Status.ACTIVE,null,null,first.recordNo()).directions().getFirst().products().getFirst();
         assertThat(single.movements()).hasSize(1);
         assertThat(single.movements().getFirst().id()).isEqualTo(first.id());
@@ -241,6 +241,45 @@ class MovementServiceIntegrationTest {
         assertThat(source.movementTime()).isEqualTo(second.movementTime());
         assertThat(source.senderName()).isEqualTo(second.senderName());
         assertThat(source.receiverName()).isEqualTo(second.receiverName());
+    }
+
+    @Test void materialSummariesSeparateCodesAndBatchesAndPreserveLooseAndOverriddenAmounts(){
+        var time=Instant.parse("2026-09-28T03:00:00Z");
+        var loose=new MovementDtos.ItemRequest(product,"CODE-A",0,17,null,null,List.of());
+        var otherCode=new MovementDtos.ItemRequest(product,"CODE-B",1,2,45L,null,List.of());
+        var first=movements.create(new MovementDtos.SaveRequest(UUID.randomUUID().toString(),MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,time,sender,receiver,"LOT-A",null,List.of(loose,otherCode)));
+        var second=movements.create(new MovementDtos.SaveRequest(UUID.randomUUID().toString(),MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,time,sender,receiver,"LOT-B",null,List.of(loose)));
+        String name=first.items().getFirst().productName();
+        for(String query:List.of(name,"CODE-A","LOT-B")) {
+            var page=movements.search(LocalDate.of(2026,9,28),LocalDate.of(2026,9,28),null,MovementEnums.Status.ACTIVE,null,null,query,0,1);
+            assertThat(page.totalElements()).isEqualTo(query.equals("LOT-B")?1:2);
+            assertThat(page.totalPages()).isEqualTo(query.equals("LOT-B")?1:2);
+            assertThat(page.content()).hasSize(1);
+        }
+        var listed=movements.search(LocalDate.of(2026,9,28),LocalDate.of(2026,9,28),null,null,null,null,first.recordNo(),0,20).content().getFirst();
+        assertThat(listed.items()).hasSize(2);
+        var item=listed.items().getFirst();
+        assertThat(item.materialCode()).isEqualTo("CODE-A");
+        assertThat(item.materialBatch()).isEqualTo("LOT-A");
+        assertThat(item.fullCartons()).isZero();
+        assertThat(item.looseUnits()).isEqualTo(17);
+        assertThat(item.totalQuantity()).isEqualTo(17);
+        assertThat(item.baseUnit()).isEqualTo("个");
+        var groups=movements.queryStats(LocalDate.of(2026,9,28),LocalDate.of(2026,9,28),null,MovementEnums.Status.ACTIVE,null,null,name).directions().getFirst().products();
+        assertThat(groups).hasSize(3);
+        assertThat(groups).extracting(g->g.materialCode()+"/"+g.materialBatch()).containsExactlyInAnyOrder("CODE-A/LOT-A","CODE-A/LOT-B","CODE-B/LOT-A");
+        var adjusted=groups.stream().filter(g->g.materialCode().equals("CODE-B")).findFirst().orElseThrow();
+        assertThat(adjusted.totalQuantity()).isEqualTo(45);
+        assertThat(adjusted.looseUnits()).isEqualTo(2);
+        assertThat(adjusted.movements()).hasSize(1);
+        assertThat(adjusted.movements().getFirst().id()).isEqualTo(first.id());
+        var batchSearch=movements.queryStats(LocalDate.of(2026,9,28),LocalDate.of(2026,9,28),null,MovementEnums.Status.ACTIVE,null,null,"LOT-B").directions().getFirst().products();
+        assertThat(batchSearch.stream().filter(g->g.productName().equals(name)).toList()).singleElement().satisfies(g->{
+            assertThat(g.movements().getFirst().id()).isEqualTo(second.id());
+            assertThat(g.movements().getFirst().looseUnits()).isEqualTo(17);
+        });
+        var daily=movements.todayStats(LocalDate.of(2026,9,28),MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION).products().stream().filter(g->g.productName().equals(name)).toList();
+        assertThat(daily).hasSize(3);
     }
 
     @Test void detailDoesNotDuplicateItemWhenMovementHasMultiplePhotos(){

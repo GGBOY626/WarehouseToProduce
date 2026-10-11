@@ -119,7 +119,7 @@ onMounted(()=>void load());
           <span v-if="data.status === 'VOID'" class="status neutral">已作废</span
           ><span v-else-if="data.photos.length" class="status ok photo-count">{{ data.photos.length }} 张照片</span
           ><span v-if="data.hasIssues" class="status warn">存在异常</span>
-          <h1 class="page-title mono">{{ data.recordNo }}</h1>
+          <h1 class="page-title">流转详情</h1>
         </div>
       </div>
       <section class="card card-pad facts">
@@ -238,11 +238,16 @@ onMounted(()=>void load());
         ><button v-if="data.status === 'ACTIVE'" class="btn btn-secondary" @click="duplicate">复制记录</button
         ><button v-if="data.status === 'ACTIVE'" class="btn btn-danger" @click="voidRecord">作废记录</button
         ><button class="btn btn-danger permanent-delete" @click="deleteRecord">永久删除记录</button>
-      </section></template
+      </section>
+      <footer class="trace-reference">
+        <span>流转单号 <span class="mono">{{ data.recordNo }}</span></span>
+        <CopyButton :value="data.recordNo" label="流转单号" />
+      </footer></template
     >
   </div>
 </template>
 <style scoped>
+.trace-reference { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:22px; color:var(--muted); font-size:12px; overflow-wrap:anywhere; }
 .form-alert {
   background: #fdeced;
   color: #8f1d25;
