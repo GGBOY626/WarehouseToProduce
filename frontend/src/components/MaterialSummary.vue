@@ -6,6 +6,7 @@ withDefaults(defineProps<{
   productName: string;
   materialCode: string;
   showMaterialCode?: boolean;
+  showMaterialBatch?: boolean;
   materialBatch?: string | null;
   baseUnit: string;
   fullCartons: number;
@@ -16,16 +17,16 @@ withDefaults(defineProps<{
   totalQuantity?: number | null;
   unknownItemCount?: number;
   quantityUnknown?: boolean;
-}>(), { showMaterialCode: true });
+}>(), { showMaterialCode: true, showMaterialBatch: true });
 const number = (value: number) => value.toLocaleString('zh-CN');
 </script>
 <template>
   <div class="material-summary">
     <div class="identity">
       <strong class="material-name">{{ productName }}</strong>
-      <div class="material-identifiers">
+      <div v-if="showMaterialCode || (showMaterialBatch && materialBatch?.trim())" class="material-identifiers">
         <span v-if="showMaterialCode">编码 <b class="mono">{{ materialCode }}</b></span>
-        <span>批次 <b class="mono">{{ materialBatch || '未记录' }}</b></span>
+        <span v-if="showMaterialBatch && materialBatch?.trim()">批次 <b class="mono">{{ materialBatch }}</b></span>
       </div>
     </div>
     <div class="material-quantities">
