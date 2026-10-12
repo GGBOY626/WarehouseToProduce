@@ -14,6 +14,7 @@ export interface Product {
   name: string;
   materialCode: string;
   materialBatch?: string;
+  materialBatches?: string[];
   defaultUnitsPerCarton?: number;
   cartonSpecs?: number[];
   baseUnit?: string;
@@ -40,6 +41,7 @@ export interface ItemInput {
   productId?: number;
   product?: Product;
   batchNo: string;
+  materialBatch?: string | null;
   subBatch?: string | null;
   fullCartons: number;
   looseUnits: number;
@@ -82,6 +84,7 @@ export interface MovementItem {
   unitsPerCarton?: number;
   baseUnit: string;
   batchNo: string;
+  materialBatch?: string | null;
   subBatch?: string | null;
   fullCartons: number;
   looseUnits: number;
@@ -122,6 +125,7 @@ export interface ProductionTaskMovement {
   totalCartons: number; totalQuantity: number; productNames: string[]; status: MovementStatus; unknownQuantityCount: number; quantityUnit?: string;
 }
 export interface ProductionTaskOutput {
+  materialBatch?: string | null;
   productId: number; productName: string; materialCode: string; baseUnit: string;
   targetQuantity: number; receivedQuantity: number; progressPercent: number; unknownQuantityCount: number;
 }
@@ -136,6 +140,7 @@ export interface ProductionTask {
   output?: ProductionTaskOutput;
 }
 export interface ProductionTaskTarget {
+  materialBatch?: string | null;
   productId: number; productName: string; materialCode: string; baseUnit?: string;
   targetQuantity: number; completedQuantity: number; progressPercent: number;
   issuedQuantity: number; returnedQuantity: number; shortageQuantity: number;

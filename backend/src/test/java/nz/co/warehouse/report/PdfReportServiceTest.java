@@ -21,6 +21,22 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 class PdfReportServiceTest {
+    @Test void exportsPerItemMaterialBatchesInsteadOfTheSharedLegacyHeader() throws Exception {
+        Movement row=movement(MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,"2026-09-01T01:00:00Z","外盒","BATCH-CODE",1,0,10);
+        row.setManufactureLot("LEGACY-HEADER");
+        row.getItems().getFirst().setMaterialBatch("BATCH-A001");
+        Movement second=movement(MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,"2026-09-01T01:00:00Z","外盒","BATCH-CODE",2,0,20);
+        second.getItems().getFirst().setMaterialBatch("BATCH-A002");
+        row.addItem(second.getItems().getFirst());
+        MovementRepository repository=mock(MovementRepository.class);
+        when(repository.findReportRows(any(),any(),any(MovementEnums.Status.class))).thenReturn(List.of(row));
+        PdfReportService service=new PdfReportService(repository);
+        ReflectionTestUtils.setField(service,"zone","Pacific/Auckland");
+        String text=pdfText(service.generate(LocalDate.of(2026,9,1),LocalDate.of(2026,9,1)));
+        assertThat(text).contains("BATCH-A001","BATCH-A002").doesNotContain("LEGACY-HEADER");
+        assertThat(nz.co.warehouse.movement.MaterialQuantity.group(row.getItems())).hasSize(2);
+    }
+
     @Test
     void generatesFourTablesWithBundledChineseFont() throws Exception {
         MovementRepository repository = mock(MovementRepository.class);

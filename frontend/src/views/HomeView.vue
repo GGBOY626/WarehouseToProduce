@@ -23,7 +23,7 @@ function statIdentifiers(product: ProductStat) {
   // A material group can contain both normal receipts and returns; keep both identifiers in that case.
   return {
     showMaterialCode: product.movements.some(m => m.direction === 'PRODUCTION_TO_WAREHOUSE' && !m.returnMovement),
-    showMaterialBatch: product.movements.some(m => m.direction !== 'PRODUCTION_TO_WAREHOUSE' || m.returnMovement),
+    showMaterialBatch: true,
   };
 }
 const sourceMovements = ref<StatMovement[]>([]);
@@ -227,7 +227,7 @@ const formatNumber = (value: number) => value.toLocaleString("zh-CN");
       <p class="dialog-summary">{{ selectedProduct?.productName }} · 共 {{ sourceMovements.length }} 个流转单</p>
       <div class="source-list">
         <button v-for="movement in sourceMovements" :key="movement.id" type="button" class="source-record" @click="openMovement(movement.id)">
-          <MaterialSummary v-if="selectedProduct" :show-material-code="movement.direction === 'PRODUCTION_TO_WAREHOUSE' && !movement.returnMovement" :show-material-batch="movement.direction !== 'PRODUCTION_TO_WAREHOUSE' || movement.returnMovement" :product-name="selectedProduct.productName" :material-code="selectedProduct.materialCode" :material-batch="selectedProduct.materialBatch" :sub-batch="selectedProduct.subBatch" :base-unit="selectedProduct.baseUnit" :full-cartons="movement.fullCartons" :tail-cartons="movement.tailCartons" :total-cartons="movement.totalCartons" :packaging="movement.packaging" :loose-units="movement.looseUnits" :total-quantity="movement.totalQuantity" :unknown-item-count="movement.unknownItemCount" />
+          <MaterialSummary v-if="selectedProduct" :show-material-code="movement.direction === 'PRODUCTION_TO_WAREHOUSE' && !movement.returnMovement" :show-material-batch="true" :product-name="selectedProduct.productName" :material-code="selectedProduct.materialCode" :material-batch="selectedProduct.materialBatch" :sub-batch="selectedProduct.subBatch" :base-unit="selectedProduct.baseUnit" :full-cartons="movement.fullCartons" :tail-cartons="movement.tailCartons" :total-cartons="movement.totalCartons" :packaging="movement.packaging" :loose-units="movement.looseUnits" :total-quantity="movement.totalQuantity" :unknown-item-count="movement.unknownItemCount" />
           <div class="source-meta">
             <time :datetime="movement.movementTime">{{ showDateTime(movement.movementTime) }}</time>
             <span :class="{ 'return-direction': movement.direction === 'PRODUCTION_TO_WAREHOUSE' }">{{ directionLabel(movement.direction) }}<template v-if="movement.returnMovement"> · 退回</template></span>

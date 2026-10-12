@@ -24,13 +24,13 @@ public class ProductService {
 
     @Transactional
     public ProductDtos.Response update(long id, ProductDtos.Request request) {
-        Product p = get(id); apply(p, request); return ProductDtos.Response.from(p);
+        Product p = get(id).canonical(); apply(p, request); return ProductDtos.Response.from(p);
     }
 
     @Transactional
     public ProductDtos.Response setActive(long id, boolean active) {
-        Product p = get(id);
-        if(active&&repository.existsByNameIgnoreCaseAndMaterialCodeIgnoreCaseAndActiveTrueAndIdNot(p.getName(),p.getMaterialCode(),p.getId()))
+        Product p = get(id).canonical();
+        if(active&&repository.existsByNameIgnoreCaseAndMaterialCodeIgnoreCaseAndMovementDirectionAndActiveTrueAndIdNot(p.getName(),p.getMaterialCode(),p.getMovementDirection(),p.getId()))
             throw new BusinessException("PRODUCT_DUPLICATE", "已有相同名称和物料编码的启用产品。", HttpStatus.CONFLICT);
         p.setActive(active); return ProductDtos.Response.from(p);
     }
@@ -38,7 +38,7 @@ public class ProductService {
     @Transactional
     public void delete(long id) {
         Product product = get(id);
-        if (repository.countMovementItems(id) > 0 || repository.countProductionTasks(id) > 0)
+        if (repository.countByMergedIntoId(id) > 0 || repository.countMovementItems(id) > 0 || repository.countProductionTasks(id) > 0)
             throw new BusinessException("PRODUCT_IN_USE", "该产品已经存在流转记录或生产任务，不能删除，请改为停用。", HttpStatus.CONFLICT);
         repository.delete(product);
     }
@@ -51,7 +51,7 @@ public class ProductService {
     public Product getAny(long id) { return get(id); }
 
     public Product getForMovement(long id, ProductUsage expectedDirection, boolean allowInactive) {
-        Product product = get(id);
+        Product product = get(id).canonical();
         if (!allowInactive && !product.isActive())
             throw new BusinessException("PRODUCT_DISABLED", "该产品已停用，请重新选择产品。", HttpStatus.CONFLICT);
         if (product.getMovementDirection() == null)
@@ -65,8 +65,8 @@ public class ProductService {
     private void apply(Product p, ProductDtos.Request r) {
         String name=r.name().trim(), materialCode=r.materialCode().trim();
         boolean duplicate=p.getId()==null
-                ?repository.existsByNameIgnoreCaseAndMaterialCodeIgnoreCaseAndActiveTrue(name,materialCode)
-                :repository.existsByNameIgnoreCaseAndMaterialCodeIgnoreCaseAndActiveTrueAndIdNot(name,materialCode,p.getId());
+                ?repository.existsByNameIgnoreCaseAndMaterialCodeIgnoreCaseAndMovementDirectionAndActiveTrue(name,materialCode,r.movementDirection())
+                :repository.existsByNameIgnoreCaseAndMaterialCodeIgnoreCaseAndMovementDirectionAndActiveTrueAndIdNot(name,materialCode,r.movementDirection(),p.getId());
         if(duplicate)throw new BusinessException("PRODUCT_DUPLICATE", "已有相同名称和物料编码的启用产品。", HttpStatus.CONFLICT);
         if(!r.quantityUnknown()&&(r.baseUnit()==null||r.baseUnit().isBlank()))throw BusinessException.badRequest("BASE_UNIT_REQUIRED", "数量确定的产品必须填写基础单位。");
         if(r.cartonSpecs()!=null){
@@ -74,7 +74,23 @@ public class ProductService {
                 throw BusinessException.badRequest("CARTON_SPECS_INVALID", "常用箱规最多 50 项，每箱数量必须为正整数。");
             p.getCartonSpecs().clear();p.getCartonSpecs().addAll(r.cartonSpecs());
         }
+        if(r.materialBatches()!=null) for(String batch:r.materialBatches()) rememberBatch(p,batch);
+        rememberBatch(p,r.materialBatch());
         p.setName(name);p.setMaterialCode(materialCode);p.setMaterialBatch(blankToNull(r.materialBatch()));p.setMovementDirection(r.movementDirection());p.setQuantityUnknown(r.quantityUnknown());p.setDefaultUnitsPerCarton(r.quantityUnknown()?null:r.defaultUnitsPerCarton());p.setBaseUnit(r.quantityUnknown()?null:r.baseUnit().trim());
+    }
+    public String resolveBatch(Product product,String value,boolean required) {
+        String batch=blankToNull(value);
+        if(batch!=null&&batch.length()>100)throw BusinessException.badRequest("MATERIAL_BATCH_INVALID","物料批次最多 100 个字符。");
+        if(batch==null&&(required||product.availableBatches().size()>1))
+            throw BusinessException.badRequest("MANUFACTURE_LOT_REQUIRED","必须填写物料批次；有多个批次时请选择本次实际使用的批次。");
+        return batch;
+    }
+    public void rememberBatch(Product product,String value) {
+        String batch=blankToNull(value);
+        if(batch!=null){
+            if(batch.length()>100)throw BusinessException.badRequest("MATERIAL_BATCH_INVALID","物料批次最多 100 个字符。");
+            product.canonical().getMaterialBatches().add(batch);
+        }
     }
     private String blankToNull(String s) { return s == null || s.isBlank() ? null : s.trim(); }
 }

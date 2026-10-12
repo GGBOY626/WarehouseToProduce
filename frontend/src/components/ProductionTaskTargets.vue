@@ -4,8 +4,8 @@ defineProps<{ targets: ProductionTaskTarget[] }>();
 </script>
 <template>
   <div class="target-list">
-    <div v-for="target in targets" :key="target.productId" class="target-summary">
-      <div class="target-title"><strong>{{ target.productName }}</strong><small>{{ target.materialCode }}</small></div>
+    <div v-for="(target, index) in targets" :key="`${target.productId}:${target.materialBatch}:${index}`" class="target-summary">
+      <div class="target-title"><strong>{{ target.productName }}</strong><small>物料编码 {{ target.materialCode }}</small><small v-if="target.materialBatch">物料批次 {{ target.materialBatch }}</small></div>
       <p v-if="!target.materialTarget" class="shortage">此目标属于旧版成品入库产品，请编辑任务，改选仓库 → 生产车间的物料。</p>
       <template v-else>
         <div class="target-values"><span>净发料 / 所需</span><b>{{ target.completedQuantity.toLocaleString() }} / {{ target.targetQuantity.toLocaleString() }} {{ target.baseUnit || '个' }}</b></div>

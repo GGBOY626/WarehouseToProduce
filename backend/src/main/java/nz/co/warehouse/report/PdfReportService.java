@@ -144,7 +144,7 @@ public class PdfReportService {
             itemCount++;
             html.append("<tr><td class='center'>").append(REPORT_DATE.format(movementDate)).append("</td><td class='text'>")
                     .append(e(item.getProductNameSnapshot())).append("</td><td class='center'>").append(e(item.getBatchNo()))
-                    .append("</td><td class='center'>").append(batchLabel(movement.getManufactureLot(),item.getSubBatch())).append("</td><td class='number'>").append(fullCartons(item))
+                    .append("</td><td class='center'>").append(batchLabel(item.effectiveMaterialBatch(),item.getSubBatch())).append("</td><td class='number'>").append(fullCartons(item))
                     .append("</td><td class='number'>").append(quantity(item, item.getLooseUnits())).append("</td><td class='number'>").append(totalQuantity(item))
                     .append("</td><td class='text'>").append(e(item.getRemarks())).append("</td><td class='center'>").append(e(movement.getSenderNameSnapshot()))
                     .append("</td><td class='center'>").append(e(movement.getReceiverNameSnapshot())).append("</td></tr>");

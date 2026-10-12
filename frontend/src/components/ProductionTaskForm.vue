@@ -1,24 +1,51 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { onMounted, ref } from "vue";
 import { productionTasksApi, productsApi } from "../api";
 import { errorMessage } from "../api/http";
 import type { Product, ProductionTask } from "../types";
 import { today } from "../utils/time";
+import MaterialBatchPicker from "./MaterialBatchPicker.vue";
 import SearchPicker from "./SearchPicker.vue";
 
 const props = defineProps<{ task?: ProductionTask }>();
 const emit = defineEmits<{ saved: [task: ProductionTask]; cancel: [] }>();
 let nextKey = 0;
-const newTarget = () => ({ key: nextKey++, productId: undefined as number | undefined, targetQuantity: 0, baseUnit: "" });
+const newTarget = () => ({ key: nextKey++, productId: undefined as number | undefined, targetQuantity: 0, baseUnit: "", materialBatch: "", batches: [] as string[] });
 const form = ref({
   name: props.task?.name || "",
-  targets: props.task?.targets.map(t => ({ key: nextKey++, productId: t.productId as number | undefined, targetQuantity: t.targetQuantity, baseUnit: t.baseUnit || "" })) || [newTarget()],
+  targets: props.task?.targets.map(t => ({ key: nextKey++, productId: t.productId as number | undefined, targetQuantity: t.targetQuantity, baseUnit: t.baseUnit || "", materialBatch: t.materialBatch || "", batches: [] as string[] })) || [newTarget()],
   plannedDate: props.task?.plannedDate || today(), batchNo: props.task?.batchNo || "", remarks: props.task?.remarks || ""
 });
 const outputEnabled = ref(!!props.task?.output);
 const outputProductId = ref<number | undefined>(props.task?.output?.productId);
 const outputQuantity = ref(props.task?.output?.targetQuantity || 0);
+const outputBatch = ref(props.task?.output?.materialBatch || "");
+const outputBatches = ref<string[]>([]);
 const outputUnit = ref(props.task?.output?.baseUnit || "");
+function selectMaterial(target: ReturnType<typeof newTarget>, p?: Product) {
+  target.baseUnit = p?.baseUnit || "";
+  target.batches = p?.materialBatches || [];
+  target.materialBatch = target.batches.length === 1 ? target.batches[0] : "";
+}
+function selectOutput(p?: Product) {
+  outputUnit.value = p?.baseUnit || "";
+  outputBatches.value = p?.materialBatches || [];
+  outputBatch.value = outputBatches.value.length === 1 ? outputBatches.value[0] : "";
+}
+onMounted(async () => {
+  if (!props.task) return;
+  try {
+    const rows = await productsApi.search('', true);
+    form.value.targets.forEach(t => t.batches = rows.find(p => p.id === t.productId)?.materialBatches || []);
+    outputBatches.value = rows.find(p => p.id === outputProductId.value)?.materialBatches || [];
+  } catch (e) { message.value = errorMessage(e); }
+});
+function legacyTarget(target: ReturnType<typeof newTarget>) {
+  return !!props.task?.targets.some(t => t.productId === target.productId && !t.materialBatch);
+}
+function legacyOutput() {
+  return !!props.task?.output && props.task.output.productId === outputProductId.value && !props.task.output.materialBatch;
+}
 async function loadOutputs(q: string): Promise<Product[]> {
   return (await productsApi.search(q, !!props.task, 'PRODUCTION_TO_WAREHOUSE'))
     .filter(p => !p.quantityUnknown && (p.active || p.id === props.task?.output?.productId));
@@ -35,15 +62,18 @@ async function save() {
   if (!form.value.plannedDate || !form.value.batchNo.trim() || targets.some(t => !t.productId || !Number.isSafeInteger(t.targetQuantity) || t.targetQuantity <= 0)) {
     message.value = "请填写每个目标产品及大于零的整数数量，并填写计划日期和生产批次。"; return;
   }
-  if (new Set(targets.map(t => t.productId)).size !== targets.length) {
-    message.value = "同一个目标产品不能重复添加。"; return;
+  if (new Set(targets.map(t => JSON.stringify([t.productId,t.materialBatch]))).size !== targets.length) {
+    message.value = "同一个产品的同一物料批次不能重复添加。"; return;
   }
   if (outputEnabled.value && (!outputProductId.value || !Number.isSafeInteger(outputQuantity.value) || outputQuantity.value <= 0)) {
     message.value = "请选择成品，并填写大于零的整数计划产量。"; return;
   }
+  if (targets.some(t => t.batches.length > 1 && !t.materialBatch && !legacyTarget(t)) || (outputEnabled.value && outputBatches.value.length > 1 && !outputBatch.value && !legacyOutput())) {
+    message.value = "有多个物料批次，请选择本次任务使用的具体批次。"; return;
+  }
   saving.value = true; message.value = "";
   try {
-    const payload = { ...form.value, outputProductId: outputEnabled.value ? outputProductId.value : null, targetOutputQuantity: outputEnabled.value ? outputQuantity.value : null, targets: targets.map(t => ({ productId: t.productId, targetQuantity: t.targetQuantity })) };
+    const payload = { ...form.value, outputMaterialBatch: outputEnabled.value ? outputBatch.value : null, outputProductId: outputEnabled.value ? outputProductId.value : null, targetOutputQuantity: outputEnabled.value ? outputQuantity.value : null, targets: targets.map(t => ({ productId: t.productId, targetQuantity: t.targetQuantity, materialBatch: t.materialBatch })) };
     const result = props.task ? await productionTasksApi.update(props.task.id, payload) : await productionTasksApi.create(payload);
     emit("saved", result);
   } catch (e) { message.value = errorMessage(e); } finally { saving.value = false; }
@@ -59,7 +89,8 @@ async function save() {
       <div v-for="(target, index) in form.targets" :key="target.key" class="target-row">
         <SearchPicker v-model="target.productId" :label="`所需物料 ${index + 1}`" placeholder="搜索发往车间的物料、内盒或外盒"
           :load="loadMaterials"
-          :display="p => `${p.name} · ${p.materialCode}`" @select="p => target.baseUnit = p?.baseUnit || ''" />
+          :display="p => `${p.name} · ${p.materialCode}`" @select="p => selectMaterial(target, p)" />
+        <MaterialBatchPicker v-model="target.materialBatch" :batches="target.batches" :allow-unspecified="legacyTarget(target)" />
         <label class="field"><span>所需数量 * {{ target.baseUnit ? `（${target.baseUnit}）` : '' }}</span>
           <input class="input" type="number" min="1" step="1" required v-model.number="target.targetQuantity" />
         </label>
@@ -69,7 +100,8 @@ async function save() {
       <label class="output-choice"><input type="checkbox" v-model="outputEnabled" /> 记录成品回仓及生产完成率</label>
       <div v-if="outputEnabled" class="output-plan">
         <SearchPicker v-model="outputProductId" label="成品产品" placeholder="选择车间送回仓库的成品" :load="loadOutputs"
-          :display="p => `${p.name} · ${p.materialCode}`" @select="p => outputUnit = p?.baseUnit || ''" />
+          :display="p => `${p.name} · ${p.materialCode}`" @select="selectOutput" />
+        <MaterialBatchPicker v-model="outputBatch" :batches="outputBatches" :allow-unspecified="legacyOutput()" />
         <label class="field"><span>计划产量 * {{ outputUnit ? `（${outputUnit}）` : '' }}</span><input class="input" type="number" min="1" step="1" required v-model.number="outputQuantity" /></label>
         <p class="hint">按成品基础单位填写，回仓时使用同一单位。例如成品以盒计量：计划 500 盒，所需关节饮 15,000 个、内盒和外盒各 500 个；若成品以个计量，计划产量填 15,000。装箱规格只表示运输包装，不用于推断生产配比。</p>
       </div>
@@ -85,5 +117,5 @@ async function save() {
 </template>
 
 <style scoped>
-.output-choice{display:flex;align-items:center;gap:8px}.output-choice input{width:18px;height:18px}.output-plan{display:grid;gap:12px;padding:14px;background:#f3f7f8;border-radius:8px}.task-form,fieldset{display:grid;gap:16px}.task-form{margin-top:16px}fieldset{padding:0;border:0;min-width:0}.target-row{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr) auto;gap:12px;align-items:end;border-bottom:1px solid #e5ecee;padding-bottom:16px}.target-row>*{min-width:0}fieldset>.btn{justify-self:start}.form-actions{display:flex;gap:10px}.form-alert{color:#8f1d25}.hint{margin:0}@media(max-width:600px){.target-row{grid-template-columns:minmax(0,1fr) auto}.target-row>:first-child{grid-column:1/-1}}
+.output-choice{display:flex;align-items:center;gap:8px}.output-choice input{width:18px;height:18px}.output-plan{display:grid;gap:12px;padding:14px;background:#f3f7f8;border-radius:8px}.task-form,fieldset{display:grid;gap:16px}.task-form{margin-top:16px}fieldset{padding:0;border:0;min-width:0}.target-row{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1.5fr) minmax(0,1fr) auto;gap:12px;align-items:end;border-bottom:1px solid #e5ecee;padding-bottom:16px}.target-row>*{min-width:0}fieldset>.btn{justify-self:start}.form-actions{display:flex;gap:10px}.form-alert{color:#8f1d25}.hint{margin:0}@media(max-width:600px){.target-row{grid-template-columns:minmax(0,1fr)}.target-row>.btn{justify-self:start}}
 </style>

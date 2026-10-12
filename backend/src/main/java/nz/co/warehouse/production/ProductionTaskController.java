@@ -8,6 +8,7 @@ import java.util.List;
 @RestController @RequestMapping("/api/production-tasks") @RequiredArgsConstructor
 public class ProductionTaskController {
     private final ProductionTaskService service;
+    @PostMapping("/linkable") public java.util.List<ProductionTaskService.LinkOption> linkableBatches(@jakarta.validation.Valid @RequestBody ProductionTaskService.LinkRequest r){return service.linkableBatches(r);}
     @GetMapping public List<ProductionTaskService.Response> list(@RequestParam(required=false) ProductionTask.Status status){return service.list(status);}
     @GetMapping("/linkable") public List<ProductionTaskService.LinkOption> linkable(
             @RequestParam List<Long> productIds,@RequestParam nz.co.warehouse.movement.MovementEnums.Direction direction,

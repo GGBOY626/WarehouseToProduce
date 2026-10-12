@@ -10,6 +10,7 @@ import java.util.*;
 @Getter @Setter @NoArgsConstructor
 @Entity @Table(name="production_task")
 public class ProductionTask extends PersistentEntity {
+    @Column(name="output_material_batch",length=100) private String outputMaterialBatch;
     @Id @GeneratedValue(strategy=GenerationType.IDENTITY) private Long id;
     @ManyToOne(fetch=FetchType.LAZY,optional=false) @JoinColumn(name="product_id") private Product product;
     @Column(name="target_quantity",nullable=false) private long targetQuantity;

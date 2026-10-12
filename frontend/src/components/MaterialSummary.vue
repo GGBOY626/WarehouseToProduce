@@ -26,7 +26,7 @@ const number = (value: number) => value.toLocaleString('zh-CN');
     <div class="identity">
       <strong class="material-name">{{ productName }}</strong>
       <div v-if="showMaterialCode || (showMaterialBatch && materialBatch?.trim()) || subBatch?.trim()" class="material-identifiers">
-        <span v-if="showMaterialCode">编码 <b class="mono">{{ materialCode }}</b></span>
+        <span v-if="showMaterialCode">物料编码 <b class="mono">{{ materialCode }}</b></span>
         <span v-if="subBatch?.trim()">区分批次 <b class="mono">{{ subBatch }}</b></span>
         <span v-if="showMaterialBatch && materialBatch?.trim()">批次 <b class="mono">{{ materialBatch }}</b></span>
       </div>

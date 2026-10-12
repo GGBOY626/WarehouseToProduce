@@ -12,6 +12,20 @@ public class Product extends PersistentEntity {
     @Column(nullable = false, length = 200) private String name;
     @Column(name = "material_code", nullable = false, length = 100) private String materialCode;
     @Column(name = "material_batch", length = 100) private String materialBatch;
+    @ElementCollection
+    @CollectionTable(name="product_material_batch",joinColumns=@JoinColumn(name="product_id"))
+    @Column(name="batch_no",nullable=false,length=100)
+    @org.hibernate.annotations.BatchSize(size=100)
+    private java.util.Set<String> materialBatches = new java.util.TreeSet<>();
+    @ManyToOne(fetch=FetchType.LAZY) @JoinColumn(name="merged_into_id") private Product mergedInto;
+    public Product canonical() { return mergedInto == null ? this : mergedInto.canonical(); }
+    public Long canonicalId() { return canonical().getId(); }
+    public java.util.Set<String> availableBatches() {
+        var batches = new java.util.TreeSet<>(canonical().getMaterialBatches());
+        String legacy = canonical().getMaterialBatch();
+        if (legacy != null && !legacy.isBlank()) batches.add(legacy.trim());
+        return batches;
+    }
     @Enumerated(EnumType.STRING) @Column(name = "movement_direction", length = 40) private ProductUsage movementDirection;
     @Column(name = "default_units_per_carton") private Integer defaultUnitsPerCarton;
     @ElementCollection
@@ -22,5 +36,5 @@ public class Product extends PersistentEntity {
     @Column(name = "quantity_unknown", nullable = false) private boolean quantityUnknown;
     @Column(name = "base_unit", length = 20) private String baseUnit = "个";
     @Column(nullable = false) private boolean active = true;
-    @Column(name = "active_identity", length = 302, insertable = false, updatable = false) private String activeIdentity;
+    @Column(name = "active_identity", length = 344, insertable = false, updatable = false) private String activeIdentity;
 }

@@ -174,10 +174,10 @@ onMounted(()=>void load());
           <div class="batch mono"><span>物料编码：{{ item.batchNo }}</span><CopyButton :value="item.batchNo" label="物料编码" /></div>
           <div v-if="item.subBatch" class="batch mono"><span>区分批次：{{ item.subBatch }}</span></div>
           <div
-            v-if="data.manufactureLot && item === data.items[0]"
+            v-if="item.materialBatch"
             class="batch mono"
           >
-            <span>物料批次：{{ data.manufactureLot }}</span><CopyButton :value="data.manufactureLot" label="物料批次" />
+            <span>物料批次：{{ item.materialBatch }}</span><CopyButton :value="item.materialBatch" label="物料批次" />
           </div>
           <div v-if="item.quantityUnknown" class="unknown-box">总箱数：{{ item.totalCartons }} 箱；数量不确定（未计入数量合计）</div>
           <div v-else class="quantities">

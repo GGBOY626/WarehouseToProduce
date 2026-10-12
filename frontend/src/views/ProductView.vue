@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, onMounted, ref } from "vue";
+import { computed, nextTick, onMounted, ref } from "vue";
 import { productsApi } from "../api";
 import { errorMessage } from "../api/http";
 import type { Product, ProductUsage } from "../types";
@@ -20,6 +20,9 @@ const rows = ref<Product[]>([]),
   }),
   message = ref("");
 const cartonSpecsText = ref("");
+const batchesText = ref("");
+const selectedDirection = ref<ProductUsage | "">("WAREHOUSE_TO_PRODUCTION");
+const visibleRows = computed(() => rows.value.filter(p => (p.movementDirection || "") === selectedDirection.value));
 const editorSection = ref<HTMLElement>();
 async function load() {
   rows.value = await productsApi.search(q.value, true);
@@ -27,6 +30,7 @@ async function load() {
 function open(p?: Product) {
   showEditor.value = true;
   editing.value = p;
+  batchesText.value = (p?.materialBatches || (p?.materialBatch ? [p.materialBatch] : [])).join("\n");
   cartonSpecsText.value = (p?.cartonSpecs || []).join("、");
   form.value = p
     ? {
@@ -42,7 +46,7 @@ function open(p?: Product) {
         name: "",
         materialCode: "",
         materialBatch: "",
-        movementDirection: "" as ProductUsage | "",
+        movementDirection: selectedDirection.value,
         defaultUnitsPerCarton: undefined,
         baseUnit: "个",
         quantityUnknown: false,
@@ -65,7 +69,7 @@ async function save() {
     if (cartonSpecs.length > 50 || cartonSpecs.some(n => !Number.isInteger(n) || n <= 0 || n > 2147483647)) {
       message.value = "常用规格最多 50 项，请输入正整数，用逗号或空格分隔。"; return;
     }
-    const payload = { ...form.value, defaultUnitsPerCarton: form.value.defaultUnitsPerCarton || null, cartonSpecs: [...new Set(cartonSpecs)] };
+    const payload = { ...form.value, materialBatches: batchesText.value.split(/\r?\n/).map(s => s.trim()).filter(Boolean), defaultUnitsPerCarton: form.value.defaultUnitsPerCarton || null, cartonSpecs: [...new Set(cartonSpecs)] };
     if (editing.value) await productsApi.update(editing.value.id, payload);
     else await productsApi.create(payload);
     showEditor.value = false;
@@ -97,7 +101,7 @@ onMounted(load);
   <div class="page">
     <h1 class="page-title">产品管理</h1>
     <p class="page-lead">
-      同一物料只需维护一个产品，可设置多个常用箱规，流转时也可临时输入。
+      同一方向、同一物料只维护一个产品，可保存多个物料批次和箱规。新到货直接新增批次，无需重复建产品。
     </p>
     <div v-if="message" class="error-text">{{ message }}</div>
     <div class="row">
@@ -125,12 +129,9 @@ onMounted(load);
         />
       </div>
       <div class="field">
-        <label>物料批次（可选）</label
-        ><input
-          class="input mono"
-          v-model.trim="form.materialBatch"
-          placeholder="例如 CA202607006"
-        />
+        <label for="product-batches">物料批次（可选，每行一个）</label>
+        <textarea id="product-batches" class="textarea mono" v-model="batchesText" placeholder="A001&#10;A002" />
+        <small class="hint">保存时添加新批次，已有批次保留；流转登记时也可输入新批次。</small>
       </div>
       <div class="field">
         <label class="required">流转分类</label>
@@ -178,13 +179,18 @@ onMounted(load);
         </button>
       </div>
     </section>
+    <div class="usage-choice" role="group" aria-label="按流转方向查看产品">
+      <button type="button" :class="{active:selectedDirection==='WAREHOUSE_TO_PRODUCTION'}" @click="selectedDirection='WAREHOUSE_TO_PRODUCTION'">仓库 → 生产车间</button>
+      <button type="button" :class="{active:selectedDirection==='PRODUCTION_TO_WAREHOUSE'}" @click="selectedDirection='PRODUCTION_TO_WAREHOUSE'">生产车间 → 仓库</button>
+      <button v-if="rows.some(p => !p.movementDirection)" type="button" :class="{active:selectedDirection===''}" @click="selectedDirection=''">待分类</button>
+    </div>
     <div class="stack list">
-      <article v-for="p in rows" :key="p.id" class="card card-pad row">
+      <article v-for="p in visibleRows" :key="p.id" class="card card-pad row">
         <div class="grow">
           <strong>{{ p.name }}</strong>
           <div class="material-code mono">物料编码：{{ p.materialCode }}</div>
-          <div v-if="p.materialBatch" class="hint mono">
-            物料批次：{{ p.materialBatch }}
+          <div v-if="p.materialBatches?.length" class="hint mono">
+            物料批次：{{ p.materialBatches?.join(" / ") }}
           </div>
           <span v-if="p.movementDirection" class="usage-badge">{{ p.movementDirection === 'WAREHOUSE_TO_PRODUCTION' ? '仓库 → 生产车间' : '生产车间 → 仓库' }}</span>
           <span v-else class="status warn">未分类，请编辑</span>

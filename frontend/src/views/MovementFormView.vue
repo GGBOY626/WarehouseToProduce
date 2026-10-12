@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import { onBeforeRouteLeave, useRoute, useRouter } from "vue-router";
 import ProductionTaskTargets from "../components/ProductionTaskTargets.vue";
 import ProductionTaskOutput from "../components/ProductionTaskOutput.vue";
+import MaterialBatchPicker from "../components/MaterialBatchPicker.vue";
 import SearchPicker from "../components/SearchPicker.vue";
 import { errorMessage } from "../api/http";
 import { movementsApi, personsApi, productsApi, productionTasksApi } from "../api";
@@ -29,6 +30,7 @@ const direction = ref<Direction>(
 );
 const blankItem = (): ItemInput => ({
   batchNo: "",
+  materialBatch: "",
   subBatch: "",
   fullCartons: 0,
   tailCartons: 0,
@@ -65,7 +67,7 @@ const taskLoading = ref(false), taskError = ref("");
 const initialized = ref(false);
 const originalTask = ref<{ id: number; name: string; selection: string }>();
 const taskSelection = computed(() => JSON.stringify([direction.value, draft.value.returnMovement,
-  [...new Set(draft.value.items.map(i => i.productId))].sort()]));
+  [...new Set(draft.value.items.map(i => JSON.stringify([i.productId,i.materialBatch || ""])))].sort()]));
 const keepOriginalTask = computed(() => !!originalTask.value && originalTask.value.id === draft.value.productionTaskId && originalTask.value.selection === taskSelection.value);
 let taskRequest = 0;
 async function refreshTasks() {
@@ -80,7 +82,7 @@ async function refreshTasks() {
   }
   taskLoading.value = true;
   try {
-    const options = await productionTasksApi.linkable(ids as number[], direction.value, draft.value.returnMovement);
+    const options = await productionTasksApi.linkable(draft.value.items.map(i => ({productId:i.productId!,materialBatch:i.materialBatch})), direction.value, draft.value.returnMovement);
     if (request !== taskRequest) return;
     productionTasks.value = options;
     if (!keepOriginalTask.value && !options.some(t => t.id === draft.value.productionTaskId)) draft.value.productionTaskId = undefined;
@@ -115,7 +117,7 @@ function commonSpecs(item: ItemInput) {
   return [...new Set([item.product?.defaultUnitsPerCarton, ...(item.product?.cartonSpecs || [])].filter((n): n is number => !!n))];
 }
 function addSpecification(item: ItemInput) {
-  draft.value.items.push({ ...blankItem(), productId: item.productId, product: item.product, batchNo: item.batchNo, subBatch: item.subBatch, unitsPerCarton: item.unitsPerCarton, quantityUnknown: item.quantityUnknown });
+  draft.value.items.push({ ...blankItem(), productId: item.productId, product: item.product, batchNo: item.batchNo, materialBatch: item.materialBatch, subBatch: item.subBatch, unitsPerCarton: item.unitsPerCarton, quantityUnknown: item.quantityUnknown });
 }
 function displayedTotal(item: ItemInput) {
   if (item.quantityUnknown) return undefined;
@@ -128,11 +130,8 @@ function selectProduct(item: ItemInput, p?: Product) {
   item.product = p;
   item.productId = p?.id;
   item.batchNo = p?.materialCode || "";
-  if (
-    p?.materialBatch &&
-    !draft.value.manufactureLot
-  )
-    draft.value.manufactureLot = p.materialBatch;
+  const batches = p?.materialBatches || (p?.materialBatch ? [p.materialBatch] : []);
+  item.materialBatch = batches.length === 1 ? batches[0] : "";
   item.manualTotal = false;
   item.quantityUnknown = !!p?.quantityUnknown;
 
@@ -178,13 +177,12 @@ function validate() {
   if (taskError.value && draft.value.productionTaskId && !keepOriginalTask.value) return "请重试加载生产任务后保存。";
   if (!draft.value.senderPersonId || !draft.value.receiverPersonId)
     return "请选择发送人和接收人。";
-  if (needsMaterialBatch.value && !draft.value.manufactureLot.trim())
-    return "请填写物料批次。";
   for (let i = 0; i < draft.value.items.length; i++) {
     const x = draft.value.items[i];
     const invalidQuantity = quantityError(x);
     if (invalidQuantity) return `产品明细 ${i + 1}：${invalidQuantity}`;
     if (!x.productId) return `请选择产品明细 ${i + 1} 的产品。`;
+    if ((needsMaterialBatch.value || (x.product?.materialBatches?.length || 0) > 1) && !x.materialBatch?.trim()) return `请选择产品明细 ${i + 1} 的具体物料批次。`;
     if (!x.batchNo.trim()) return `请填写产品明细 ${i + 1} 的物料编码。`;
     if (
       !x.quantityUnknown &&
@@ -204,7 +202,7 @@ function payload() {
     movementTime: toInstant(draft.value.movementTime),
     senderPersonId: draft.value.senderPersonId,
     receiverPersonId: draft.value.receiverPersonId,
-    manufactureLot: draft.value.manufactureLot || undefined,
+
     returnMovement: direction.value === "PRODUCTION_TO_WAREHOUSE" && draft.value.returnMovement,
     productionTaskId: draft.value.productionTaskId,
     remarks: editId ? draft.value.remarks : undefined,
@@ -215,6 +213,7 @@ function payload() {
       tailCartons: Number(x.tailCartons) || 0,
       tailUnitsPerCarton: x.tailCartons > 0 ? Number(x.tailUnitsPerCarton) : null,
       batchNo: x.batchNo,
+      materialBatch: x.materialBatch || "",
       subBatch: x.subBatch || "",
       fullCartons: Number(x.fullCartons) || 0,
       looseUnits: Number(x.looseUnits) || 0,
@@ -324,6 +323,7 @@ onMounted(async () => {
           name: x.productName,
           materialCode: x.batchNo,
           defaultUnitsPerCarton: x.unitsPerCarton,
+          materialBatches: catalog.find(p => p.id === x.productId)?.materialBatches,
           cartonSpecs: catalog.find(p => p.id === x.productId)?.cartonSpecs,
           baseUnit: x.baseUnit,
           quantityUnknown: false,
@@ -331,6 +331,7 @@ onMounted(async () => {
           active: true,
         },
         batchNo: x.batchNo,
+        materialBatch: x.materialBatch ?? m.manufactureLot ?? "",
         subBatch: x.subBatch || "",
         fullCartons: x.fullCartons,
         looseUnits: x.looseUnits,
@@ -364,6 +365,16 @@ onMounted(async () => {
     item.tailCartons ??= 0;
     if (!('unitsPerCarton' in item)) item.unitsPerCarton = item.product?.defaultUnitsPerCarton;
   });
+  if (!editId && draft.value.items.some(i => i.productId)) {
+    const catalog = await productsApi.search('', true, productUsage.value);
+    for (const item of draft.value.items) {
+      const current = catalog.find(p => p.id === item.productId);
+      if (current && item.product) item.product.materialBatches = current.materialBatches;
+    }
+  }
+  for (const item of draft.value.items) {
+    if (item.materialBatch === undefined) item.materialBatch = draft.value.manufactureLot || "";
+  }
   initialized.value = true;
   await refreshTasks();
   await nextTick();
@@ -452,18 +463,7 @@ onBeforeUnmount(() => {
               placeholder="选择产品后自动带入"
             />
           </div>
-          <div
-            v-if="index === 0"
-            class="field"
-          >
-            <label :class="{required:needsMaterialBatch}">物料批次{{needsMaterialBatch ? '' : '（可选）'}}</label
-            ><input
-              class="input mono"
-              v-model.trim="draft.manufactureLot"
-              placeholder="例如 CA202607006"
-            />
-            <small class="hint">本次流转的所有产品共用</small>
-          </div>
+          <MaterialBatchPicker v-model="item.materialBatch" :batches="item.product?.materialBatches" :required="needsMaterialBatch" />
           <div class="field">
             <label :for="`sub-batch-${index}`">区分批次（可选）</label>
             <input :id="`sub-batch-${index}`" class="input mono" maxlength="100" v-model.trim="item.subBatch" placeholder="外盒同编码、同批次仍需区分时填写" />

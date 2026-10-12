@@ -10,6 +10,10 @@ import java.util.*;
 @Getter @Setter @NoArgsConstructor
 @Entity @Table(name="movement_item")
 public class MovementItem extends PersistentEntity {
+    @Column(name="material_batch",length=100) private String materialBatch;
+    public String effectiveMaterialBatch() {
+        return materialBatch == null ? (movement == null ? null : movement.getManufactureLot()) : materialBatch.isBlank() ? null : materialBatch;
+    }
     @Id @GeneratedValue(strategy=GenerationType.IDENTITY) private Long id;
     @ManyToOne(fetch=FetchType.LAZY,optional=false) @JoinColumn(name="movement_id") private Movement movement;
     @ManyToOne(fetch=FetchType.LAZY,optional=false) @JoinColumn(name="product_id") private Product product;

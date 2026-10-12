@@ -125,14 +125,14 @@ public class MovementService {
         validateDirection(r);
         Person sender=m.getId()!=null&&m.getSenderPerson().getId().equals(r.senderPersonId())?persons.getAny(r.senderPersonId()):persons.getActive(r.senderPersonId());
         Person receiver=m.getId()!=null&&m.getReceiverPerson().getId().equals(r.receiverPersonId())?persons.getAny(r.receiverPersonId()):persons.getActive(r.receiverPersonId());
-        Set<Long> selectedProductIds=r.items().stream().map(MovementDtos.ItemRequest::productId).collect(java.util.stream.Collectors.toSet());
+        var oldSelection=m.getItems().stream().map(i->new ProductionTaskService.BatchSelection(i.getProduct().canonicalId(),i.effectiveMaterialBatch())).collect(java.util.stream.Collectors.toSet());
         boolean keepTask=m.getProductionTask()!=null&&m.getProductionTask().getId().equals(r.productionTaskId())
-                &&m.getDirection()==r.direction()&&m.isReturnMovement()==r.returnMovement()
-                &&m.getItems().stream().map(i->i.getProduct().getId()).collect(java.util.stream.Collectors.toSet()).equals(selectedProductIds);
+                &&m.getDirection()==r.direction()&&m.isReturnMovement()==r.returnMovement();
+        Map<Long,String> oldBatches=new HashMap<>();
+        m.getItems().forEach(i->oldBatches.put(i.getId(),i.effectiveMaterialBatch()));
         m.setDirection(r.direction());m.setReturnMovement(r.returnMovement());m.setMovementTime(r.movementTime());m.setSenderPerson(sender);m.setSenderNameSnapshot(sender.getName());m.setReceiverPerson(receiver);m.setReceiverNameSnapshot(receiver.getName());
-        m.setProductionTask(r.productionTaskId()==null?null:keepTask?m.getProductionTask():productionTasks.getLinkable(r.productionTaskId(),new ArrayList<>(selectedProductIds),r.direction(),r.returnMovement()));
-        m.setManufactureLot(blank(r.manufactureLot()));m.setRemarks(blank(r.remarks()));
-        Set<Long> existingProductIds=m.getItems().stream().map(x->x.getProduct().getId()).collect(java.util.stream.Collectors.toSet());
+        m.setRemarks(blank(r.remarks()));
+        Set<Long> existingProductIds=m.getItems().stream().map(x->x.getProduct().canonicalId()).collect(java.util.stream.Collectors.toSet());
         Map<Long,MovementItem> originals=new HashMap<>();
         m.getItems().forEach(item->originals.put(item.getId(),item));
         m.getItems().clear();int cartons=0;int order=0;long knownQuantity=0;
@@ -141,12 +141,21 @@ public class MovementService {
         for(var input:r.items()){
             MovementItem original=input.id()==null?null:originals.get(input.id());
             if(input.id()!=null&&original==null)throw BusinessException.badRequest("ITEM_NOT_FOUND","明细不属于当前流转记录，请刷新后重试。");
-            if(original!=null&&!original.getProduct().getId().equals(input.productId()))original=null;
+            if(original!=null&&!original.getProduct().canonicalId().equals(products.getAny(input.productId()).canonicalId()))original=null;
             MovementItem item=buildItem(input,order++,existingProductIds.contains(input.productId()),expectedUsage,original);
+            String requestedBatch=input.materialBatch()!=null?input.materialBatch():r.manufactureLot()!=null?r.manufactureLot():original==null?null:oldBatches.get(original.getId());
+            boolean unchangedLegacy=original!=null&&Objects.equals(blank(requestedBatch),oldBatches.get(original.getId()));
+            String batch=unchangedLegacy?blank(requestedBatch):products.resolveBatch(item.getProduct(),requestedBatch,expectedUsage==ProductUsage.WAREHOUSE_TO_PRODUCTION);
+            item.setMaterialBatch(batch==null?"":batch);
             m.addItem(item);
             try{cartons=Math.addExact(cartons,item.getTotalCartons());knownQuantity=Math.addExact(knownQuantity,item.getTotalUnits()==null?0:item.getTotalUnits());}
             catch(ArithmeticException ex){throw BusinessException.badRequest("QUANTITY_OVERFLOW","箱数或数量超出可保存范围。");}
         }
+        var selection=m.getItems().stream().map(i->new ProductionTaskService.BatchSelection(i.getProduct().canonicalId(),i.effectiveMaterialBatch())).toList();
+        m.setProductionTask(r.productionTaskId()==null?null:keepTask&&oldSelection.equals(new HashSet<>(selection))?m.getProductionTask():productionTasks.getLinkableBatches(r.productionTaskId(),selection,r.direction(),r.returnMovement()));
+        m.getItems().forEach(i->products.rememberBatch(i.getProduct(),i.effectiveMaterialBatch()));
+        var batches=m.getItems().stream().map(MovementItem::effectiveMaterialBatch).distinct().toList();
+        m.setManufactureLot(batches.size()==1?batches.getFirst():null);
         m.setTotalCartons(cartons);
     }
 
@@ -175,8 +184,7 @@ public class MovementService {
     private void validateDirection(MovementDtos.SaveRequest r){
         if(r.returnMovement()&&r.direction()!=MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE)
             throw BusinessException.badRequest("RETURN_DIRECTION_INVALID","退回只能用于生产车间到仓库的记录。");
-        if((r.direction()==MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION||r.returnMovement())&&(r.manufactureLot()==null||r.manufactureLot().isBlank()))
-            throw BusinessException.badRequest("MANUFACTURE_LOT_REQUIRED","仓库送往生产车间或退回物料时必须填写物料批次。");
+
     }
     private Movement getActiveDetail(long id){Movement m=repository.findDetailById(id).orElseThrow(()->BusinessException.notFound("MOVEMENT_NOT_FOUND","找不到该流转记录。"));if(m.getStatus()==MovementEnums.Status.VOID)throw new BusinessException("MOVEMENT_VOID","已作废记录不能修改。",HttpStatus.CONFLICT);return m;}
     private String blank(String value){return value==null||value.isBlank()?null:value.trim();}
