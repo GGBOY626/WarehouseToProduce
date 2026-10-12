@@ -3,6 +3,7 @@ import { computed, nextTick, onMounted, ref } from "vue";
 import { productsApi } from "../api";
 import { errorMessage } from "../api/http";
 import type { Product, ProductUsage } from "../types";
+import { availableCartonSpecs } from "../utils/cartonSpecs";
 import { useAuth } from "../auth";
 const { authenticated } = useAuth();
 const rows = ref<Product[]>([]),
@@ -14,7 +15,6 @@ const rows = ref<Product[]>([]),
     materialCode: "",
     materialBatch: "",
     movementDirection: "" as ProductUsage | "",
-    defaultUnitsPerCarton: undefined as number | undefined,
     baseUnit: "个",
     quantityUnknown: false,
   }),
@@ -31,14 +31,13 @@ function open(p?: Product) {
   showEditor.value = true;
   editing.value = p;
   batchesText.value = (p?.materialBatches || (p?.materialBatch ? [p.materialBatch] : [])).join("\n");
-  cartonSpecsText.value = (p?.cartonSpecs || []).join("、");
+  cartonSpecsText.value = availableCartonSpecs(p).join("、");
   form.value = p
     ? {
         name: p.name,
         materialCode: p.materialCode,
         materialBatch: p.materialBatch || "",
         movementDirection: p.movementDirection || "",
-        defaultUnitsPerCarton: p.defaultUnitsPerCarton,
         baseUnit: p.baseUnit || "",
         quantityUnknown: p.quantityUnknown,
       }
@@ -47,7 +46,6 @@ function open(p?: Product) {
         materialCode: "",
         materialBatch: "",
         movementDirection: selectedDirection.value,
-        defaultUnitsPerCarton: undefined,
         baseUnit: "个",
         quantityUnknown: false,
       };
@@ -55,7 +53,6 @@ function open(p?: Product) {
 }
 function quantityTypeChanged() {
   if (form.value.quantityUnknown) {
-    form.value.defaultUnitsPerCarton = undefined;
     form.value.baseUnit = "";
   }
 }
@@ -69,7 +66,7 @@ async function save() {
     if (cartonSpecs.length > 50 || cartonSpecs.some(n => !Number.isInteger(n) || n <= 0 || n > 2147483647)) {
       message.value = "常用规格最多 50 项，请输入正整数，用逗号或空格分隔。"; return;
     }
-    const payload = { ...form.value, materialBatches: batchesText.value.split(/\r?\n/).map(s => s.trim()).filter(Boolean), defaultUnitsPerCarton: form.value.defaultUnitsPerCarton || null, cartonSpecs: [...new Set(cartonSpecs)] };
+    const payload = { ...form.value, materialBatches: batchesText.value.split(/\r?\n/).map(s => s.trim()).filter(Boolean), defaultUnitsPerCarton: !form.value.quantityUnknown && new Set(cartonSpecs).size === 1 ? cartonSpecs[0] : null, cartonSpecs: [...new Set(cartonSpecs)] };
     if (editing.value) await productsApi.update(editing.value.id, payload);
     else await productsApi.create(payload);
     showEditor.value = false;
@@ -143,15 +140,9 @@ onMounted(load);
       </div>
       <div class="grid-2">
         <div class="field">
-          <label>默认每箱数量</label
-          ><input
-            class="input"
-            type="number"
-            min="1"
-            inputmode="numeric"
-            v-model.number="form.defaultUnitsPerCarton"
-            :disabled="form.quantityUnknown"
-          />
+          <label for="carton-specs">默认每箱数量（可设置多个）</label>
+          <input id="carton-specs" class="input" v-model="cartonSpecsText" placeholder="例如 500、1000、1800" />
+          <small class="hint">用逗号、顿号或空格分隔。只有一种时自动带入；多种时，出入库须选择本次使用的规格。</small>
         </div>
         <div class="field">
           <label :class="{required:!form.quantityUnknown}">基础单位</label
@@ -162,11 +153,6 @@ onMounted(load);
             placeholder="个 / 袋 / 瓶"
           />
         </div>
-      </div>
-      <div class="field">
-        <label for="carton-specs">其他常用每箱数量（可选）</label>
-        <input id="carton-specs" class="input" v-model="cartonSpecsText" placeholder="例如 1000、1800、2000" />
-        <small class="hint">用逗号或空格分隔。默认规格也会出现在流转登记的快捷选项中。</small>
       </div>
       <label class="unknown-quantity">
         <input type="checkbox" v-model="form.quantityUnknown" @change="quantityTypeChanged" />
@@ -197,16 +183,9 @@ onMounted(load);
           <div v-if="p.duplicateName" class="duplicate-warning">
             同名产品，请核对物料编码
           </div>
-          <div v-if="p.cartonSpecs?.length" class="hint">常用规格：{{ p.cartonSpecs.join(" / ") }} {{ p.baseUnit }}/箱</div>
-          <div class="hint">
-            {{
-              p.quantityUnknown
-                ? "数量不确定"
-                : p.defaultUnitsPerCarton
-                ? `${p.defaultUnitsPerCarton} ${p.baseUnit}/箱`
-                : "未设置箱规"
-            }}
-          </div>
+          <div v-if="availableCartonSpecs(p).length" class="hint">每箱数量：{{ availableCartonSpecs(p).join(" / ") }} {{ p.baseUnit || '个' }}/箱</div>
+          <div v-else class="hint">未设置箱规</div>
+          <div v-if="p.quantityUnknown" class="hint">数量不确定</div>
         </div>
         <span :class="['status', p.active ? 'ok' : 'neutral']">{{
           p.active ? "启用" : "停用"
@@ -220,6 +199,7 @@ onMounted(load);
   </div>
 </template>
 <style scoped>
+.editor .grid-2 { align-items: start; }
 .add {
   margin: 12px 0;
 }

@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { movementsApi } from "../api";
+import { movementsApi, productsApi } from "../api";
 import { errorMessage } from "../api/http";
 import type { MovementDetail } from "../types";
 import { directionLabel, issueLabels } from "../utils/labels";
 import { showDateTime, nowLocalInput } from "../utils/time";
 import { createUuid } from "../utils/uuid";
+import { initialCartonSpec } from "../utils/cartonSpecs";
 import { preparePhoto } from "../utils/photo";
 import { useAuth } from "../auth";
 import MaterialSummary from "../components/MaterialSummary.vue";
@@ -68,9 +69,12 @@ async function deleteRecord() {
     alert(errorMessage(e));
   }
 }
-function duplicate() {
+async function duplicate() {
   if (!data.value) return;
   const m = data.value;
+  let catalog;
+  try { catalog = await productsApi.search('', true, m.returnMovement ? 'WAREHOUSE_TO_PRODUCTION' : m.direction); }
+  catch (e) { message.value = errorMessage(e); return; }
   const key = `movement-draft:${m.direction}`;
   localStorage.setItem(
     key,
@@ -89,7 +93,9 @@ function duplicate() {
           id: x.productId,
           name: x.productName,
           materialCode: x.batchNo,
-          defaultUnitsPerCarton: x.unitsPerCarton,
+          defaultUnitsPerCarton: catalog.find(p => p.id === x.productId)?.defaultUnitsPerCarton,
+          cartonSpecs: catalog.find(p => p.id === x.productId)?.cartonSpecs,
+          materialBatches: catalog.find(p => p.id === x.productId)?.materialBatches,
           baseUnit: x.baseUnit,
           quantityUnknown: false,
           active: true,
@@ -97,7 +103,7 @@ function duplicate() {
         },
         batchNo: x.batchNo,
         subBatch: "",
-        unitsPerCarton: x.unitsPerCarton,
+        unitsPerCarton: initialCartonSpec(catalog.find(p => p.id === x.productId)) ?? null,
         tailCartons: 0,
         fullCartons: 0,
         looseUnits: 0,

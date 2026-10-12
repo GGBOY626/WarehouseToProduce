@@ -33,6 +33,11 @@ public class Product extends PersistentEntity {
     @Column(name="units_per_carton",nullable=false)
     @org.hibernate.annotations.BatchSize(size=100)
     private java.util.Set<Integer> cartonSpecs = new java.util.TreeSet<>();
+    public java.util.Set<Integer> availableCartonSpecs() {
+        var specs = new java.util.TreeSet<>(getCartonSpecs());
+        if (getDefaultUnitsPerCarton() != null) specs.add(getDefaultUnitsPerCarton());
+        return specs;
+    }
     @Column(name = "quantity_unknown", nullable = false) private boolean quantityUnknown;
     @Column(name = "base_unit", length = 20) private String baseUnit = "个";
     @Column(nullable = false) private boolean active = true;

@@ -19,6 +19,7 @@ import { directionLabel } from "../utils/labels";
 import { nowLocalInput, toInstant, toLocalInput } from "../utils/time";
 import { createUuid } from "../utils/uuid";
 import { calculateQuantity, quantityError, cartonCount } from "../utils/quantity";
+import { availableCartonSpecs, initialCartonSpec } from "../utils/cartonSpecs";
 import { preparePhoto } from "../utils/photo";
 const route = useRoute(),
   router = useRouter();
@@ -114,10 +115,10 @@ function returnChanged() {
 }
 const calculate = calculateQuantity;
 function commonSpecs(item: ItemInput) {
-  return [...new Set([item.product?.defaultUnitsPerCarton, ...(item.product?.cartonSpecs || [])].filter((n): n is number => !!n))];
+  return availableCartonSpecs(item.product);
 }
 function addSpecification(item: ItemInput) {
-  draft.value.items.push({ ...blankItem(), productId: item.productId, product: item.product, batchNo: item.batchNo, materialBatch: item.materialBatch, subBatch: item.subBatch, unitsPerCarton: item.unitsPerCarton, quantityUnknown: item.quantityUnknown });
+  draft.value.items.push({ ...blankItem(), productId: item.productId, product: item.product, batchNo: item.batchNo, materialBatch: item.materialBatch, subBatch: item.subBatch, unitsPerCarton: initialCartonSpec(item.product) ?? null, quantityUnknown: item.quantityUnknown });
 }
 function displayedTotal(item: ItemInput) {
   if (item.quantityUnknown) return undefined;
@@ -126,7 +127,7 @@ function displayedTotal(item: ItemInput) {
 function selectProduct(item: ItemInput, p?: Product) {
   item.id = undefined;
   item.subBatch = "";
-  item.unitsPerCarton = p?.defaultUnitsPerCarton;
+  item.unitsPerCarton = initialCartonSpec(p) ?? null;
   item.product = p;
   item.productId = p?.id;
   item.batchNo = p?.materialCode || "";
@@ -363,16 +364,20 @@ onMounted(async () => {
   }
   draft.value.items.forEach(item => {
     item.tailCartons ??= 0;
-    if (!('unitsPerCarton' in item)) item.unitsPerCarton = item.product?.defaultUnitsPerCarton;
   });
   if (!editId && draft.value.items.some(i => i.productId)) {
     const catalog = await productsApi.search('', true, productUsage.value);
     for (const item of draft.value.items) {
       const current = catalog.find(p => p.id === item.productId);
-      if (current && item.product) item.product.materialBatches = current.materialBatches;
+      if (current && item.product) {
+        item.product.materialBatches = current.materialBatches;
+        item.product.cartonSpecs = current.cartonSpecs;
+        item.product.defaultUnitsPerCarton = current.defaultUnitsPerCarton;
+      }
     }
   }
   for (const item of draft.value.items) {
+    if (!('unitsPerCarton' in item)) item.unitsPerCarton = initialCartonSpec(item.product) ?? null;
     if (item.materialBatch === undefined) item.materialBatch = draft.value.manufactureLot || "";
   }
   initialized.value = true;
@@ -471,11 +476,11 @@ onBeforeUnmount(() => {
           </div>
           <div class="packing-fields">
             <div class="grid-2">
-              <div class="field"><label :for="`size-${index}`">完整箱每箱数量</label><input :id="`size-${index}`" class="input mono" type="number" min="1" step="1" inputmode="numeric" v-model.number="item.unitsPerCarton" @input="quantityChanged(item)" placeholder="选择或输入，例如 1000" /></div>
+              <div class="field"><label :for="`size-${index}`" :class="{required:item.fullCartons > 0 && commonSpecs(item).length > 1}">完整箱每箱数量</label><input :id="`size-${index}`" class="input mono" type="number" min="1" step="1" inputmode="numeric" v-model.number="item.unitsPerCarton" @input="quantityChanged(item)" placeholder="选择下方规格或输入每箱数量" /><small v-if="commonSpecs(item).length > 1" class="hint">有多种每箱数量，请选择本次完整箱规格；仅尾箱或散装可留空。</small></div>
               <div class="field"><label :for="`full-${index}`">完整箱数</label><input :id="`full-${index}`" class="input mono" type="number" min="0" step="1" inputmode="numeric" v-model.number="item.fullCartons" @input="quantityChanged(item)" /></div>
             </div>
-            <div v-if="commonSpecs(item).length" class="spec-options" aria-label="常用装箱规格">
-              <small class="hint">常用规格</small><button v-for="size in commonSpecs(item)" :key="size" type="button" :class="{active:item.unitsPerCarton===size}" @click="item.unitsPerCarton=size;quantityChanged(item)">{{size}} {{item.product?.baseUnit || '个'}}/箱</button>
+            <div v-if="commonSpecs(item).length" class="spec-options" aria-label="选择每箱数量">
+              <small class="hint">预设规格</small><button v-for="size in commonSpecs(item)" :key="size" type="button" :class="{active:item.unitsPerCarton===size}" :aria-pressed="item.unitsPerCarton===size" @click="item.unitsPerCarton=size;quantityChanged(item)">{{size}} {{item.product?.baseUnit || '个'}}/箱</button>
             </div>
             <details :open="item.tailCartons>0 || item.looseUnits>0" class="optional-packing">
               <summary>尾箱 / 真正散装（可选）</summary>
@@ -624,6 +629,7 @@ onBeforeUnmount(() => {
   </div>
 </template>
 <style scoped>
+.packing-fields > .grid-2 { align-items: start; }
 .task-preview{display:grid;gap:14px;margin-top:10px;padding-top:16px;border-top:1px solid #e5ecee;min-width:0}.preview-heading{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}.preview-heading strong{overflow-wrap:anywhere}.preview-heading b{color:#267566;font-size:14px}
 
 .packing-fields{display:grid;gap:12px}.spec-options{display:flex;flex-wrap:wrap;gap:6px;align-items:center}.spec-options button{border:1px solid var(--line);background:#fff;border-radius:6px;padding:7px 10px;min-height:36px;font-size:12px}.spec-options button.active{background:var(--soft-blue);border-color:var(--blue);color:var(--blue)}
