@@ -160,7 +160,7 @@ const formatNumber = (value: number) => value.toLocaleString("zh-CN");
       </div>
       <div class="field">
         <label for="material-search">搜索物料</label>
-        <input id="material-search" class="input" v-model.trim="q" placeholder="物料名称、物料编码或批次" @keyup.enter="load" />
+        <input id="material-search" class="input" v-model.trim="q" placeholder="物料名称、编码、批次或区分批次" @keyup.enter="load" />
       </div>
       <button class="more-toggle" type="button" :aria-expanded="moreFilters" aria-controls="advanced-filters" @click="moreFilters=!moreFilters">
         <span>更多筛选</span><span aria-hidden="true">{{moreFilters ? '收起' : '展开'}} {{moreFilters ? '⌃' : '⌄'}}</span>
@@ -186,7 +186,7 @@ const formatNumber = (value: number) => value.toLocaleString("zh-CN");
             <h3>{{ directionLabel(group.direction) }}</h3>
             <div class="stats-total"><strong>共 {{ formatNumber(group.products.length) }} 组物料 / 批次</strong><span>·</span><strong>{{ formatNumber(group.totalCartons) }} 箱</strong><span v-if="group.unknownItemCount">· 含 {{ group.unknownItemCount }} 项数量不确定</span></div>
             <div>
-              <button v-for="product in group.products" :key="JSON.stringify([product.productName, product.materialCode, product.materialBatch, product.baseUnit])" type="button" class="product-stat" @click="openProduct(product)">
+              <button v-for="product in group.products" :key="JSON.stringify([product.productName, product.materialCode, product.materialBatch, product.subBatch, product.baseUnit])" type="button" class="product-stat" @click="openProduct(product)">
                 <MaterialSummary v-bind="{ ...product, ...statIdentifiers(product) }" />
                 <span class="record-arrow" aria-hidden="true">›</span>
               </button>
@@ -211,7 +211,7 @@ const formatNumber = (value: number) => value.toLocaleString("zh-CN");
       <p class="dialog-summary">{{ selectedProduct?.productName }} · 共 {{ sourceMovements.length }} 个流转单</p>
       <div class="source-list">
         <button v-for="movement in sourceMovements" :key="movement.id" type="button" class="source-record" @click="openMovement(movement.id)">
-          <MaterialSummary v-if="selectedProduct" :show-material-code="movement.direction === 'PRODUCTION_TO_WAREHOUSE' && !movement.returnMovement" :show-material-batch="movement.direction !== 'PRODUCTION_TO_WAREHOUSE' || movement.returnMovement" :product-name="selectedProduct.productName" :material-code="selectedProduct.materialCode" :material-batch="selectedProduct.materialBatch" :base-unit="selectedProduct.baseUnit" :full-cartons="movement.fullCartons" :tail-cartons="movement.tailCartons" :total-cartons="movement.totalCartons" :packaging="movement.packaging" :loose-units="movement.looseUnits" :total-quantity="movement.totalQuantity" :unknown-item-count="movement.unknownItemCount" />
+          <MaterialSummary v-if="selectedProduct" :show-material-code="movement.direction === 'PRODUCTION_TO_WAREHOUSE' && !movement.returnMovement" :show-material-batch="movement.direction !== 'PRODUCTION_TO_WAREHOUSE' || movement.returnMovement" :product-name="selectedProduct.productName" :material-code="selectedProduct.materialCode" :material-batch="selectedProduct.materialBatch" :sub-batch="selectedProduct.subBatch" :base-unit="selectedProduct.baseUnit" :full-cartons="movement.fullCartons" :tail-cartons="movement.tailCartons" :total-cartons="movement.totalCartons" :packaging="movement.packaging" :loose-units="movement.looseUnits" :total-quantity="movement.totalQuantity" :unknown-item-count="movement.unknownItemCount" />
           <div class="source-meta">
             <time :datetime="movement.movementTime">{{ showDateTime(movement.movementTime) }}</time>
             <span :class="{ 'return-direction': movement.direction === 'PRODUCTION_TO_WAREHOUSE' }">{{ directionLabel(movement.direction) }}<template v-if="movement.returnMovement"> · 退回</template></span>

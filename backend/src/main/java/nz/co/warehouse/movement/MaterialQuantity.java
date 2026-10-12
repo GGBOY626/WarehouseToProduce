@@ -4,9 +4,9 @@ import java.util.*;
 
 /** Shared read-side totals for lists, statistics and PDF; saved totals (including overrides) are authoritative. */
 public final class MaterialQuantity {
-    public record Key(String materialCode,String materialBatch,String baseUnit) {
+    public record Key(String materialCode,String materialBatch,String baseUnit,String subBatch) {
         public static Key of(MovementItem item){
-            return new Key(item.getBatchNo(),item.getMovement().getManufactureLot(),item.getBaseUnitSnapshot());
+            return new Key(item.getBatchNo(),item.getMovement().getManufactureLot(),item.getBaseUnitSnapshot(),item.getSubBatch()==null||item.getSubBatch().isBlank()?null:item.getSubBatch().trim());
         }
     }
     public record Packaging(String type,Long unitsPerCarton,long cartons) {}

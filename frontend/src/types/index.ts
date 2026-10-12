@@ -40,6 +40,7 @@ export interface ItemInput {
   productId?: number;
   product?: Product;
   batchNo: string;
+  subBatch?: string | null;
   fullCartons: number;
   looseUnits: number;
   totalUnits?: number;
@@ -81,6 +82,7 @@ export interface MovementItem {
   unitsPerCarton?: number;
   baseUnit: string;
   batchNo: string;
+  subBatch?: string | null;
   fullCartons: number;
   looseUnits: number;
   calculatedTotalUnits?: number;
@@ -147,6 +149,7 @@ export interface MaterialSummary {
   productName: string;
   materialCode: string;
   materialBatch?: string | null;
+  subBatch?: string | null;
   baseUnit: string;
   fullCartons: number;
   looseUnits: number;

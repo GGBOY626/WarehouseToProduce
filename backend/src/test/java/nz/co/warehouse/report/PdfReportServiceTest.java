@@ -144,6 +144,31 @@ class PdfReportServiceTest {
         }
     }
 
+    @Test void exportsSameMaterialAndBatchAsSeparateSubBatchTotals() throws Exception {
+        var a=movement(MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,"2026-09-01T01:00:00Z","关节饮外盒","SAME-CODE",3,0,3000);
+        var b=movement(MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,"2026-09-01T02:00:00Z","关节饮外盒","SAME-CODE",5,0,9000);
+        a.getItems().getFirst().setSubBatch("SUB-A");a.getItems().getFirst().setUnitsPerCartonSnapshot(1000);
+        b.getItems().getFirst().setSubBatch("SUB-B");b.getItems().getFirst().setUnitsPerCartonSnapshot(1800);
+        MovementRepository repository=mock(MovementRepository.class);
+        when(repository.findReportRows(any(),any(),any(MovementEnums.Status.class))).thenReturn(List.of(a,b));
+        PdfReportService service=new PdfReportService(repository);
+        ReflectionTestUtils.setField(service,"zone","Pacific/Auckland");
+        byte[] pdf=service.generate(LocalDate.of(2026,9,1),LocalDate.of(2026,9,1),MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION);
+        assertThat(pdfText(pdf)).contains("区分批次", "SUB-A", "SUB-B", "3000 个", "9000 个").doesNotContain("12000 个");
+        StringBuilder totals=new StringBuilder();
+        ReflectionTestUtils.invokeMethod(service,"appendTotalTable",totals,List.of(a,b),"测试");
+        assertThat(totals.toString()).contains("共 2 种物料", "SUB-A", "SUB-B").doesNotContain("12000");
+        assertThat((String)ReflectionTestUtils.invokeMethod(service,"batchLabel","LOT","<A&B>"))
+                .contains("&lt;A&amp;B&gt;").doesNotContain("<A&B>");
+        if(Boolean.getBoolean("warehouse.pdf.preview")) {
+            java.nio.file.Files.write(java.nio.file.Path.of("target/sub-batch-preview.pdf"),pdf);
+            try(PDDocument document=PDDocument.load(pdf)){
+                var renderer=new org.apache.pdfbox.rendering.PDFRenderer(document);
+                javax.imageio.ImageIO.write(renderer.renderImageWithDPI(0,130),"png",new java.io.File("target/sub-batch-preview.png"));
+            }
+        }
+    }
+
     private Movement movement(MovementEnums.Direction direction, String time, String product, String code,
                               int cartons, long loose, long total) {
         Movement movement = new Movement();

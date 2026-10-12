@@ -29,6 +29,7 @@ const direction = ref<Direction>(
 );
 const blankItem = (): ItemInput => ({
   batchNo: "",
+  subBatch: "",
   fullCartons: 0,
   tailCartons: 0,
   looseUnits: 0,
@@ -114,7 +115,7 @@ function commonSpecs(item: ItemInput) {
   return [...new Set([item.product?.defaultUnitsPerCarton, ...(item.product?.cartonSpecs || [])].filter((n): n is number => !!n))];
 }
 function addSpecification(item: ItemInput) {
-  draft.value.items.push({ ...blankItem(), productId: item.productId, product: item.product, batchNo: item.batchNo, unitsPerCarton: item.unitsPerCarton, quantityUnknown: item.quantityUnknown });
+  draft.value.items.push({ ...blankItem(), productId: item.productId, product: item.product, batchNo: item.batchNo, subBatch: item.subBatch, unitsPerCarton: item.unitsPerCarton, quantityUnknown: item.quantityUnknown });
 }
 function displayedTotal(item: ItemInput) {
   if (item.quantityUnknown) return undefined;
@@ -122,6 +123,7 @@ function displayedTotal(item: ItemInput) {
 }
 function selectProduct(item: ItemInput, p?: Product) {
   item.id = undefined;
+  item.subBatch = "";
   item.unitsPerCarton = p?.defaultUnitsPerCarton;
   item.product = p;
   item.productId = p?.id;
@@ -213,6 +215,7 @@ function payload() {
       tailCartons: Number(x.tailCartons) || 0,
       tailUnitsPerCarton: x.tailCartons > 0 ? Number(x.tailUnitsPerCarton) : null,
       batchNo: x.batchNo,
+      subBatch: x.subBatch || "",
       fullCartons: Number(x.fullCartons) || 0,
       looseUnits: Number(x.looseUnits) || 0,
       totalUnits:
@@ -328,6 +331,7 @@ onMounted(async () => {
           active: true,
         },
         batchNo: x.batchNo,
+        subBatch: x.subBatch || "",
         fullCartons: x.fullCartons,
         looseUnits: x.looseUnits,
         totalUnits: x.totalUnits,
@@ -460,6 +464,11 @@ onBeforeUnmount(() => {
             />
             <small class="hint">本次流转的所有产品共用</small>
           </div>
+          <div class="field">
+            <label :for="`sub-batch-${index}`">区分批次（可选）</label>
+            <input :id="`sub-batch-${index}`" class="input mono" maxlength="100" v-model.trim="item.subBatch" placeholder="外盒同编码、同批次仍需区分时填写" />
+            <small class="hint">填写实际区分标识。不同区分批次分别统计；不需要区分时留空。</small>
+          </div>
           <div class="packing-fields">
             <div class="grid-2">
               <div class="field"><label :for="`size-${index}`">完整箱每箱数量</label><input :id="`size-${index}`" class="input mono" type="number" min="1" step="1" inputmode="numeric" v-model.number="item.unitsPerCarton" @input="quantityChanged(item)" placeholder="选择或输入，例如 1000" /></div>
@@ -474,10 +483,10 @@ onBeforeUnmount(() => {
                 <div class="field"><label :for="`tail-${index}`">尾箱箱数</label><input :id="`tail-${index}`" class="input mono" type="number" min="0" step="1" inputmode="numeric" v-model.number="item.tailCartons" @input="quantityChanged(item)" /></div>
                 <div class="field"><label :for="`tail-size-${index}`">每个尾箱实际数量</label><input :id="`tail-size-${index}`" class="input mono" type="number" min="1" step="1" inputmode="numeric" v-model.number="item.tailUnitsPerCarton" @input="quantityChanged(item)" placeholder="例如 3" /></div>
               </div>
-              <small class="hint">尾箱计入总箱数。尾箱数量不同时，点击“添加同物料规格”分开填写。</small>
+              <small class="hint">尾箱计入总箱数。尾箱数量不同时，点击“添加同物料规格 / 批次”分开填写。</small>
               <div class="field"><label :for="`loose-${index}`">真正散装（未装箱的{{item.product?.baseUnit || '数量'}}）</label><input :id="`loose-${index}`" class="input mono" type="number" min="0" step="1" inputmode="numeric" v-model.number="item.looseUnits" @input="quantityChanged(item)" /></div>
             </details>
-            <button v-if="item.productId" class="btn btn-ghost" type="button" @click="addSpecification(item)">＋ 添加同物料规格</button>
+            <button v-if="item.productId" class="btn btn-ghost" type="button" @click="addSpecification(item)">＋ 添加同物料规格 / 批次</button>
           </div>
           <label class="unknown-quantity">
             <input type="checkbox" v-model="item.quantityUnknown" :disabled="item.product?.quantityUnknown" @change="toggleUnknownQuantity(item)" />

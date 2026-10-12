@@ -414,6 +414,73 @@ class MovementServiceIntegrationTest {
         }
     }
 
+    @Test void sameCodeAndBatchKeepSubBatchesSeparateInDetailListDailyAndSourceStatistics(){
+        var a=subBatchItem(1000,3,1,3L,2,"  OUTER-A  ");
+        var b=subBatchItem(1800,5,0,null,0,"OUTER-B");
+        var first=movements.create(packagingRequest(List.of(a,b),false));
+        assertThat(first.items()).extracting(MovementDtos.ItemResponse::subBatch).containsExactly("OUTER-A","OUTER-B");
+        assertThat(first.materials()).hasSize(2);
+        assertThat(first.materials()).extracting(MovementDtos.ListItemResponse::totalQuantity).containsExactly(3005L,9000L);
+        assertThat(first.totalCartons()).isEqualTo(9);
+        var list=movements.search(LocalDate.of(2026,9,28),LocalDate.of(2026,9,28),null,null,null,null,first.recordNo(),0,10).content().getFirst();
+        assertThat(list.items()).extracting(MovementDtos.ListItemResponse::subBatch).containsExactly("OUTER-A","OUTER-B");
+        movements.create(packagingRequest(List.of(subBatchItem(1800,1,0,null,0,"OUTER-A")),false));
+        movements.create(packagingRequest(List.of(subBatchItem(null,0,0,null,7,"  ")),false));
+        movements.create(packagingRequest(List.of(subBatchItem(null,0,0,null,3,null)),false));
+        var groups=movements.queryStats(LocalDate.of(2026,9,28),LocalDate.of(2026,9,28),null,null,null,null,"PACK-"+product).directions().getFirst().products();
+        assertThat(groups).hasSize(3);
+        var groupA=groups.stream().filter(g->"OUTER-A".equals(g.subBatch())).findFirst().orElseThrow();
+        assertThat(groupA.totalQuantity()).isEqualTo(4805);
+        assertThat(groupA.totalCartons()).isEqualTo(5);
+        assertThat(groupA.packaging()).hasSize(3);
+        assertThat(groupA.movements()).hasSize(2);
+        assertThat(groupA.movements().stream().filter(m->m.id().equals(first.id())).findFirst().orElseThrow().totalQuantity()).isEqualTo(3005);
+        assertThat(groups.stream().filter(g->g.subBatch()==null).findFirst().orElseThrow().totalQuantity()).isEqualTo(10);
+        var daily=movements.todayStats(LocalDate.of(2026,9,28),MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION).products().stream()
+                .filter(g->g.materialCode().equals("PACK-"+product)).toList();
+        assertThat(daily).hasSize(3);
+        assertThat(daily.stream().mapToLong(MovementDtos.ProductStatResponse::totalQuantity).sum()).isEqualTo(13815);
+    }
+
+    @Test void subBatchCanBeAddedToOldRecordPreservedOnOmissionAndExplicitlyCleared(){
+        var old=movements.create(packagingRequest(List.of(packagingItem(1000,1,0,null,0)),false));
+        assertThat(old.items().getFirst().subBatch()).isNull();
+        var input=subBatchItem(1000,1,0,null,0,"PHYSICAL-LOT");
+        var saved=movements.update(old.id(),packagingRequest(List.of(input),false));
+        var item=saved.items().getFirst();
+        var omitted=new MovementDtos.ItemRequest(product,item.batchNo(),1,0,null,false,"note",List.of(),1000,0,null,item.id());
+        var kept=movements.update(old.id(),packagingRequest(List.of(omitted),false));
+        assertThat(kept.items().getFirst().subBatch()).isEqualTo("PHYSICAL-LOT");
+        var cleared=new MovementDtos.ItemRequest(product,item.batchNo(),1,0,null,false,"note",List.of(),1000,0,null,kept.items().getFirst().id(),"");
+        assertThat(movements.update(old.id(),packagingRequest(List.of(cleared),false)).items().getFirst().subBatch()).isNull();
+        assertThatThrownBy(()->movements.create(packagingRequest(List.of(subBatchItem(1000,1,0,null,0,"x".repeat(101))),false)))
+                .hasMessageContaining("100");
+    }
+
+    @Test void subBatchApiRoundTripAndSearchWorkForReturns() throws Exception {
+        String label="SUB-"+UUID.randomUUID();
+        var request=packagingRequest(List.of(subBatchItem(1000,0,1,3L,2,label)),true);
+        var session=new org.springframework.mock.web.MockHttpSession();
+        session.setAttribute(nz.co.warehouse.auth.AuthController.AUTH_SESSION_KEY,true);
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/movements").session(session)
+                .contentType("application/json").content(objectMapper.writeValueAsBytes(request)))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.items[0].subBatch").value(label))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.materials[0].subBatch").value(label));
+        var page=movements.search(LocalDate.of(2026,9,28),LocalDate.of(2026,9,28),null,MovementEnums.Status.ACTIVE,null,null,label,0,10);
+        assertThat(page.totalElements()).isEqualTo(1);
+        var groups=movements.queryStats(LocalDate.of(2026,9,28),LocalDate.of(2026,9,28),null,MovementEnums.Status.ACTIVE,null,null,label).directions().getFirst().products();
+        assertThat(groups).hasSize(1);
+        assertThat(groups.getFirst().subBatch()).isEqualTo(label);
+        assertThat(groups.getFirst().totalQuantity()).isEqualTo(5);
+        movements.voidMovement(page.content().getFirst().id(),"duplicate");
+        assertThat(movements.queryStats(LocalDate.of(2026,9,28),LocalDate.of(2026,9,28),null,MovementEnums.Status.ACTIVE,null,null,label).directions()).isEmpty();
+    }
+
+    private MovementDtos.ItemRequest subBatchItem(Integer size,int full,int tail,Long actual,long loose,String subBatch){
+        return new MovementDtos.ItemRequest(product,"PACK-"+product,full,loose,null,false,null,List.of(),size,tail,actual,null,subBatch);
+    }
+
     private MovementDtos.ItemRequest packagingItem(Integer size,int full,int tail,Long actual,long loose){
         return new MovementDtos.ItemRequest(product,"PACK-"+product,full,loose,null,false,null,List.of(),size,tail,actual,null);
     }

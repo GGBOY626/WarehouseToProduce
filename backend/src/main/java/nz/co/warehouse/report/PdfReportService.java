@@ -144,7 +144,7 @@ public class PdfReportService {
             itemCount++;
             html.append("<tr><td class='center'>").append(REPORT_DATE.format(movementDate)).append("</td><td class='text'>")
                     .append(e(item.getProductNameSnapshot())).append("</td><td class='center'>").append(e(item.getBatchNo()))
-                    .append("</td><td class='center'>").append(e(movement.getManufactureLot())).append("</td><td class='number'>").append(fullCartons(item))
+                    .append("</td><td class='center'>").append(batchLabel(movement.getManufactureLot(),item.getSubBatch())).append("</td><td class='number'>").append(fullCartons(item))
                     .append("</td><td class='number'>").append(quantity(item, item.getLooseUnits())).append("</td><td class='number'>").append(totalQuantity(item))
                     .append("</td><td class='text'>").append(e(item.getRemarks())).append("</td><td class='center'>").append(e(movement.getSenderNameSnapshot()))
                     .append("</td><td class='center'>").append(e(movement.getReceiverNameSnapshot())).append("</td></tr>");
@@ -162,7 +162,7 @@ public class PdfReportService {
                 .append("<table><thead><tr><th>产品</th><th>物料编码</th><th>物料批次</th><th style='width:22%'>装箱规格明细</th><th>总箱数</th><th>散装合计</th><th>总数量合计</th></tr></thead><tbody>");
         for (var entry : totals.entrySet()) {
             var key=entry.getKey();var total=MaterialQuantity.of(entry.getValue());
-            html.append("<tr><td class='text'>").append(e(entry.getValue().getFirst().getProductNameSnapshot())).append("</td><td class='center'>").append(e(key.materialCode())).append("</td><td class='center'>").append(e(key.materialBatch()))
+            html.append("<tr><td class='text'>").append(e(entry.getValue().getFirst().getProductNameSnapshot())).append("</td><td class='center'>").append(e(key.materialCode())).append("</td><td class='center'>").append(batchLabel(key.materialBatch(),key.subBatch()))
                     .append("</td><td class='text'>").append(packaging(total,key.baseUnit()))
                     .append("</td><td class='number'>").append(total.totalCartons()).append(" 箱");
             if(total.tailCartons()>0)html.append("<br/>").append(total.fullCartons()).append(" 满箱 + ").append(total.tailCartons()).append(" 尾箱");
@@ -172,6 +172,10 @@ public class PdfReportService {
         }
         if (totals.isEmpty()) html.append("<tr><td colspan='7' class='empty'>该方向暂无记录</td></tr>");
         html.append("</tbody></table></section>");
+    }
+
+    private String batchLabel(String batch,String subBatch){
+        return e(batch)+(subBatch==null||subBatch.isBlank()?"":"<br/><span class='carton-spec'>区分批次："+e(subBatch)+"</span>");
     }
 
     private String fullCartons(MovementItem item) {

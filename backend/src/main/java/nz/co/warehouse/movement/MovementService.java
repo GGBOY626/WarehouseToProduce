@@ -117,7 +117,7 @@ public class MovementService {
                         quantity.fullCartons(),quantity.totalQuantity(),quantity.unknownItemCount(),quantity.looseUnits(),m.isReturnMovement(),m.getPhotos().size(),quantity.tailCartons(),quantity.totalCartons(),quantity.packaging());
             }).toList();
             return new MovementDtos.ProductStatResponse(entry.getValue().getFirst().getProductNameSnapshot(),key.materialCode(),key.materialBatch(),key.baseUnit(),
-                    totals.fullCartons(),totals.looseUnits(),totals.totalQuantity(),totals.unknownItemCount(),movements,totals.tailCartons(),totals.totalCartons(),totals.packaging());
+                    totals.fullCartons(),totals.looseUnits(),totals.totalQuantity(),totals.unknownItemCount(),movements,totals.tailCartons(),totals.totalCartons(),totals.packaging(),key.subBatch());
         }).toList();
     }
 
@@ -152,6 +152,9 @@ public class MovementService {
 
     private MovementItem buildItem(MovementDtos.ItemRequest r,int order,boolean allowInactive,ProductUsage expectedUsage,MovementItem original){
         Product p=products.getForMovement(r.productId(),expectedUsage,allowInactive);MovementItem i=new MovementItem();i.setProduct(p);i.setProductNameSnapshot(original==null?p.getName():original.getProductNameSnapshot());i.setSkuSnapshot(original==null?null:original.getSkuSnapshot());i.setUnitsPerCartonSnapshot(r.unitsPerCarton()!=null?r.unitsPerCarton():original==null?p.getDefaultUnitsPerCarton():original.getUnitsPerCartonSnapshot());i.setBatchNo(r.batchNo().trim());i.setSortOrder(order);i.setRemarks(blank(r.remarks()));
+        String subBatch=r.subBatch()==null&&original!=null?original.getSubBatch():blank(r.subBatch());
+        if(subBatch!=null&&subBatch.length()>100)throw BusinessException.badRequest("SUB_BATCH_INVALID","区分批次最多填写 100 个字符。");
+        i.setSubBatch(subBatch);
         boolean quantityUnknown=(original==null&&p.isQuantityUnknown())||r.quantityUnknown();
         if(r.fullCartons()<0||r.tailCartons()<0||r.looseUnits()<0||(r.unitsPerCarton()!=null&&r.unitsPerCarton()<=0)||(r.totalUnits()!=null&&r.totalUnits()<0))
             throw BusinessException.badRequest("QUANTITY_INVALID","箱数和数量不能为负数，每箱数量必须为正整数。");

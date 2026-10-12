@@ -18,6 +18,7 @@ public class MovementItem extends PersistentEntity {
     @Column(name="units_per_carton_snapshot") private Integer unitsPerCartonSnapshot;
     @Column(name="base_unit_snapshot",nullable=false,length=20) private String baseUnitSnapshot;
     @Column(name="batch_no",nullable=false,length=100) private String batchNo;
+    @Column(name="sub_batch",length=100) private String subBatch;
     @Column(name="full_cartons",nullable=false) private int fullCartons;
     @Column(name="tail_cartons",nullable=false) private int tailCartons;
     @Column(name="tail_units_per_carton") private Long tailUnitsPerCarton;

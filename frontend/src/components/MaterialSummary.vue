@@ -8,6 +8,7 @@ withDefaults(defineProps<{
   showMaterialCode?: boolean;
   showMaterialBatch?: boolean;
   materialBatch?: string | null;
+  subBatch?: string | null;
   baseUnit: string;
   fullCartons: number;
   tailCartons?: number;
@@ -24,8 +25,9 @@ const number = (value: number) => value.toLocaleString('zh-CN');
   <div class="material-summary">
     <div class="identity">
       <strong class="material-name">{{ productName }}</strong>
-      <div v-if="showMaterialCode || (showMaterialBatch && materialBatch?.trim())" class="material-identifiers">
+      <div v-if="showMaterialCode || (showMaterialBatch && materialBatch?.trim()) || subBatch?.trim()" class="material-identifiers">
         <span v-if="showMaterialCode">编码 <b class="mono">{{ materialCode }}</b></span>
+        <span v-if="subBatch?.trim()">区分批次 <b class="mono">{{ subBatch }}</b></span>
         <span v-if="showMaterialBatch && materialBatch?.trim()">批次 <b class="mono">{{ materialBatch }}</b></span>
       </div>
     </div>

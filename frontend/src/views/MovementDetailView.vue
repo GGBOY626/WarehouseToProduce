@@ -96,6 +96,7 @@ function duplicate() {
           movementDirection: m.returnMovement ? "WAREHOUSE_TO_PRODUCTION" : m.direction,
         },
         batchNo: x.batchNo,
+        subBatch: "",
         unitsPerCarton: x.unitsPerCarton,
         tailCartons: 0,
         fullCartons: 0,
@@ -171,6 +172,7 @@ onMounted(()=>void load());
             <strong>{{ item.productName }}</strong>
           </div>
           <div class="batch mono"><span>物料编码：{{ item.batchNo }}</span><CopyButton :value="item.batchNo" label="物料编码" /></div>
+          <div v-if="item.subBatch" class="batch mono"><span>区分批次：{{ item.subBatch }}</span></div>
           <div
             v-if="data.manufactureLot && item === data.items[0]"
             class="batch mono"
