@@ -9,6 +9,11 @@ import type { Direction, MovementSummary, QueryStats, StatMovement } from "../ty
 import { today, showDateTime } from "../utils/time";
 import { useAuth } from "../auth";
 import { errorMessage } from "../api/http";
+import { HOME_FILTERS_KEY, readHomeFilters, presetRange, singleDayRange, validDate } from "../utils/homeFilters";
+import type { DatePreset } from "../utils/homeFilters";
+let storedFilters: string | null = null;
+try { storedFilters = sessionStorage.getItem(HOME_FILTERS_KEY); } catch { /* Storage can be disabled in the browser. */ }
+const initialFilters = readHomeFilters(storedFilters, today());
 const { authenticated } = useAuth();
 const router = useRouter();
 const recordDialog = ref<HTMLDialogElement>();
@@ -39,15 +44,23 @@ const error = ref("");
 let searchTimer: ReturnType<typeof setTimeout> | undefined;
 const rows = ref<MovementSummary[]>([]),
   stats = ref<QueryStats>(),
-  appliedFrom = ref(today()),
-  appliedTo = ref(today()),
+  appliedFrom = ref(initialFilters.from),
+  appliedTo = ref(initialFilters.to),
   loading = ref(false),
-  from = ref(today()),
-  to = ref(today()),
-  direction = ref<Direction>("WAREHOUSE_TO_PRODUCTION"),
-  q = ref(""),
-  moreFilters = ref(false),
-  activePreset = ref<"today" | "yesterday" | "week" | "twoWeeks" | undefined>("today");
+  from = ref(initialFilters.from),
+  to = ref(initialFilters.to),
+  direction = ref<Direction>(initialFilters.direction),
+  q = ref(initialFilters.q),
+  moreFilters = ref(initialFilters.moreFilters),
+  activePreset = ref<DatePreset>(initialFilters.activePreset);
+const singleDate = ref(initialFilters.activePreset === 'single' ? initialFilters.from : '');
+watch([from, to, direction, q, moreFilters, activePreset], () => {
+  if (!validDate(from.value) || !validDate(to.value) || from.value > to.value) return;
+  try {
+    sessionStorage.setItem(HOME_FILTERS_KEY, JSON.stringify({ from: from.value, to: to.value,
+      direction: direction.value, q: q.value, moreFilters: moreFilters.value, activePreset: activePreset.value }));
+  } catch { /* Filtering still works without browser storage. */ }
+}, { flush: 'sync' });
 let requestId = 0;
 async function load() {
   recordDialog.value?.close();
@@ -95,29 +108,28 @@ function selectDirection(value: Direction) {
   direction.value = value;
   void load();
 }
-function shiftDate(date: string, days: number) {
-  const [year, month, day] = date.split("-").map(Number);
-  const value = new Date(Date.UTC(year, month - 1, day));
-  value.setUTCDate(value.getUTCDate() + days);
-  return value.toISOString().slice(0, 10);
-}
-function preset(kind: "today" | "yesterday" | "week" | "twoWeeks") {
-  const current = today();
+function preset(kind: 'today' | 'yesterday' | 'week' | 'twoWeeks') {
+  const range = presetRange(kind, today());
+  from.value = range.from;
+  to.value = range.to;
   activePreset.value = kind;
-  if (kind === "today") {
-    from.value = to.value = current;
-  } else if (kind === "yesterday") {
-    from.value = to.value = shiftDate(current, -1);
-  } else {
-    const currentDate = new Date(`${current}T00:00:00Z`);
-    const daysSinceMonday = (currentDate.getUTCDay() + 6) % 7;
-    from.value = shiftDate(current, -daysSinceMonday - (kind === "twoWeeks" ? 7 : 0));
-    to.value = current;
+  singleDate.value = '';
+  void load();
+}
+function selectSingleDay() {
+  if (!validDate(singleDate.value)) {
+    singleDate.value = activePreset.value === 'single' ? from.value : '';
+    return;
   }
-  load();
+  const range = singleDayRange(singleDate.value);
+  from.value = range.from;
+  to.value = range.to;
+  activePreset.value = 'single';
+  void load();
 }
 function customDate() {
-  activePreset.value = undefined;
+  activePreset.value = 'range';
+  singleDate.value = '';
   to.value = today();
   void load();
 }
@@ -146,10 +158,14 @@ const formatNumber = (value: number) => value.toLocaleString("zh-CN");
     </div>
     <section class="filters card card-pad">
       <div class="preset">
-        <button class="quick-date" :class="{active:activePreset==='today'}" @click="preset('today')">今天</button
-        ><button class="quick-date" :class="{active:activePreset==='yesterday'}" @click="preset('yesterday')">昨天</button
-        ><button class="quick-date" :class="{active:activePreset==='week'}" @click="preset('week')">本周</button
-        ><button class="quick-date" :class="{active:activePreset==='twoWeeks'}" @click="preset('twoWeeks')">两周</button>
+        <button class="quick-date" :class="{active:activePreset==='today'}" :aria-pressed="activePreset==='today'" @click="preset('today')">今天</button
+        ><button class="quick-date" :class="{active:activePreset==='yesterday'}" :aria-pressed="activePreset==='yesterday'" @click="preset('yesterday')">昨天</button
+        ><button class="quick-date" :class="{active:activePreset==='week'}" :aria-pressed="activePreset==='week'" @click="preset('week')">本周</button
+        ><button class="quick-date" :class="{active:activePreset==='twoWeeks'}" :aria-pressed="activePreset==='twoWeeks'" @click="preset('twoWeeks')">两周</button>
+      </div>
+      <div class="field single-day" :class="{selected:activePreset==='single'}">
+        <label for="single-day">只看某一天</label>
+        <input id="single-day" class="input" type="date" v-model="singleDate" :max="today()" @change="selectSingleDay" />
       </div>
       <div class="field">
         <label>方向</label>
@@ -167,8 +183,8 @@ const formatNumber = (value: number) => value.toLocaleString("zh-CN");
       </button>
       <div v-show="moreFilters" id="advanced-filters" class="advanced-filters">
         <div class="field">
-          <label>开始日期</label
-          ><input class="input" type="date" v-model="from" :max="today()" @change="customDate" />
+          <label for="range-start">开始日期</label
+          ><input id="range-start" class="input" type="date" v-model="from" :max="today()" @change="customDate" />
           <small class="hint">自定义日期查询至今天</small>
         </div>
       </div>
@@ -232,6 +248,7 @@ const formatNumber = (value: number) => value.toLocaleString("zh-CN");
   display: grid;
   gap: 13px;
 }
+.single-day{grid-template-columns:auto minmax(0,1fr);align-items:center;gap:12px}.single-day.selected label{color:#267566}.single-day input{min-width:0;width:100%;box-sizing:border-box}
 .preset {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
