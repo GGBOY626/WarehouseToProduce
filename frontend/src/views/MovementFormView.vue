@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { onBeforeRouteLeave, useRoute, useRouter } from "vue-router";
+import ProductionTaskTargets from "../components/ProductionTaskTargets.vue";
+import ProductionTaskOutput from "../components/ProductionTaskOutput.vue";
 import SearchPicker from "../components/SearchPicker.vue";
 import { errorMessage } from "../api/http";
 import { movementsApi, personsApi, productsApi, productionTasksApi } from "../api";
@@ -10,6 +12,7 @@ import type {
   MovementDraft,
   Product,
   ProductionTaskOption,
+  ProductionTask,
 } from "../types";
 import { directionLabel } from "../utils/labels";
 import { nowLocalInput, toInstant, toLocalInput } from "../utils/time";
@@ -84,6 +87,21 @@ async function refreshTasks() {
   finally { if (request === taskRequest) taskLoading.value = false; }
 }
 watch(taskSelection, refreshTasks);
+const selectedTask = ref<ProductionTask>();
+const previewLoading = ref(false), previewError = ref("");
+let previewRequest = 0;
+async function loadTaskPreview() {
+  const request = ++previewRequest, id = draft.value.productionTaskId;
+  selectedTask.value = undefined; previewError.value = "";
+  previewLoading.value = !!id;
+  if (!id) return;
+  try {
+    const task = await productionTasksApi.detail(id);
+    if (request === previewRequest) selectedTask.value = task;
+  } catch (e) { if (request === previewRequest) previewError.value = errorMessage(e); }
+  finally { if (request === previewRequest) previewLoading.value = false; }
+}
+watch([() => draft.value.productionTaskId, taskSelection], loadTaskPreview);
 const draftKey = computed(() => `movement-draft:${direction.value}`);
 const productUsage = computed<Direction>(() => draft.value.returnMovement ? "WAREHOUSE_TO_PRODUCTION" : direction.value);
 const needsMaterialBatch = computed(() => direction.value === "WAREHOUSE_TO_PRODUCTION" || draft.value.returnMovement);
@@ -348,6 +366,7 @@ onMounted(async () => {
   dirty.value = false;
 });
 onBeforeUnmount(() => {
+  previewRequest++; taskRequest++;
   window.removeEventListener("beforeunload", beforeUnload);
   files.value.forEach((x) => URL.revokeObjectURL(x.url));
 });
@@ -560,14 +579,25 @@ onBeforeUnmount(() => {
         <label for="production-task">关联生产任务（可选）</label>
         <select id="production-task" class="select" v-model="draft.productionTaskId" :disabled="taskLoading">
           <option :value="undefined">不关联生产任务</option>
-          <option v-if="keepOriginalTask && !productionTasks.some(t => t.id === originalTask?.id)" :value="originalTask!.id">{{ originalTask!.name }} · 原关联任务</option>
-          <option v-for="task in productionTasks" :key="task.id" :value="task.id">{{ task.productName }} · {{ task.batchNo }} · {{ task.status === 'PREPARING' ? '备料中' : task.status === 'COMPLETED' ? '已完成' : '生产中' }}</option>
+          <option v-if="keepOriginalTask && !productionTasks.some(t => t.id === originalTask?.id)" :value="originalTask!.id">{{ originalTask!.name }}</option>
+          <option v-for="task in productionTasks" :key="task.id" :value="task.id">{{ task.name }}</option>
         </select>
         <small v-if="taskLoading" class="hint">正在查找匹配任务…</small>
         <small v-else-if="draft.items.some(i => !i.productId)" class="hint">先选择产品，再显示匹配的生产任务。</small>
         <small v-else-if="!productionTasks.length && !keepOriginalTask" class="hint">没有匹配任务。{{ direction === 'WAREHOUSE_TO_PRODUCTION' ? '仅显示需要本单全部物料且备料中的任务。' : draft.returnMovement ? '仅显示需要本单物料且未取消的任务。' : '请先在任务中设置对应成品；备料中也可分批回仓。' }}</small>
         <small v-else class="hint">{{ direction === 'WAREHOUSE_TO_PRODUCTION' ? '只显示需要本单全部物料且备料中的任务。' : draft.returnMovement ? '退料计入任务的净发料，不计入成品产量。' : '按任务对应成品累计回仓产量；备料中、生产中和已完成任务均可补登记。' }}</small>
         <p v-if="taskError" class="form-alert" role="alert">{{ taskError }} <button type="button" class="btn btn-ghost" @click="refreshTasks">重试</button></p>
+        <div v-if="draft.productionTaskId" class="task-preview" aria-live="polite" :aria-busy="previewLoading">
+          <p v-if="previewLoading" class="hint">正在读取任务进度和缺料情况…</p>
+          <p v-else-if="previewError" class="form-alert" role="alert">{{ previewError }} <button type="button" class="btn btn-ghost" @click="loadTaskPreview">重试</button></p>
+          <template v-else-if="selectedTask">
+            <div class="preview-heading"><strong>{{ selectedTask.name }}</strong><b>备料进度 {{ selectedTask.progressPercent }}%</b></div>
+            <small class="hint">{{ selectedTask.batchNo }} · {{ selectedTask.status === 'PREPARING' ? '备料中' : selectedTask.status === 'COMPLETED' ? '已完成' : selectedTask.status === 'CANCELLED' ? '已取消' : '生产中' }}</small>
+            <ProductionTaskOutput v-if="selectedTask.output" :output="selectedTask.output" />
+            <ProductionTaskTargets :targets="selectedTask.targets" />
+            <small class="hint">{{ editId ? '按已保存记录统计，包含本单原数量；本次修改保存后更新。' : '按已保存记录统计，不含本次尚未保存的数量。' }}</small>
+          </template>
+        </div>
       </div>
     </section>
     <div class="sticky-actions">
@@ -585,6 +615,8 @@ onBeforeUnmount(() => {
   </div>
 </template>
 <style scoped>
+.task-preview{display:grid;gap:14px;margin-top:10px;padding-top:16px;border-top:1px solid #e5ecee;min-width:0}.preview-heading{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}.preview-heading strong{overflow-wrap:anywhere}.preview-heading b{color:#267566;font-size:14px}
+
 .packing-fields{display:grid;gap:12px}.spec-options{display:flex;flex-wrap:wrap;gap:6px;align-items:center}.spec-options button{border:1px solid var(--line);background:#fff;border-radius:6px;padding:7px 10px;min-height:36px;font-size:12px}.spec-options button.active{background:var(--soft-blue);border-color:var(--blue);color:var(--blue)}
 .optional-packing{border:1px solid var(--line);border-radius:9px;padding:12px}.optional-packing summary{cursor:pointer;color:var(--blue);font-weight:650}.optional-packing[open] summary{margin-bottom:12px}.optional-packing>.hint{display:block;margin:8px 0 12px}
 

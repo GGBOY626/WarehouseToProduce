@@ -6,7 +6,6 @@ import nz.co.warehouse.common.PersistentEntity;
 import nz.co.warehouse.product.Product;
 import java.time.LocalDate;
 import java.util.*;
-import java.util.stream.Collectors;
 
 @Getter @Setter @NoArgsConstructor
 @Entity @Table(name="production_task")
@@ -17,12 +16,16 @@ public class ProductionTask extends PersistentEntity {
     @Column(name="planned_date",nullable=false) private LocalDate plannedDate;
     @Column(name="batch_no",nullable=false,length=100) private String batchNo;
     @Enumerated(EnumType.STRING) @Column(nullable=false,length=20) private Status status=Status.PREPARING;
+    @Column(length=100) private String name;
     @Column(length=1000) private String remarks;
     @ManyToOne(fetch=FetchType.LAZY) @JoinColumn(name="output_product_id") private Product outputProduct;
     @Column(name="target_output_quantity") private Long targetOutputQuantity;
     @OneToMany(mappedBy="task",cascade=CascadeType.ALL,orphanRemoval=true)
     @OrderBy("sortOrder ASC, id ASC")
     private List<ProductionTaskTarget> targets=new ArrayList<>();
-    public String displayName(){return targets.stream().map(t->t.getProduct().getName()).collect(Collectors.joining("、"));}
+    public String displayName(){
+        if(name!=null&&!name.isBlank())return name;
+        return (outputProduct!=null?outputProduct.getName():product.getName())+" · "+batchNo;
+    }
     public enum Status { PREPARING, IN_PROGRESS, COMPLETED, CANCELLED }
 }

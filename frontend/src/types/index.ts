@@ -123,8 +123,9 @@ export interface ProductionTaskOutput {
   productId: number; productName: string; materialCode: string; baseUnit: string;
   targetQuantity: number; receivedQuantity: number; progressPercent: number; unknownQuantityCount: number;
 }
-export interface ProductionTaskOption { id: number; productName: string; batchNo: string; status: ProductionTaskStatus }
+export interface ProductionTaskOption { name: string; id: number; productName: string; batchNo: string; status: ProductionTaskStatus }
 export interface ProductionTask {
+  name: string;
   id: number; productId: number; productName: string; baseUnit?: string; targetQuantity: number;
   plannedDate: string; batchNo: string; status: ProductionTaskStatus; remarks?: string;
   completedQuantity: number; progressPercent: number; issueMovementCount: number; returnMovementCount: number;

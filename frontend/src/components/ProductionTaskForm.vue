@@ -11,6 +11,7 @@ const emit = defineEmits<{ saved: [task: ProductionTask]; cancel: [] }>();
 let nextKey = 0;
 const newTarget = () => ({ key: nextKey++, productId: undefined as number | undefined, targetQuantity: 0, baseUnit: "" });
 const form = ref({
+  name: props.task?.name || "",
   targets: props.task?.targets.map(t => ({ key: nextKey++, productId: t.productId as number | undefined, targetQuantity: t.targetQuantity, baseUnit: t.baseUnit || "" })) || [newTarget()],
   plannedDate: props.task?.plannedDate || today(), batchNo: props.task?.batchNo || "", remarks: props.task?.remarks || ""
 });
@@ -29,6 +30,7 @@ async function loadMaterials(q: string): Promise<Product[]> {
 }
 async function save() {
   if (saving.value) return;
+  if (!form.value.name.trim()) { message.value = "请填写任务名称。"; return; }
   const targets = form.value.targets;
   if (!form.value.plannedDate || !form.value.batchNo.trim() || targets.some(t => !t.productId || !Number.isSafeInteger(t.targetQuantity) || t.targetQuantity <= 0)) {
     message.value = "请填写每个目标产品及大于零的整数数量，并填写计划日期和生产批次。"; return;
@@ -53,6 +55,7 @@ async function save() {
     <p class="hint">选择仓库 → 生产车间的物料，并填写本次生产所需数量。例如生产 12,000 个关节饮，需要内盒 400 个、外盒 400 个。</p>
     <p v-if="task?.targets.some(t => !t.materialTarget)" class="form-alert">旧任务中有成品入库产品，请将它们替换为仓库 → 生产车间的物料，并核对所需数量。</p>
     <fieldset :disabled="saving">
+      <label class="field"><span>任务名称 *</span><input class="input" v-model.trim="form.name" maxlength="100" required placeholder="例如：轻体粉第一批" /></label>
       <div v-for="(target, index) in form.targets" :key="target.key" class="target-row">
         <SearchPicker v-model="target.productId" :label="`所需物料 ${index + 1}`" placeholder="搜索发往车间的物料、内盒或外盒"
           :load="loadMaterials"

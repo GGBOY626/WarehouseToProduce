@@ -22,7 +22,10 @@ public class ProductionTaskService {
     public record TargetRequest(@NotNull Long productId,@Positive long targetQuantity) {}
     public record SaveRequest(Long productId,Long targetQuantity,@NotNull LocalDate plannedDate,
                               @NotBlank @Size(max=100) String batchNo,@Size(max=1000) String remarks,
-                              List<@NotNull @Valid TargetRequest> targets, Long outputProductId, @Positive Long targetOutputQuantity) {
+                              List<@NotNull @Valid TargetRequest> targets, Long outputProductId, @Positive Long targetOutputQuantity, @Size(max=100) String name) {
+        public SaveRequest(Long productId,Long targetQuantity,LocalDate plannedDate,String batchNo,String remarks,List<TargetRequest> targets,Long outputProductId,Long targetOutputQuantity){
+            this(productId,targetQuantity,plannedDate,batchNo,remarks,targets,outputProductId,targetOutputQuantity,null);
+        }
         public SaveRequest(Long productId,Long targetQuantity,LocalDate plannedDate,String batchNo,String remarks,List<TargetRequest> targets){
             this(productId,targetQuantity,plannedDate,batchNo,remarks,targets,null,null);
         }
@@ -38,10 +41,10 @@ public class ProductionTaskService {
     public record Response(Long id,Long productId,String productName,String baseUnit,long targetQuantity,LocalDate plannedDate,
                            String batchNo,ProductionTask.Status status,String remarks,long completedQuantity,int progressPercent,
                            int issueMovementCount,int returnMovementCount,List<MovementResponse> movements,Instant createdAt,Instant updatedAt,
-                           List<TargetResponse> targets,OutputResponse output) {}
+                           List<TargetResponse> targets,OutputResponse output,String name) {}
     public record OutputResponse(Long productId,String productName,String materialCode,String baseUnit,long targetQuantity,
                                  long receivedQuantity,int progressPercent,int unknownQuantityCount) {}
-    public record LinkOption(Long id,String productName,String batchNo,ProductionTask.Status status) {}
+    public record LinkOption(Long id,String productName,String batchNo,ProductionTask.Status status,String name) {}
 
     @Transactional(readOnly=true) public List<Response> list(ProductionTask.Status status){return tasks.search(status).stream().map(this::response).toList();}
     @Transactional(readOnly=true) public Response detail(long id){return response(get(id));}
@@ -53,7 +56,7 @@ public class ProductionTaskService {
         Set<Long> selected=new HashSet<>(productIds);
         if(selected.isEmpty()||selected.contains(null))return List.of();
         return tasks.search(null).stream().filter(t->linkStatusAllowed(t,direction)&&matches(t,selected,direction,returned))
-                .map(t->new LinkOption(t.getId(),t.getOutputProduct()!=null?t.getOutputProduct().getName():t.displayName(),t.getBatchNo(),t.getStatus())).toList();
+                .map(t->new LinkOption(t.getId(),t.displayName(),t.getBatchNo(),t.getStatus(),t.displayName())).toList();
     }
     @Transactional(readOnly=true)
     public ProductionTask getLinkable(long id,List<Long> productIds,MovementEnums.Direction direction,boolean returned){
@@ -79,6 +82,11 @@ public class ProductionTaskService {
 
     private ProductionTask get(long id){return tasks.findWithProductById(id).orElseThrow(()->BusinessException.notFound("PRODUCTION_TASK_NOT_FOUND","找不到该生产任务。"));}
     private void apply(ProductionTask t,SaveRequest r,boolean editing){
+        if(r.name()!=null){
+            String name=r.name().trim();
+            if(name.isEmpty()||name.length()>100)throw BusinessException.badRequest("TASK_NAME_INVALID","任务名称请填写 1 至 100 个字符。");
+            t.setName(name);
+        }
         List<TargetRequest> inputs=r.targets();
         if(inputs==null&&r.productId()!=null&&r.targetQuantity()!=null)
             inputs=List.of(new TargetRequest(r.productId(),r.targetQuantity()));
@@ -157,7 +165,7 @@ public class ProductionTaskService {
         int issues=(int)rows.stream().filter(m->m.getItems().stream().anyMatch(i->!i.getIssues().isEmpty())).count();
         int returns=(int)rows.stream().filter(Movement::isReturnMovement).count();
         List<MovementResponse> linked=rows.stream().map(m->new MovementResponse(m.getId(),m.getRecordNo(),m.getDirection(),m.isReturnMovement(),m.getMovementTime(),m.getTotalCartons(),m.getItems().stream().map(MovementItem::getTotalUnits).filter(Objects::nonNull).mapToLong(Long::longValue).sum(),m.getItems().stream().map(MovementItem::getProductNameSnapshot).distinct().toList(),m.getStatus(),(int)m.getItems().stream().filter(i->i.isQuantityUnknown()||i.getTotalUnits()==null).count(),m.getItems().stream().map(MovementItem::getBaseUnitSnapshot).distinct().count()==1?m.getItems().getFirst().getBaseUnitSnapshot():null)).toList();
-        return new Response(t.getId(),t.getProduct().getId(),t.displayName(),t.getProduct().getBaseUnit(),t.getTargetQuantity(),t.getPlannedDate(),t.getBatchNo(),t.getStatus(),t.getRemarks(),completed,progress,issues,returns,linked,t.getCreatedAt(),t.getUpdatedAt(),targets,output);
+        return new Response(t.getId(),t.getProduct().getId(),t.displayName(),t.getProduct().getBaseUnit(),t.getTargetQuantity(),t.getPlannedDate(),t.getBatchNo(),t.getStatus(),t.getRemarks(),completed,progress,issues,returns,linked,t.getCreatedAt(),t.getUpdatedAt(),targets,output,t.displayName());
     }
     private String blank(String value){return value==null||value.isBlank()?null:value.trim();}
 }

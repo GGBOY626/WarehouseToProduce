@@ -26,7 +26,7 @@ onMounted(load);
       <div v-if="!group.tasks.length" class="card empty">暂无{{ group.title }}。</div>
       <div v-else class="task-list">
         <RouterLink v-for="task in group.tasks" :key="task.id" :to="`/production-tasks/${task.id}`" class="task-card card">
-          <div class="task-info"><span class="task-status">{{ labels[task.status] }}</span><strong>{{ task.output?.productName || task.productName }}</strong><small>{{ task.batchNo }} · 计划 {{ task.plannedDate }}</small></div>
+          <div class="task-info"><span class="task-status">{{ labels[task.status] }}</span><strong>{{ task.name }}</strong><small>{{ task.batchNo }} · 计划 {{ task.plannedDate }}</small></div>
           <div class="target"><b>{{ task.progressPercent }}%</b><span>备料进度</span></div>
           <ProductionTaskOutput v-if="task.output" class="task-output" :output="task.output" />
           <ProductionTaskTargets class="task-targets" :targets="task.targets" />

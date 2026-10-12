@@ -264,6 +264,36 @@ class MaterialRequirementsIntegrationTest {
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.length()").value(0));
     }
 
+    @Test void customNameRoundTripsThroughTaskOptionsAndLinkedMovementWithoutMaterialConcatenation(){
+        var base=request(target(inner,500),target(outer,500));
+        var named=new ProductionTaskService.SaveRequest(null,null,base.plannedDate(),base.batchNo(),null,base.targets(),drink,500L,"  轻体粉第一批  ");
+        var task=tasks.create(named);
+        assertThat(task.name()).isEqualTo("轻体粉第一批");
+        assertThat(tasks.detail(task.id()).name()).isEqualTo(task.name());
+        assertThat(tasks.linkable(List.of(inner),MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,false))
+                .filteredOn(t->t.id().equals(task.id())).extracting(ProductionTaskService.LinkOption::name).containsExactly(task.name());
+        var movement=move(task.id(),inner,200L,false,false);
+        assertThat(movement.productionTaskName()).isEqualTo(task.name());
+        var changed=new ProductionTaskService.SaveRequest(null,null,base.plannedDate(),base.batchNo(),null,base.targets(),drink,500L,"轻体粉第二批");
+        tasks.update(task.id(),changed);
+        assertThat(movements.detail(movement.id()).productionTaskName()).isEqualTo("轻体粉第二批");
+        // Older clients omit name: editing other fields must not erase it.
+        assertThat(tasks.update(task.id(),base).name()).isEqualTo("轻体粉第二批");
+        var detail=tasks.detail(task.id());
+        assertThat(detail.targets().getFirst().shortageQuantity()).isEqualTo(300);
+        assertThat(detail.progressPercent()).isEqualTo(20);
+    }
+
+    @Test void unnamedLegacyTasksHaveShortFallbackAndInvalidNamesAreRejected(){
+        var base=request(target(inner,500),target(outer,500));
+        var legacy=tasks.create(base);
+        assertThat(legacy.name()).doesNotContain("、").endsWith(" · "+base.batchNo());
+        for(String invalid:List.of("   ","x".repeat(101))) {
+            var bad=new ProductionTaskService.SaveRequest(null,null,base.plannedDate(),base.batchNo(),null,base.targets(),drink,500L,invalid);
+            assertThatThrownBy(()->tasks.create(bad)).hasMessageContaining("任务名称");
+        }
+    }
+
     private Long product(String name,ProductUsage usage){
         String suffix=UUID.randomUUID().toString();
         return products.create(new ProductDtos.Request(name+suffix,suffix,null,usage,10,"个")).id();
