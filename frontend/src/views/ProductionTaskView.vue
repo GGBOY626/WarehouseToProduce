@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, onBeforeUnmount, ref } from "vue";
 import { productionTasksApi } from "../api";
 import { errorMessage } from "../api/http";
 import { useAuth } from "../auth";
@@ -12,9 +12,12 @@ const tasks = ref<ProductionTask[]>([]), message = ref(""), showForm = ref(false
 const active = computed(() => tasks.value.filter(t => t.status === 'PREPARING' || t.status === 'IN_PROGRESS'));
 const finished = computed(() => tasks.value.filter(t => t.status === 'COMPLETED' || t.status === 'CANCELLED'));
 const groups = computed(() => [{ title: '进行中的任务', tasks: active.value }, { title: '已结束', tasks: finished.value }]);
-const labels: Record<ProductionTaskStatus, string> = { PREPARING: '备料中', IN_PROGRESS: '生产中', COMPLETED: '已完成', CANCELLED: '已取消' };
+const labels: Record<ProductionTaskStatus, string> = { PREPARING: '进行中', IN_PROGRESS: '进行中', COMPLETED: '已完成', CANCELLED: '已取消' };
 async function load() { try { tasks.value = await productionTasksApi.list(); } catch (e) { message.value = errorMessage(e); } }
-onMounted(load);
+let refreshTimer: ReturnType<typeof setInterval>;
+function refreshVisible(){ if(document.visibilityState === 'visible' && !showForm.value) void load(); }
+onMounted(() => { void load(); refreshTimer=setInterval(refreshVisible,15000); window.addEventListener('focus',refreshVisible); });
+onBeforeUnmount(() => { clearInterval(refreshTimer); window.removeEventListener('focus',refreshVisible); });
 </script>
 <template>
   <div class="page">

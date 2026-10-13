@@ -124,7 +124,13 @@ export interface ProductionTaskMovement {
   id: number; recordNo: string; direction: Direction; returnMovement: boolean; movementTime: string;
   totalCartons: number; totalQuantity: number; productNames: string[]; status: MovementStatus; unknownQuantityCount: number; quantityUnit?: string;
 }
+export interface TaskBatchQuantity {
+  materialBatch?: string | null; subBatch?: string | null; issuedQuantity: number; returnedQuantity: number; netQuantity: number; unknownQuantityCount: number;
+}
 export interface ProductionTaskOutput {
+  boxesPerCarton?: number | null; unitsPerBox?: number | null; quantityBasis?: 'BOX' | 'UNIT' | null;
+  primaryMaterialProductId?: number | null; primaryMaterialName?: string; primaryMaterialUnit?: string; netIssuedQuantity?: number | null;
+  producedQuantity?: number | null; receivedBoxes?: number | null; productionPercent?: number | null; lossPercent?: number | null; provisional: boolean;
   materialBatch?: string | null;
   productId: number; productName: string; materialCode: string; baseUnit: string;
   targetQuantity: number; receivedQuantity: number; progressPercent: number; unknownQuantityCount: number;
@@ -140,6 +146,7 @@ export interface ProductionTask {
   output?: ProductionTaskOutput;
 }
 export interface ProductionTaskTarget {
+  batches?: TaskBatchQuantity[];
   materialBatch?: string | null;
   productId: number; productName: string; materialCode: string; baseUnit?: string;
   targetQuantity: number; completedQuantity: number; progressPercent: number;

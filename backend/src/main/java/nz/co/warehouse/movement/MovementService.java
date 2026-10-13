@@ -153,6 +153,12 @@ public class MovementService {
         }
         var selection=m.getItems().stream().map(i->new ProductionTaskService.BatchSelection(i.getProduct().canonicalId(),i.effectiveMaterialBatch())).toList();
         m.setProductionTask(r.productionTaskId()==null?null:keepTask&&oldSelection.equals(new HashSet<>(selection))?m.getProductionTask():productionTasks.getLinkableBatches(r.productionTaskId(),selection,r.direction(),r.returnMovement()));
+        if(m.getProductionTask()!=null&&r.direction()==MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE&&!r.returnMovement()){
+            Integer plannedUnits=m.getProductionTask().outputCartonUnits();
+            if(plannedUnits!=null&&m.getItems().stream().anyMatch(i->i.getFullCartons()>0&&!Objects.equals(plannedUnits,i.getUnitsPerCartonSnapshot())&&
+                    (r.items().get(i.getSortOrder()).id()==null||!Objects.equals(originals.get(r.items().get(i.getSortOrder()).id()).getUnitsPerCartonSnapshot(),i.getUnitsPerCartonSnapshot()))))
+                throw BusinessException.badRequest("TASK_CARTON_SPEC_MISMATCH","满箱规格与任务包装设置不一致，请核对每箱盒数和每盒数量。");
+        }
         m.getItems().forEach(i->products.rememberBatch(i.getProduct(),i.effectiveMaterialBatch()));
         var batches=m.getItems().stream().map(MovementItem::effectiveMaterialBatch).distinct().toList();
         m.setManufactureLot(batches.size()==1?batches.getFirst():null);

@@ -123,15 +123,15 @@ class MaterialRequirementsIntegrationTest {
         assertThat(tasks.detail(task.id()).targets().getFirst().shortageQuantity()).isZero();
     }
 
-    @Test void filtersByEverySelectedMaterialAndOnlyPreparingForIssues(){
+    @Test void filtersByEverySelectedMaterialAndAllowsIssuesWhileInProgress(){
         var both=tasks.create(request(target(inner,500),target(outer,500)));
         var one=tasks.create(request(target(inner,500)));
         assertThat(tasks.linkable(List.of(inner,outer),MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,false))
                 .extracting(ProductionTaskService.LinkOption::id).contains(both.id()).doesNotContain(one.id());
         tasks.status(both.id(),ProductionTask.Status.IN_PROGRESS);
         assertThat(tasks.linkable(List.of(inner),MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,false))
-                .extracting(ProductionTaskService.LinkOption::id).contains(one.id()).doesNotContain(both.id());
-        assertThatThrownBy(()->move(both.id(),inner,10L,false,false)).hasMessageContaining("不在备料中");
+                .extracting(ProductionTaskService.LinkOption::id).contains(one.id(),both.id());
+        assertThatCode(()->move(both.id(),inner,10L,false,false)).doesNotThrowAnyException();
         assertThatThrownBy(()->move(one.id(),outer,10L,false,false)).hasMessageContaining("不匹配");
         assertThat(tasks.linkable(List.of(),MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,false)).isEmpty();
     }
@@ -145,7 +145,7 @@ class MaterialRequirementsIntegrationTest {
         move(task.id(),outer,500L,false,false);
         move(task.id(),drink,100L,false,false);
         var result=tasks.detail(task.id());
-        assertThat(result.status()).isEqualTo(ProductionTask.Status.PREPARING);
+        assertThat(result.status()).isEqualTo(ProductionTask.Status.IN_PROGRESS);
         assertThat(result.progressPercent()).isEqualTo(100);
         assertThat(result.output().progressPercent()).isEqualTo(20);
         assertThat(result.output().receivedQuantity()).isEqualTo(100);
@@ -208,7 +208,7 @@ class MaterialRequirementsIntegrationTest {
         assertThat(saved.totalCartons()).isEqualTo(21);
         assertThat(tasks.detail(task.id()).output().receivedQuantity()).isEqualTo(24005);
         assertThat(tasks.detail(task.id()).output().progressPercent()).isEqualTo(100);
-        assertThat(tasks.detail(task.id()).status()).isEqualTo(ProductionTask.Status.PREPARING);
+        assertThat(tasks.detail(task.id()).status()).isEqualTo(ProductionTask.Status.IN_PROGRESS);
     }
 
     @Test void validatesOutputIdentityAndProtectsProductAndExistingReceiptHistory(){

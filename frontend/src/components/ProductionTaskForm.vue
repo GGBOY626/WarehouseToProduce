@@ -1,109 +1,100 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { computed, ref } from "vue";
 import { productionTasksApi, productsApi } from "../api";
 import { errorMessage } from "../api/http";
 import type { Product, ProductionTask } from "../types";
 import { today } from "../utils/time";
-import MaterialBatchPicker from "./MaterialBatchPicker.vue";
 import SearchPicker from "./SearchPicker.vue";
-
 const props = defineProps<{ task?: ProductionTask }>();
 const emit = defineEmits<{ saved: [task: ProductionTask]; cancel: [] }>();
 let nextKey = 0;
-const newTarget = () => ({ key: nextKey++, productId: undefined as number | undefined, targetQuantity: 0, baseUnit: "", materialBatch: "", batches: [] as string[] });
+const newTarget = () => ({ key: nextKey++, productId: undefined as number | undefined, productName: "", targetQuantity: 0, baseUnit: "" });
 const form = ref({
   name: props.task?.name || "",
-  targets: props.task?.targets.map(t => ({ key: nextKey++, productId: t.productId as number | undefined, targetQuantity: t.targetQuantity, baseUnit: t.baseUnit || "", materialBatch: t.materialBatch || "", batches: [] as string[] })) || [newTarget()],
+  targets: props.task?.targets.map(t => ({ key: nextKey++, productId: t.productId as number | undefined, productName: t.productName, targetQuantity: t.targetQuantity, baseUnit: t.baseUnit || "" })) || [newTarget()],
   plannedDate: props.task?.plannedDate || today(), batchNo: props.task?.batchNo || "", remarks: props.task?.remarks || ""
 });
 const outputEnabled = ref(!!props.task?.output);
 const outputProductId = ref<number | undefined>(props.task?.output?.productId);
 const outputQuantity = ref(props.task?.output?.targetQuantity || 0);
-const outputBatch = ref(props.task?.output?.materialBatch || "");
-const outputBatches = ref<string[]>([]);
 const outputUnit = ref(props.task?.output?.baseUnit || "");
+const packagingEnabled = ref(!props.task?.output || !!props.task.output.boxesPerCarton);
+const boxesPerCarton = ref<number | undefined>(props.task?.output?.boxesPerCarton ?? undefined);
+const unitsPerBox = ref<number | undefined>(props.task?.output?.unitsPerBox ?? undefined);
+const quantityBasis = ref<'BOX' | 'UNIT'>(props.task?.output?.quantityBasis || 'UNIT');
+const primaryId = ref<number | undefined>(props.task?.output?.primaryMaterialProductId ?? undefined);
+const primary = computed(() => form.value.targets.find(t => t.productId === primaryId.value));
+const hasReceipts = computed(() => !!props.task?.movements.some(m => m.direction === 'PRODUCTION_TO_WAREHOUSE' && !m.returnMovement));
+const packagingLocked = computed(() => hasReceipts.value && !!props.task?.output?.boxesPerCarton);
+const saving = ref(false), message = ref("");
 function selectMaterial(target: ReturnType<typeof newTarget>, p?: Product) {
-  target.baseUnit = p?.baseUnit || "";
-  target.batches = p?.materialBatches || [];
-  target.materialBatch = target.batches.length === 1 ? target.batches[0] : "";
+  target.baseUnit = p?.baseUnit || ""; target.productName = p?.name || "";
 }
 function selectOutput(p?: Product) {
   outputUnit.value = p?.baseUnit || "";
-  outputBatches.value = p?.materialBatches || [];
-  outputBatch.value = outputBatches.value.length === 1 ? outputBatches.value[0] : "";
-}
-onMounted(async () => {
-  if (!props.task) return;
-  try {
-    const rows = await productsApi.search('', true);
-    form.value.targets.forEach(t => t.batches = rows.find(p => p.id === t.productId)?.materialBatches || []);
-    outputBatches.value = rows.find(p => p.id === outputProductId.value)?.materialBatches || [];
-  } catch (e) { message.value = errorMessage(e); }
-});
-function legacyTarget(target: ReturnType<typeof newTarget>) {
-  return !!props.task?.targets.some(t => t.productId === target.productId && !t.materialBatch);
-}
-function legacyOutput() {
-  return !!props.task?.output && props.task.output.productId === outputProductId.value && !props.task.output.materialBatch;
+  quantityBasis.value = p?.baseUnit === '盒' ? 'BOX' : 'UNIT';
 }
 async function loadOutputs(q: string): Promise<Product[]> {
-  return (await productsApi.search(q, !!props.task, 'PRODUCTION_TO_WAREHOUSE'))
-    .filter(p => !p.quantityUnknown && (p.active || p.id === props.task?.output?.productId));
+  return (await productsApi.search(q, !!props.task, 'PRODUCTION_TO_WAREHOUSE')).filter(p => !p.quantityUnknown && (p.active || p.id === props.task?.output?.productId));
 }
-const saving = ref(false), message = ref("");
 async function loadMaterials(q: string): Promise<Product[]> {
-  const rows = await productsApi.search(q, !!props.task, 'WAREHOUSE_TO_PRODUCTION');
-  return rows.filter(p => p.active || props.task?.targets.some(t => t.productId === p.id));
+  return (await productsApi.search(q, !!props.task, 'WAREHOUSE_TO_PRODUCTION')).filter(p => p.active || props.task?.targets.some(t => t.productId === p.id));
 }
 async function save() {
   if (saving.value) return;
   if (!form.value.name.trim()) { message.value = "请填写任务名称。"; return; }
   const targets = form.value.targets;
   if (!form.value.plannedDate || !form.value.batchNo.trim() || targets.some(t => !t.productId || !Number.isSafeInteger(t.targetQuantity) || t.targetQuantity <= 0)) {
-    message.value = "请填写每个目标产品及大于零的整数数量，并填写计划日期和生产批次。"; return;
+    message.value = "请填写每种物料的需求总数、计划日期和生产批次。"; return;
   }
-  if (new Set(targets.map(t => JSON.stringify([t.productId,t.materialBatch]))).size !== targets.length) {
-    message.value = "同一个产品的同一物料批次不能重复添加。"; return;
+  if (new Set(targets.map(t => t.productId)).size !== targets.length) { message.value = "同一种物料只填写一行需求总数，不需要按批次拆分。"; return; }
+  if (outputEnabled.value && !outputProductId.value) { message.value = "请选择车间到仓库的成品物料。"; return; }
+  if (outputEnabled.value && packagingEnabled.value && (!primary.value || !Number.isInteger(boxesPerCarton.value) || !Number.isInteger(unitsPerBox.value) || Number(boxesPerCarton.value) <= 0 || Number(unitsPerBox.value) <= 0 || Number(boxesPerCarton.value) * Number(unitsPerBox.value) > 2147483647)) {
+    message.value = "请选择主料，并填写有效的每箱盒数和每盒数量。"; return;
   }
-  if (outputEnabled.value && (!outputProductId.value || !Number.isSafeInteger(outputQuantity.value) || outputQuantity.value <= 0)) {
-    message.value = "请选择成品，并填写大于零的整数计划产量。"; return;
-  }
-  if (targets.some(t => t.batches.length > 1 && !t.materialBatch && !legacyTarget(t)) || (outputEnabled.value && outputBatches.value.length > 1 && !outputBatch.value && !legacyOutput())) {
-    message.value = "有多个物料批次，请选择本次任务使用的具体批次。"; return;
-  }
+  if (outputEnabled.value && !packagingEnabled.value && (!Number.isSafeInteger(outputQuantity.value) || outputQuantity.value <= 0)) { message.value = "请填写原计划产量。"; return; }
   saving.value = true; message.value = "";
   try {
-    const payload = { ...form.value, outputMaterialBatch: outputEnabled.value ? outputBatch.value : null, outputProductId: outputEnabled.value ? outputProductId.value : null, targetOutputQuantity: outputEnabled.value ? outputQuantity.value : null, targets: targets.map(t => ({ productId: t.productId, targetQuantity: t.targetQuantity, materialBatch: t.materialBatch })) };
-    const result = props.task ? await productionTasksApi.update(props.task.id, payload) : await productionTasksApi.create(payload);
-    emit("saved", result);
+    const packed = outputEnabled.value && packagingEnabled.value;
+    const payload = { ...form.value, outputProductId: outputEnabled.value ? outputProductId.value : null,
+      targetOutputQuantity: outputEnabled.value && !packed ? outputQuantity.value : null,
+      outputBoxesPerCarton: packed ? boxesPerCarton.value : null, outputUnitsPerBox: packed ? unitsPerBox.value : null,
+      outputQuantityBasis: packed ? quantityBasis.value : null, primaryMaterialProductId: packed ? primaryId.value : null,
+      targets: targets.map(t => ({ productId: t.productId, targetQuantity: t.targetQuantity })) };
+    emit("saved", props.task ? await productionTasksApi.update(props.task.id, payload) : await productionTasksApi.create(payload));
   } catch (e) { message.value = errorMessage(e); } finally { saving.value = false; }
 }
 </script>
-
 <template>
   <form class="card card-pad task-form" @submit.prevent="save">
-    <p class="hint">选择仓库 → 生产车间的物料，并填写本次生产所需数量。例如生产 12,000 个关节饮，需要内盒 400 个、外盒 400 个。</p>
-    <p v-if="task?.targets.some(t => !t.materialTarget)" class="form-alert">旧任务中有成品入库产品，请将它们替换为仓库 → 生产车间的物料，并核对所需数量。</p>
+    <p class="hint">每种物料填写需求总数即可，不同批次的发料合计计算，批次明细仍可查看。新任务保存后即为进行中。</p>
     <fieldset :disabled="saving">
       <label class="field"><span>任务名称 *</span><input class="input" v-model.trim="form.name" maxlength="100" required placeholder="例如：轻体粉第一批" /></label>
       <div v-for="(target, index) in form.targets" :key="target.key" class="target-row">
-        <SearchPicker v-model="target.productId" :label="`所需物料 ${index + 1}`" placeholder="搜索发往车间的物料、内盒或外盒"
-          :load="loadMaterials"
+        <SearchPicker v-model="target.productId" :label="`所需物料 ${index + 1}`" placeholder="选择仓库发往车间的物料" :load="loadMaterials"
           :display="p => `${p.name} · ${p.materialCode}`" @select="p => selectMaterial(target, p)" />
-        <MaterialBatchPicker v-model="target.materialBatch" :batches="target.batches" :allow-unspecified="legacyTarget(target)" />
-        <label class="field"><span>所需数量 * {{ target.baseUnit ? `（${target.baseUnit}）` : '' }}</span>
-          <input class="input" type="number" min="1" step="1" required v-model.number="target.targetQuantity" />
-        </label>
-        <button type="button" class="btn btn-secondary" :disabled="form.targets.length === 1" :aria-label="`移除目标产品 ${index + 1}`" @click="form.targets.splice(index, 1)">移除</button>
+        <label class="field"><span>需求总数 * {{ target.baseUnit ? `（${target.baseUnit}）` : '' }}</span><input class="input" type="number" min="1" step="1" required v-model.number="target.targetQuantity" /></label>
+        <button type="button" class="btn btn-secondary" :disabled="form.targets.length === 1" :aria-label="`移除物料 ${index + 1}`" @click="form.targets.splice(index, 1)">移除</button>
       </div>
       <button type="button" class="btn btn-secondary" @click="form.targets.push(newTarget())">＋ 添加所需物料</button>
-      <label class="output-choice"><input type="checkbox" v-model="outputEnabled" /> 记录成品回仓及生产完成率</label>
+      <label class="output-choice"><input type="checkbox" v-model="outputEnabled" :disabled="hasReceipts" /> 关联出货物料（车间 → 仓库，可稍后设置）</label>
       <div v-if="outputEnabled" class="output-plan">
-        <SearchPicker v-model="outputProductId" label="成品产品" placeholder="选择车间送回仓库的成品" :load="loadOutputs"
-          :display="p => `${p.name} · ${p.materialCode}`" @select="selectOutput" />
-        <MaterialBatchPicker v-model="outputBatch" :batches="outputBatches" :allow-unspecified="legacyOutput()" />
-        <label class="field"><span>计划产量 * {{ outputUnit ? `（${outputUnit}）` : '' }}</span><input class="input" type="number" min="1" step="1" required v-model.number="outputQuantity" /></label>
-        <p class="hint">按成品基础单位填写，回仓时使用同一单位。例如成品以盒计量：计划 500 盒，所需关节饮 15,000 个、内盒和外盒各 500 个；若成品以个计量，计划产量填 15,000。装箱规格只表示运输包装，不用于推断生产配比。</p>
+        <fieldset :disabled="hasReceipts">
+          <SearchPicker v-model="outputProductId" label="出货物料 / 成品" placeholder="选择车间送回仓库的物料" :load="loadOutputs" :display="p => `${p.name} · ${p.materialCode}`" @select="selectOutput" />
+        </fieldset>
+        <label v-if="task?.output && !task.output.boxesPerCarton" class="output-choice"><input type="checkbox" v-model="packagingEnabled" /> 补充包装换算和生产完成度</label>
+        <fieldset v-if="packagingEnabled" :disabled="packagingLocked">
+          <label class="field"><span>计算完成度的主料 *</span><select class="select" v-model="primaryId" required><option :value="undefined">请选择，例如轻体粉</option><option v-for="target in form.targets.filter(t => t.productId)" :key="target.key" :value="target.productId">{{ target.productName }}（{{ target.baseUnit }}）</option></select></label>
+          <div class="grid-2">
+            <label class="field"><span>每箱装几盒 *</span><input class="input" type="number" min="1" step="1" required v-model.number="boxesPerCarton" placeholder="例如 28" /></label>
+            <label class="field"><span>每盒装几个 * {{ primary?.baseUnit ? `（${primary.baseUnit}）` : '' }}</span><input class="input" type="number" min="1" step="1" required v-model.number="unitsPerBox" placeholder="例如 30" /></label>
+          </div>
+          <label class="field"><span>成品入库数量的计量口径 *</span><select class="select" v-model="quantityBasis"><option value="BOX">按盒登记（数量代表成品盒数）</option><option value="UNIT">按单件登记（数量代表条 / 个数）</option></select></label>
+          <p class="hint">成品产品的基础单位为“{{ outputUnit || '待选择' }}”，请选择与它实际登记方式一致的口径。完成度按成品折算的{{ primary?.baseUnit || '主料数量' }} ÷ 实际净发主料计算；内外盒分别列出预计耗用，不与主料混加。</p>
+        </fieldset>
+        <label v-else class="field"><span>原计划产量（{{ outputUnit }}）</span><input class="input" type="number" min="1" v-model.number="outputQuantity" /></label>
+        <p class="hint">最后一箱不足整箱时，在回仓记录中填写尾箱实际盒数，例如 1 尾箱 × 3 盒；未装箱的数量仍登记为散装。</p>
+        <p v-if="packagingLocked" class="hint">已有回仓记录，成品、主料和包装换算保留原设置；新包装请另建任务。</p>
       </div>
       <div class="grid-2">
         <label class="field"><span>计划日期 *</span><input class="input" type="date" required v-model="form.plannedDate" /></label>
@@ -115,7 +106,6 @@ async function save() {
     <div class="form-actions"><button class="btn btn-primary" :disabled="saving">{{ saving ? '保存中…' : task ? '保存修改' : '创建生产任务' }}</button><button type="button" class="btn btn-secondary" :disabled="saving" @click="emit('cancel')">取消</button></div>
   </form>
 </template>
-
 <style scoped>
-.output-choice{display:flex;align-items:center;gap:8px}.output-choice input{width:18px;height:18px}.output-plan{display:grid;gap:12px;padding:14px;background:#f3f7f8;border-radius:8px}.task-form,fieldset{display:grid;gap:16px}.task-form{margin-top:16px}fieldset{padding:0;border:0;min-width:0}.target-row{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1.5fr) minmax(0,1fr) auto;gap:12px;align-items:end;border-bottom:1px solid #e5ecee;padding-bottom:16px}.target-row>*{min-width:0}fieldset>.btn{justify-self:start}.form-actions{display:flex;gap:10px}.form-alert{color:#8f1d25}.hint{margin:0}@media(max-width:600px){.target-row{grid-template-columns:minmax(0,1fr)}.target-row>.btn{justify-self:start}}
+.output-choice{display:flex;align-items:center;gap:8px}.output-choice input{width:18px;height:18px}.output-plan{display:grid;gap:12px;padding:14px;background:#f3f7f8;border-radius:8px}.task-form,fieldset{display:grid;gap:16px}.task-form{margin-top:16px}fieldset{padding:0;border:0;min-width:0}.target-row{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr) auto;gap:12px;align-items:end;border-bottom:1px solid #e5ecee;padding-bottom:16px}.target-row>*{min-width:0}fieldset>.btn{justify-self:start}.form-actions{display:flex;gap:10px}.form-alert{color:#8f1d25}.hint{margin:0}@media(max-width:600px){.target-row{grid-template-columns:minmax(0,1fr)}.target-row>.btn{justify-self:start}}
 </style>

@@ -20,6 +20,7 @@ import { nowLocalInput, toInstant, toLocalInput } from "../utils/time";
 import { createUuid } from "../utils/uuid";
 import { calculateQuantity, quantityError, cartonCount } from "../utils/quantity";
 import { availableCartonSpecs, initialCartonSpec } from "../utils/cartonSpecs";
+import { taskCartonUnits, unitsForBoxes, boxesForUnits } from "../utils/taskPackaging";
 import { preparePhoto } from "../utils/photo";
 const route = useRoute(),
   router = useRouter();
@@ -101,9 +102,31 @@ async function loadTaskPreview() {
   if (!id) return;
   try {
     const task = await productionTasksApi.detail(id);
-    if (request === previewRequest) selectedTask.value = task;
+    if (request === previewRequest) {
+      selectedTask.value = task;
+      if (direction.value === 'PRODUCTION_TO_WAREHOUSE' && !draft.value.returnMovement && task.output?.boxesPerCarton && task.output.unitsPerBox) {
+        for (const item of draft.value.items) if (!item.id && item.productId === task.output.productId) {
+          item.unitsPerCarton = taskCartonUnits(task.output);
+          quantityChanged(item);
+        }
+      }
+    }
   } catch (e) { if (request === previewRequest) previewError.value = errorMessage(e); }
   finally { if (request === previewRequest) previewLoading.value = false; }
+}
+function taskPacking(item: ItemInput) {
+  const output = selectedTask.value?.output;
+  return direction.value === 'PRODUCTION_TO_WAREHOUSE' && !draft.value.returnMovement && output && output.productId === item.productId && output.boxesPerCarton && output.unitsPerBox ? output : undefined;
+}
+function tailBoxes(item: ItemInput) {
+  const packing = taskPacking(item);
+  return item.tailUnitsPerCarton == null ? undefined : packing ? boxesForUnits(packing, item.tailUnitsPerCarton) : item.tailUnitsPerCarton;
+}
+function setTailBoxes(item: ItemInput, event: Event) {
+  const value = (event.target as HTMLInputElement).value;
+  const packing = taskPacking(item);
+  item.tailUnitsPerCarton = value === '' ? null : packing ? unitsForBoxes(packing, Number(value)) : Number(value);
+  quantityChanged(item);
 }
 watch([() => draft.value.productionTaskId, taskSelection], loadTaskPreview);
 const draftKey = computed(() => `movement-draft:${direction.value}`);
@@ -118,7 +141,8 @@ function commonSpecs(item: ItemInput) {
   return availableCartonSpecs(item.product);
 }
 function addSpecification(item: ItemInput) {
-  draft.value.items.push({ ...blankItem(), productId: item.productId, product: item.product, batchNo: item.batchNo, materialBatch: item.materialBatch, subBatch: item.subBatch, unitsPerCarton: initialCartonSpec(item.product) ?? null, quantityUnknown: item.quantityUnknown });
+  const packing=taskPacking(item);
+  draft.value.items.push({ ...blankItem(), productId: item.productId, product: item.product, batchNo: item.batchNo, materialBatch: item.materialBatch, subBatch: item.subBatch, unitsPerCarton: packing ? taskCartonUnits(packing) : initialCartonSpec(item.product) ?? null, quantityUnknown: item.quantityUnknown });
 }
 function displayedTotal(item: ItemInput) {
   if (item.quantityUnknown) return undefined;
@@ -174,6 +198,8 @@ function removeFile(index: number) {
   files.value.splice(index, 1);
 }
 function validate() {
+  if (draft.value.productionTaskId && previewLoading.value) return "正在读取任务包装设置，请稍候。";
+  if (draft.value.productionTaskId && previewError.value) return "读取任务设置失败，请重试后保存。";
   if (taskLoading.value) return "生产任务正在加载，请稍候。";
   if (taskError.value && draft.value.productionTaskId && !keepOriginalTask.value) return "请重试加载生产任务后保存。";
   if (!draft.value.senderPersonId || !draft.value.receiverPersonId)
@@ -475,18 +501,20 @@ onBeforeUnmount(() => {
             <small class="hint">填写实际区分标识。不同区分批次分别统计；不需要区分时留空。</small>
           </div>
           <div class="packing-fields">
+            <p v-if="taskPacking(item)" class="hint">任务包装：{{ taskPacking(item)!.boxesPerCarton }} 盒/箱 × {{ taskPacking(item)!.unitsPerBox }} {{ taskPacking(item)!.primaryMaterialUnit }}/盒。尾箱可填写实际盒数。</p>
             <div class="grid-2">
-              <div class="field"><label :for="`size-${index}`" :class="{required:item.fullCartons > 0 && commonSpecs(item).length > 1}">完整箱每箱数量</label><input :id="`size-${index}`" class="input mono" type="number" min="1" step="1" inputmode="numeric" v-model.number="item.unitsPerCarton" @input="quantityChanged(item)" placeholder="选择下方规格或输入每箱数量" /><small v-if="commonSpecs(item).length > 1" class="hint">有多种每箱数量，请选择本次完整箱规格；仅尾箱或散装可留空。</small></div>
+              <div class="field"><label :for="`size-${index}`" :class="{required:item.fullCartons > 0 && commonSpecs(item).length > 1}">完整箱每箱数量</label><input :id="`size-${index}`" class="input mono" type="number" min="1" step="1" inputmode="numeric" v-model.number="item.unitsPerCarton" :readonly="!!taskPacking(item)" @input="quantityChanged(item)" placeholder="选择下方规格或输入每箱数量" /><small v-if="!taskPacking(item) && commonSpecs(item).length > 1" class="hint">有多种每箱数量，请选择本次完整箱规格；仅尾箱或散装可留空。</small></div>
               <div class="field"><label :for="`full-${index}`">完整箱数</label><input :id="`full-${index}`" class="input mono" type="number" min="0" step="1" inputmode="numeric" v-model.number="item.fullCartons" @input="quantityChanged(item)" /></div>
             </div>
-            <div v-if="commonSpecs(item).length" class="spec-options" aria-label="选择每箱数量">
+            <div v-if="!taskPacking(item) && commonSpecs(item).length" class="spec-options" aria-label="选择每箱数量">
               <small class="hint">预设规格</small><button v-for="size in commonSpecs(item)" :key="size" type="button" :class="{active:item.unitsPerCarton===size}" :aria-pressed="item.unitsPerCarton===size" @click="item.unitsPerCarton=size;quantityChanged(item)">{{size}} {{item.product?.baseUnit || '个'}}/箱</button>
             </div>
             <details :open="item.tailCartons>0 || item.looseUnits>0" class="optional-packing">
               <summary>尾箱 / 真正散装（可选）</summary>
               <div class="grid-2">
                 <div class="field"><label :for="`tail-${index}`">尾箱箱数</label><input :id="`tail-${index}`" class="input mono" type="number" min="0" step="1" inputmode="numeric" v-model.number="item.tailCartons" @input="quantityChanged(item)" /></div>
-                <div class="field"><label :for="`tail-size-${index}`">每个尾箱实际数量</label><input :id="`tail-size-${index}`" class="input mono" type="number" min="1" step="1" inputmode="numeric" v-model.number="item.tailUnitsPerCarton" @input="quantityChanged(item)" placeholder="例如 3" /></div>
+                <div v-if="taskPacking(item)" class="field"><label :for="`tail-boxes-${index}`">每个尾箱实际盒数</label><input :id="`tail-boxes-${index}`" class="input mono" type="number" min="1" step="1" :value="tailBoxes(item)" @input="setTailBoxes(item, $event)" placeholder="例如 3 盒" /><small class="hint">实际 {{ item.tailUnitsPerCarton || 0 }} {{ item.product?.baseUnit }} / 尾箱</small></div>
+                <div v-else class="field"><label :for="`tail-size-${index}`">每个尾箱实际数量</label><input :id="`tail-size-${index}`" class="input mono" type="number" min="1" step="1" inputmode="numeric" v-model.number="item.tailUnitsPerCarton" @input="quantityChanged(item)" placeholder="例如 3" /></div>
               </div>
               <small class="hint">尾箱计入总箱数。尾箱数量不同时，点击“添加同物料规格 / 批次”分开填写。</small>
               <div class="field"><label :for="`loose-${index}`">真正散装（未装箱的{{item.product?.baseUnit || '数量'}}）</label><input :id="`loose-${index}`" class="input mono" type="number" min="0" step="1" inputmode="numeric" v-model.number="item.looseUnits" @input="quantityChanged(item)" /></div>
@@ -598,15 +626,15 @@ onBeforeUnmount(() => {
         </select>
         <small v-if="taskLoading" class="hint">正在查找匹配任务…</small>
         <small v-else-if="draft.items.some(i => !i.productId)" class="hint">先选择产品，再显示匹配的生产任务。</small>
-        <small v-else-if="!productionTasks.length && !keepOriginalTask" class="hint">没有匹配任务。{{ direction === 'WAREHOUSE_TO_PRODUCTION' ? '仅显示需要本单全部物料且备料中的任务。' : draft.returnMovement ? '仅显示需要本单物料且未取消的任务。' : '请先在任务中设置对应成品；备料中也可分批回仓。' }}</small>
-        <small v-else class="hint">{{ direction === 'WAREHOUSE_TO_PRODUCTION' ? '只显示需要本单全部物料且备料中的任务。' : draft.returnMovement ? '退料计入任务的净发料，不计入成品产量。' : '按任务对应成品累计回仓产量；备料中、生产中和已完成任务均可补登记。' }}</small>
+        <small v-else-if="!productionTasks.length && !keepOriginalTask" class="hint">没有匹配任务。{{ direction === 'WAREHOUSE_TO_PRODUCTION' ? '仅显示需要本单全部物料且进行中的任务。' : draft.returnMovement ? '仅显示需要本单物料且未取消的任务。' : '请先在任务中设置对应成品；进行中即可分批回仓。' }}</small>
+        <small v-else class="hint">{{ direction === 'WAREHOUSE_TO_PRODUCTION' ? '只显示需要本单全部物料且进行中的任务。' : draft.returnMovement ? '退料计入任务的净发料，不计入成品产量。' : '按任务对应成品累计回仓产量；进行中和已完成任务均可补登记。' }}</small>
         <p v-if="taskError" class="form-alert" role="alert">{{ taskError }} <button type="button" class="btn btn-ghost" @click="refreshTasks">重试</button></p>
         <div v-if="draft.productionTaskId" class="task-preview" aria-live="polite" :aria-busy="previewLoading">
           <p v-if="previewLoading" class="hint">正在读取任务进度和缺料情况…</p>
           <p v-else-if="previewError" class="form-alert" role="alert">{{ previewError }} <button type="button" class="btn btn-ghost" @click="loadTaskPreview">重试</button></p>
           <template v-else-if="selectedTask">
             <div class="preview-heading"><strong>{{ selectedTask.name }}</strong><b>备料进度 {{ selectedTask.progressPercent }}%</b></div>
-            <small class="hint">{{ selectedTask.batchNo }} · {{ selectedTask.status === 'PREPARING' ? '备料中' : selectedTask.status === 'COMPLETED' ? '已完成' : selectedTask.status === 'CANCELLED' ? '已取消' : '生产中' }}</small>
+            <small class="hint">{{ selectedTask.batchNo }} · {{ selectedTask.status === 'PREPARING' ? '进行中' : selectedTask.status === 'COMPLETED' ? '已完成' : selectedTask.status === 'CANCELLED' ? '已取消' : '进行中' }}</small>
             <ProductionTaskOutput v-if="selectedTask.output" :output="selectedTask.output" />
             <ProductionTaskTargets :targets="selectedTask.targets" />
             <small class="hint">{{ editId ? '按已保存记录统计，包含本单原数量；本次修改保存后更新。' : '按已保存记录统计，不含本次尚未保存的数量。' }}</small>

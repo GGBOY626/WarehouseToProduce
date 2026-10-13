@@ -57,23 +57,24 @@ class MaterialBatchIntegrationTest {
         assertThat(products.search(code,false,ProductUsage.WAREHOUSE_TO_PRODUCTION)).singleElement().satisfies(p->assertThat(p.materialBatches()).containsExactly("A001","A002","A003"));
         assertThat(products.search("A003",false,ProductUsage.WAREHOUSE_TO_PRODUCTION)).extracting(ProductDtos.Response::id).contains(material.id());
     }
-    @Test void multipleBatchesRequireExplicitChoiceForBothDirectionsAndTasks(){
+    @Test void multipleBatchesRequireChoiceOnMovementsButNotTaskRequirements(){
         assertThatThrownBy(()->movements.create(request(MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,null,item(material.id(),"",3,null)))).hasMessageContaining("物料批次");
         assertThatThrownBy(()->movements.create(request(MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE,null,item(output.id(),"",3,null)))).hasMessageContaining("物料批次");
-        assertThatThrownBy(()->tasks.create(task("F001",new ProductionTaskService.TargetRequest(material.id(),20)))).hasMessageContaining("物料批次");
-        assertThatThrownBy(()->tasks.create(task(null,new ProductionTaskService.TargetRequest(material.id(),20,"A001")))).hasMessageContaining("物料批次");
+        assertThatCode(()->tasks.create(task("F001",new ProductionTaskService.TargetRequest(material.id(),20)))).doesNotThrowAnyException();
+        assertThatCode(()->tasks.create(task(null,new ProductionTaskService.TargetRequest(material.id(),20,"A001")))).doesNotThrowAnyException();
     }
-    @Test void taskMatchingAndProgressUseTheSelectedBatch(){
+    @Test void taskProgressCombinesBatchesAndRetainsBatchBreakdown(){
         var saved=tasks.create(task("F001",new ProductionTaskService.TargetRequest(material.id(),20,"A001"),new ProductionTaskService.TargetRequest(material.id(),30,"A002")));
         movements.create(request(MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,saved.id(),item(material.id(),"A001",10,null),item(material.id(),"A002",3,null)));
         var receipt=movements.create(request(MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE,saved.id(),item(output.id(),"F001",5,null)));
-        assertThat(tasks.detail(saved.id()).targets()).extracting(ProductionTaskService.TargetResponse::completedQuantity).containsExactly(10L,3L);
+        assertThat(tasks.detail(saved.id()).targets()).extracting(ProductionTaskService.TargetResponse::completedQuantity).containsExactly(13L);
         assertThat(tasks.detail(saved.id()).output().receivedQuantity()).isEqualTo(5);
-        assertThat(tasks.linkableBatches(new ProductionTaskService.LinkRequest(List.of(new ProductionTaskService.BatchSelection(output.id(),"F002")),receipt.direction(),false))).extracting(ProductionTaskService.LinkOption::id).doesNotContain(saved.id());
-        assertThatThrownBy(()->movements.update(receipt.id(),request(receipt.direction(),saved.id(),item(output.id(),"F002",5,receipt.items().getFirst().id())))).hasMessageContaining("批次");
-        assertThatThrownBy(()->movements.create(request(MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,saved.id(),item(material.id(),"A003",4,null)))).hasMessageContaining("批次");
+        assertThat(tasks.linkableBatches(new ProductionTaskService.LinkRequest(List.of(new ProductionTaskService.BatchSelection(output.id(),"F002")),receipt.direction(),false))).extracting(ProductionTaskService.LinkOption::id).contains(saved.id());
+        assertThatCode(()->movements.update(receipt.id(),request(receipt.direction(),saved.id(),item(output.id(),"F002",5,receipt.items().getFirst().id())))).doesNotThrowAnyException();
+        movements.create(request(MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,saved.id(),item(material.id(),"A003",4,null)));
         tasks.update(saved.id(),task("F001",new ProductionTaskService.TargetRequest(material.id(),30,"A002"),new ProductionTaskService.TargetRequest(material.id(),20,"A001")));
-        assertThat(tasks.detail(saved.id()).targets()).extracting(ProductionTaskService.TargetResponse::completedQuantity).containsExactly(3L,10L);
+        assertThat(tasks.detail(saved.id()).targets()).extracting(ProductionTaskService.TargetResponse::completedQuantity).containsExactly(17L);
+        assertThat(tasks.detail(saved.id()).targets().getFirst().batches()).extracting(ProductionTaskService.BatchResponse::netQuantity).containsExactly(10L,3L,4L);
     }
     @Test void mergedAliasKeepsHistoryAndResolvesToOneSelectableProduct(){
         var donor=products.create(new ProductDtos.Request(code+"-old",code,"A002",ProductUsage.WAREHOUSE_TO_PRODUCTION,1800,"个"));

@@ -16,10 +16,19 @@ public class ProductionTask extends PersistentEntity {
     @Column(name="target_quantity",nullable=false) private long targetQuantity;
     @Column(name="planned_date",nullable=false) private LocalDate plannedDate;
     @Column(name="batch_no",nullable=false,length=100) private String batchNo;
-    @Enumerated(EnumType.STRING) @Column(nullable=false,length=20) private Status status=Status.PREPARING;
+    @Enumerated(EnumType.STRING) @Column(nullable=false,length=20) private Status status=Status.IN_PROGRESS;
     @Column(length=100) private String name;
     @Column(length=1000) private String remarks;
     @ManyToOne(fetch=FetchType.LAZY) @JoinColumn(name="output_product_id") private Product outputProduct;
+    @Column(name="output_boxes_per_carton") private Integer outputBoxesPerCarton;
+    @Column(name="output_units_per_box") private Integer outputUnitsPerBox;
+    @Enumerated(EnumType.STRING) @Column(name="output_quantity_basis",length=10) private OutputQuantityBasis outputQuantityBasis;
+    @ManyToOne(fetch=FetchType.LAZY) @JoinColumn(name="primary_material_product_id") private Product primaryMaterial;
+    public enum OutputQuantityBasis { BOX, UNIT }
+    public Integer outputCartonUnits(){
+        if(outputBoxesPerCarton==null||outputUnitsPerBox==null||outputQuantityBasis==null)return null;
+        return outputQuantityBasis==OutputQuantityBasis.BOX?outputBoxesPerCarton:Math.multiplyExact(outputBoxesPerCarton,outputUnitsPerBox);
+    }
     @Column(name="target_output_quantity") private Long targetOutputQuantity;
     @OneToMany(mappedBy="task",cascade=CascadeType.ALL,orphanRemoval=true)
     @OrderBy("sortOrder ASC, id ASC")
