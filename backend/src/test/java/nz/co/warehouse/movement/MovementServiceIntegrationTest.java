@@ -477,6 +477,65 @@ class MovementServiceIntegrationTest {
         assertThat(movements.queryStats(LocalDate.of(2026,9,28),LocalDate.of(2026,9,28),null,MovementEnums.Status.ACTIVE,null,null,label).directions()).isEmpty();
     }
 
+    @Autowired nz.co.warehouse.report.PdfReportService pdfReports;
+
+    @Test void apiDefaultsPersonnelForOutboundInboundAndReturns() throws Exception {
+        var session=new org.springframework.mock.web.MockHttpSession();
+        session.setAttribute(nz.co.warehouse.auth.AuthController.AUTH_SESSION_KEY,true);
+        Long rayId=null,xiaoId=null;
+        for(int mode=0;mode<3;mode++){
+            var direction=mode==0?MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION:MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE;
+            var request=personnelRequest(direction,mode==2,null,null);
+            var json=objectMapper.valueToTree(request);
+            ((com.fasterxml.jackson.databind.node.ObjectNode)json).remove(List.of("senderPersonId","receiverPersonId"));
+            var result=mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/movements").session(session)
+                    .contentType(org.springframework.http.MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsBytes(json)))
+                    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
+                    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.senderName").value(mode==0?"Ray":"xiao"))
+                    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.receiverName").value(mode==0?"xiao":"Ray"))
+                    .andReturn();
+            var saved=objectMapper.readValue(result.getResponse().getContentAsByteArray(),MovementDtos.DetailResponse.class);
+            if(mode==0){rayId=saved.senderPersonId();xiaoId=saved.receiverPersonId();}
+            else {assertThat(saved.senderPersonId()).isEqualTo(xiaoId);assertThat(saved.receiverPersonId()).isEqualTo(rayId);}
+        }
+        try(var pdf=org.apache.pdfbox.pdmodel.PDDocument.load(pdfReports.generate(LocalDate.of(2040,10,1),LocalDate.of(2040,10,1)))){
+            assertThat(new org.apache.pdfbox.text.PDFTextStripper().getText(pdf)).contains("Ray","xiao");
+        }
+    }
+
+    @Test void personnelCanBeOverriddenAndRemainInPdfWithoutAffectingNewDefaults() throws Exception {
+        var request=personnelRequest(MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,false,null,null);
+        var saved=movements.create(request);
+        var edited=movements.update(saved.id(),personnelRequest(request.direction(),false,sender,receiver));
+        assertThat(edited.senderPersonId()).isEqualTo(sender);
+        assertThat(edited.receiverPersonId()).isEqualTo(receiver);
+        // Omitting personnel on a subsequent edit must keep the special-case values.
+        var retained=movements.update(saved.id(),request);
+        assertThat(retained.senderName()).isEqualTo(edited.senderName());
+        assertThat(retained.receiverName()).isEqualTo(edited.receiverName());
+        try(var pdf=org.apache.pdfbox.pdmodel.PDDocument.load(pdfReports.generate(LocalDate.of(2040,10,1),LocalDate.of(2040,10,1)))){
+            assertThat(new org.apache.pdfbox.text.PDFTextStripper().getText(pdf).replaceAll("\\s+", "")).contains(edited.senderName(),edited.receiverName());
+        }
+        var next=movements.create(personnelRequest(request.direction(),false,null,null));
+        assertThat(next.senderName()).isEqualTo("Ray");assertThat(next.receiverName()).isEqualTo("xiao");
+        assertThat(movements.create(request).id()).isEqualTo(saved.id());
+    }
+
+    @Test void editingLegacyQuantitiesPreservesPersonnelSnapshotsEvenAfterRenameOrDisable(){
+        var original=movements.create(personnelRequest(MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,false,sender,receiver));
+        persons.update(sender,new PersonDtos.Request("Renamed-"+UUID.randomUUID(),null));
+        persons.setActive(sender,false);
+        var retained=movements.update(original.id(),personnelRequest(original.direction(),false,sender,null));
+        assertThat(retained.senderName()).isEqualTo(original.senderName());
+        assertThat(retained.receiverName()).isEqualTo(original.receiverName());
+    }
+
+    private MovementDtos.SaveRequest personnelRequest(MovementEnums.Direction direction,boolean returned,Long from,Long to){
+        Long selected=direction==MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION||returned?product:inboundProduct;
+        return new MovementDtos.SaveRequest(UUID.randomUUID().toString(),direction,Instant.parse("2040-10-01T00:00:00Z"),from,to,"A001",returned,null,
+                List.of(new MovementDtos.ItemRequest(selected,"PERSONNEL-CODE",1,0,null,null,List.of())));
+    }
+
     private MovementDtos.ItemRequest subBatchItem(Integer size,int full,int tail,Long actual,long loose,String subBatch){
         return new MovementDtos.ItemRequest(product,"PACK-"+product,full,loose,null,false,null,List.of(),size,tail,actual,null,subBatch);
     }

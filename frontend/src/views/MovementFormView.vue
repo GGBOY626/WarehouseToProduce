@@ -202,7 +202,7 @@ function validate() {
   if (draft.value.productionTaskId && previewError.value) return "读取任务设置失败，请重试后保存。";
   if (taskLoading.value) return "生产任务正在加载，请稍候。";
   if (taskError.value && draft.value.productionTaskId && !keepOriginalTask.value) return "请重试加载生产任务后保存。";
-  if (!draft.value.senderPersonId || !draft.value.receiverPersonId)
+  if (editId && (!draft.value.senderPersonId || !draft.value.receiverPersonId))
     return "请选择发送人和接收人。";
   for (let i = 0; i < draft.value.items.length; i++) {
     const x = draft.value.items[i];
@@ -227,8 +227,8 @@ function payload() {
     idempotencyKey: draft.value.idempotencyKey,
     direction: direction.value,
     movementTime: toInstant(draft.value.movementTime),
-    senderPersonId: draft.value.senderPersonId,
-    receiverPersonId: draft.value.receiverPersonId,
+    senderPersonId: editId ? draft.value.senderPersonId : undefined,
+    receiverPersonId: editId ? draft.value.receiverPersonId : undefined,
 
     returnMovement: direction.value === "PRODUCTION_TO_WAREHOUSE" && draft.value.returnMovement,
     productionTaskId: draft.value.productionTaskId,
@@ -291,10 +291,6 @@ async function save() {
         throw error;
       }
     }
-    localStorage.setItem(`last-persons:${direction.value}`, JSON.stringify({
-      sender: result.senderPersonId,
-      receiver: result.receiverPersonId,
-    }));
     await nextTick();
     localStorage.removeItem(draftKey.value);
     dirty.value = false;
@@ -379,12 +375,6 @@ onMounted(async () => {
     if (cached && confirm("发现未保存的表单草稿，是否继续填写？"))
       draft.value = { ...JSON.parse(cached), returnMovement: !!JSON.parse(cached).returnMovement };
     else {
-      const last = localStorage.getItem(`last-persons:${direction.value}`);
-      if (last) {
-        const p = JSON.parse(last);
-        draft.value.senderPersonId = p.sender;
-        draft.value.receiverPersonId = p.receiver;
-      }
       dirty.value = false;
     }
   }
@@ -443,17 +433,17 @@ onBeforeUnmount(() => {
           v-model="draft.movementTime"
         />
       </div>
-      <div class="grid-2 people">
+      <div v-if="editId" class="grid-2 people">
         <SearchPicker
           v-model="draft.senderPersonId"
           label="发送人"
           placeholder="输入姓名搜索"
-          :load="(q) => personsApi.search(q)"
+          :load="(q) => personsApi.search(q, true).then(rows => rows.filter(p => p.active || p.id === draft.senderPersonId))"
         /><SearchPicker
           v-model="draft.receiverPersonId"
           label="接收人"
           placeholder="输入姓名搜索"
-          :load="(q) => personsApi.search(q)"
+          :load="(q) => personsApi.search(q, true).then(rows => rows.filter(p => p.active || p.id === draft.receiverPersonId))"
         />
       </div>
     </section>

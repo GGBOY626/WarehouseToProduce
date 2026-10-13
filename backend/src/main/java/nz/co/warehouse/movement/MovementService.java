@@ -121,16 +121,27 @@ public class MovementService {
         }).toList();
     }
 
+    private Person resolvePerson(Long requestedId,Person existing,String defaultName){
+        if(requestedId==null)return existing!=null?existing:persons.getOrCreateDefault(defaultName);
+        if(existing!=null&&existing.getId().equals(requestedId))return existing;
+        return persons.getActive(requestedId);
+    }
+
     private void apply(Movement m,MovementDtos.SaveRequest r){
         validateDirection(r);
-        Person sender=m.getId()!=null&&m.getSenderPerson().getId().equals(r.senderPersonId())?persons.getAny(r.senderPersonId()):persons.getActive(r.senderPersonId());
-        Person receiver=m.getId()!=null&&m.getReceiverPerson().getId().equals(r.receiverPersonId())?persons.getAny(r.receiverPersonId()):persons.getActive(r.receiverPersonId());
+        boolean outbound=r.direction()==MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION;
+        Person sender=resolvePerson(r.senderPersonId(),m.getSenderPerson(),outbound?"Ray":"xiao");
+        Person receiver=resolvePerson(r.receiverPersonId(),m.getReceiverPerson(),outbound?"xiao":"Ray");
+        String senderName=m.getSenderPerson()!=null&&m.getSenderPerson().getId().equals(sender.getId())?m.getSenderNameSnapshot():sender.getName();
+        String receiverName=m.getReceiverPerson()!=null&&m.getReceiverPerson().getId().equals(receiver.getId())?m.getReceiverNameSnapshot():receiver.getName();
+        if(m.getId()==null&&r.senderPersonId()==null)senderName=outbound?"Ray":"xiao";
+        if(m.getId()==null&&r.receiverPersonId()==null)receiverName=outbound?"xiao":"Ray";
         var oldSelection=m.getItems().stream().map(i->new ProductionTaskService.BatchSelection(i.getProduct().canonicalId(),i.effectiveMaterialBatch())).collect(java.util.stream.Collectors.toSet());
         boolean keepTask=m.getProductionTask()!=null&&m.getProductionTask().getId().equals(r.productionTaskId())
                 &&m.getDirection()==r.direction()&&m.isReturnMovement()==r.returnMovement();
         Map<Long,String> oldBatches=new HashMap<>();
         m.getItems().forEach(i->oldBatches.put(i.getId(),i.effectiveMaterialBatch()));
-        m.setDirection(r.direction());m.setReturnMovement(r.returnMovement());m.setMovementTime(r.movementTime());m.setSenderPerson(sender);m.setSenderNameSnapshot(sender.getName());m.setReceiverPerson(receiver);m.setReceiverNameSnapshot(receiver.getName());
+        m.setDirection(r.direction());m.setReturnMovement(r.returnMovement());m.setMovementTime(r.movementTime());m.setSenderPerson(sender);m.setSenderNameSnapshot(senderName);m.setReceiverPerson(receiver);m.setReceiverNameSnapshot(receiverName);
         m.setRemarks(blank(r.remarks()));
         Set<Long> existingProductIds=m.getItems().stream().map(x->x.getProduct().canonicalId()).collect(java.util.stream.Collectors.toSet());
         Map<Long,MovementItem> originals=new HashMap<>();

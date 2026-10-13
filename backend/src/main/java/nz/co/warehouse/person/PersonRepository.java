@@ -4,6 +4,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import java.util.List;
 
 public interface PersonRepository extends JpaRepository<Person, Long> {
+    java.util.Optional<Person> findFirstByNameOrderByActiveDescIdAsc(String name);
     List<Person> findByActiveTrueAndNameContainingIgnoreCaseOrderByName(String q);
     List<Person> findByNameContainingIgnoreCaseOrderByActiveDescName(String q);
 }

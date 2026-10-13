@@ -82,8 +82,6 @@ async function duplicate() {
       idempotencyKey: createUuid(),
       direction: m.direction,
       movementTime: nowLocalInput(),
-      senderPersonId: m.senderPersonId,
-      receiverPersonId: m.receiverPersonId,
       manufactureLot: "",
       returnMovement: m.returnMovement,
       remarks: "",
@@ -147,14 +145,6 @@ onMounted(()=>void load());
           <div>
             <dt>实际时间</dt>
             <dd>{{ showDateTime(data.movementTime) }}</dd>
-          </div>
-          <div>
-            <dt>发送人</dt>
-            <dd>{{ data.senderName }}</dd>
-          </div>
-          <div>
-            <dt>接收人</dt>
-            <dd>{{ data.receiverName }}</dd>
           </div>
         </dl>
         <RouterLink v-if="data.productionTaskId" class="task-link" :to="`/production-tasks/${data.productionTaskId}`">生产任务：{{ data.productionTaskName }} ›</RouterLink>

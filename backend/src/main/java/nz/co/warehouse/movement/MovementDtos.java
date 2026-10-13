@@ -28,7 +28,7 @@ public final class MovementDtos {
         }
     }
     public record SaveRequest(@NotBlank @Size(max=36) String idempotencyKey,@NotNull MovementEnums.Direction direction,
-                              @NotNull Instant movementTime,@NotNull Long senderPersonId,@NotNull Long receiverPersonId,
+                              @NotNull Instant movementTime,Long senderPersonId,Long receiverPersonId,
                               @Size(max=100) String manufactureLot,boolean returnMovement,Long productionTaskId,@Size(max=2000) String remarks,
                               @NotEmpty List<@Valid ItemRequest> items) {
         public SaveRequest(String idempotencyKey,MovementEnums.Direction direction,Instant movementTime,Long senderPersonId,Long receiverPersonId,
