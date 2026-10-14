@@ -1,7 +1,7 @@
 import {createRouter,createWebHistory} from 'vue-router';
 import HomeView from '../views/HomeView.vue';
 import {ensureAuth} from '../auth';
-const router=createRouter({history:createWebHistory(),scrollBehavior:()=>({top:0}),routes:[
+const router=createRouter({history:createWebHistory(),scrollBehavior:(to)=>to.path==='/production-tasks'?false:({top:0}),routes:[
   {path:'/',component:HomeView},
   {path:'/login',component:()=>import('../views/LoginView.vue')},
   {path:'/movements/new/:direction',component:()=>import('../views/MovementFormView.vue'),meta:{requiresAuth:true}},
