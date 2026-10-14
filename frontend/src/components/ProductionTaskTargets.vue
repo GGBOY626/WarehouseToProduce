@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import type { ProductionTaskTarget } from "../types";
-defineProps<{ targets: ProductionTaskTarget[] }>();
+defineProps<{ targets: ProductionTaskTarget[]; interactive?: boolean }>();
+defineEmits<{ select: [target: ProductionTaskTarget] }>();
 </script>
 <template>
   <div class="target-list">
     <div v-for="(target, index) in targets" :key="`${target.productId}:${target.materialBatch}:${index}`" class="target-summary">
-      <div class="target-title"><strong>{{ target.productName }}</strong><small>物料编码 {{ target.materialCode }}</small><small v-if="target.materialBatch">物料批次 {{ target.materialBatch }}</small></div>
+      <div class="target-title"><button v-if="interactive" class="material-link" @click="$emit('select', target)">{{ target.productName }} <span>查看流转 ›</span></button><strong v-else>{{ target.productName }}</strong><small>物料编码 {{ target.materialCode }}</small><small v-if="target.materialBatch">物料批次 {{ target.materialBatch }}</small></div>
       <p v-if="!target.materialTarget" class="shortage">此目标属于旧版成品入库产品，请编辑任务，改选仓库 → 生产车间的物料。</p>
       <template v-else>
         <div class="target-values"><span>净发料 / 所需</span><b>{{ target.completedQuantity.toLocaleString() }} / {{ target.targetQuantity.toLocaleString() }} {{ target.baseUnit || '个' }}</b></div>
@@ -28,6 +29,7 @@ defineProps<{ targets: ProductionTaskTarget[] }>();
   </div>
 </template>
 <style scoped>
+.material-link{border:0;background:none;padding:4px 0;color:#174a68;font:inherit;font-weight:700;text-align:left;cursor:pointer}.material-link span{font-size:12px;font-weight:400;margin-left:8px}.material-link:hover{text-decoration:underline}.material-link:focus-visible{outline:2px solid #267566;outline-offset:4px}
 .batch-breakdown{font-size:13px;color:#52626b}.batch-breakdown summary{cursor:pointer;padding:6px 0}.batch-row{display:flex;flex-wrap:wrap;justify-content:space-between;gap:6px;padding:6px 0;border-top:1px solid #e5ecee}
 .shortage,.ready{margin:0;font-size:14px;font-weight:700}.shortage{color:#9b3d17}.ready{color:#267566}.quantities{color:#66747c}
 .target-list{display:grid;gap:14px;min-width:0}.target-summary{display:grid;gap:7px;min-width:0}.target-title{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}.target-title strong{overflow-wrap:anywhere}.target-title small{color:#66747c;overflow-wrap:anywhere}.target-title span{margin-left:auto;color:#267566;font-weight:700}.target-values{display:flex;flex-wrap:wrap;justify-content:space-between;gap:6px;font-size:13px}.target-values span{color:#66747c}.target-values b{font-variant-numeric:tabular-nums}.progress{height:4px;background:#e5ecee;border-radius:3px;overflow:hidden}.progress i{display:block;height:100%;background:#267566}

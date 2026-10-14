@@ -24,6 +24,7 @@ class TaskYieldIntegrationTest {
     @Autowired ProductService products;
     @Autowired PersonService persons;
     @Autowired JdbcTemplate jdbc;
+    @Autowired org.springframework.test.web.servlet.MockMvc mvc;
     Long raw,inner,output,person;
     @BeforeEach void setup(){
         raw=product(ProductUsage.WAREHOUSE_TO_PRODUCTION,"条");inner=product(ProductUsage.WAREHOUSE_TO_PRODUCTION,"个");
@@ -54,6 +55,50 @@ class TaskYieldIntegrationTest {
         assertThat(target.completedQuantity()).isEqualTo(5100);
         assertThat(target.progressPercent()).isEqualTo(100);
         assertThat(target.batches()).extracting(ProductionTaskService.BatchResponse::netQuantity).containsExactly(2000L,3100L);
+    }
+    @Test void taskHistoryKeepsEachDeliveryPackagingAndDirection(){
+        var task=tasks.create(plan(20000,30,ProductionTask.OutputQuantityBasis.BOX));
+        var issued=movement(task.id(),raw,"22677",2,1,20L,5,100,false);
+        move(task.id(),raw,"22678",300,false);
+        move(task.id(),raw,"22677",10,true);
+        movement(task.id(),output,"22678",3,1,4L,0,28,false);
+        var rows=tasks.detail(task.id()).movements();
+        assertThat(rows).hasSize(4);
+        var delivery=rows.stream().filter(m->m.id().equals(issued.id())).findFirst().orElseThrow();
+        assertThat(delivery.direction()).isEqualTo(MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION);
+        var item=delivery.items().getFirst();
+        assertThat(item.productId()).isEqualTo(raw);
+        assertThat(item.materialBatch()).isEqualTo("22677");
+        assertThat(item.totalCartons()).isEqualTo(3);
+        assertThat(item.totalQuantity()).isEqualTo(225);
+        assertThat(item.looseUnits()).isEqualTo(5);
+        assertThat(item.packaging()).containsExactly(new MaterialQuantity.Packaging("FULL",100L,2),new MaterialQuantity.Packaging("TAIL",20L,1));
+        assertThat(rows.stream().filter(ProductionTaskService.MovementResponse::returnMovement)).hasSize(1);
+        assertThat(rows.stream().filter(m->m.direction()==MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE&&!m.returnMovement()).findFirst().orElseThrow().items().getFirst().productId()).isEqualTo(output);
+    }
+    @Test void deletingTaskPreservesActiveAndVoidedMovements(){
+        var task=tasks.create(plan(20000,30,ProductionTask.OutputQuantityBasis.BOX));
+        var issue=move(task.id(),raw,"22677",1000,false);
+        var receipt=move(task.id(),output,"22678",10,false);
+        movements.voidMovement(receipt.id(),"correction");
+        tasks.delete(task.id());
+        assertThatThrownBy(()->tasks.detail(task.id())).hasMessageContaining("找不到");
+        assertThat(tasks.list(null)).extracting(ProductionTaskService.Response::id).doesNotContain(task.id());
+        assertThat(movements.detail(issue.id()).productionTaskId()).isNull();
+        assertThat(movements.detail(issue.id()).items().getFirst().totalUnits()).isEqualTo(1000);
+        assertThat(movements.detail(receipt.id()).productionTaskId()).isNull();
+        assertThat(movements.detail(receipt.id()).status()).isEqualTo(MovementEnums.Status.VOID);
+    }
+    @Test void taskDeleteEndpointRequiresLoginAndReturnsNoContent() throws Exception {
+        var task=tasks.create(plan(20000,30,ProductionTask.OutputQuantityBasis.BOX));
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete("/api/production-tasks/"+task.id()))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isUnauthorized());
+        assertThat(tasks.detail(task.id()).id()).isEqualTo(task.id());
+        var session=new org.springframework.mock.web.MockHttpSession();
+        session.setAttribute(nz.co.warehouse.auth.AuthController.AUTH_SESSION_KEY,true);
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete("/api/production-tasks/"+task.id()).session(session))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isNoContent());
+        assertThatThrownBy(()->tasks.detail(task.id())).hasMessageContaining("找不到");
     }
     @Test void productionAndLossUseActualNetIssuesRatherThanPlannedDemand(){
         var task=tasks.create(plan(20000,1,ProductionTask.OutputQuantityBasis.UNIT));

@@ -120,7 +120,12 @@ export interface MovementDetail {
   createdAt: string;
   updatedAt: string;
 }
+export interface TaskMovementMaterial {
+  productId: number; productName: string; materialCode: string; materialBatch?: string; subBatch?: string;
+  baseUnit: string; totalCartons: number; totalQuantity: number; unknownQuantityCount: number; looseUnits: number; packaging: Packaging[];
+}
 export interface ProductionTaskMovement {
+  items: TaskMovementMaterial[];
   id: number; recordNo: string; direction: Direction; returnMovement: boolean; movementTime: string;
   totalCartons: number; totalQuantity: number; productNames: string[]; status: MovementStatus; unknownQuantityCount: number; quantityUnit?: string;
 }

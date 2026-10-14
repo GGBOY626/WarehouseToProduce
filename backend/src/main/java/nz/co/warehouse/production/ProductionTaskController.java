@@ -16,5 +16,6 @@ public class ProductionTaskController {
     @GetMapping("/{id}") public ProductionTaskService.Response detail(@PathVariable long id){return service.detail(id);}
     @PostMapping public ProductionTaskService.Response create(@Valid @RequestBody ProductionTaskService.SaveRequest r){return service.create(r);}
     @PutMapping("/{id}") public ProductionTaskService.Response update(@PathVariable long id,@Valid @RequestBody ProductionTaskService.SaveRequest r){return service.update(id,r);}
+    @DeleteMapping("/{id}") @ResponseStatus(org.springframework.http.HttpStatus.NO_CONTENT) public void delete(@PathVariable long id){service.delete(id);}
     @PatchMapping("/{id}/status") public ProductionTaskService.Response status(@PathVariable long id,@RequestParam ProductionTask.Status status){return service.status(id,status);}
 }

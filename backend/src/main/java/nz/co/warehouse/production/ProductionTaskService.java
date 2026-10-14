@@ -52,7 +52,8 @@ public class ProductionTaskService {
                                  long shortageQuantity,int unknownQuantityCount,boolean materialTarget,BigDecimal estimatedUsedQuantity,String materialBatch,List<BatchResponse> batches) {}
     public record BatchResponse(String materialBatch,String subBatch,long issuedQuantity,long returnedQuantity,long netQuantity,int unknownQuantityCount) {}
     public record MovementResponse(Long id,String recordNo,MovementEnums.Direction direction,boolean returnMovement,
-                                   Instant movementTime,int totalCartons,long totalQuantity,List<String> productNames,MovementEnums.Status status,int unknownQuantityCount,String quantityUnit) {}
+                                   Instant movementTime,int totalCartons,long totalQuantity,List<String> productNames,MovementEnums.Status status,int unknownQuantityCount,String quantityUnit,List<MovementMaterialResponse> items) {}
+    public record MovementMaterialResponse(Long productId,String productName,String materialCode,String materialBatch,String subBatch,String baseUnit,long totalCartons,long totalQuantity,long unknownQuantityCount,long looseUnits,List<MaterialQuantity.Packaging> packaging) {}
     public record Response(Long id,Long productId,String productName,String baseUnit,long targetQuantity,LocalDate plannedDate,
                            String batchNo,ProductionTask.Status status,String remarks,long completedQuantity,int progressPercent,
                            int issueMovementCount,int returnMovementCount,List<MovementResponse> movements,Instant createdAt,Instant updatedAt,
@@ -68,6 +69,14 @@ public class ProductionTaskService {
     @Transactional(readOnly=true) public Response detail(long id){return response(get(id));}
     @Transactional public Response create(SaveRequest r){ProductionTask t=new ProductionTask();apply(t,r,false);return response(tasks.saveAndFlush(t));}
     @Transactional public Response update(long id,SaveRequest r){ProductionTask t=get(id);apply(t,r,true);return response(t);}
+    @Transactional public void delete(long id){
+        ProductionTask task=get(id);
+        // Preserve original movement records, including voided records and their photos.
+        movements.findByProductionTaskIdOrderByMovementTimeAsc(id).forEach(m->m.setProductionTask(null));
+        movements.flush();
+        tasks.delete(task);
+        tasks.flush();
+    }
     @Transactional public Response status(long id,ProductionTask.Status status){ProductionTask t=get(id);t.setStatus(status);return response(t);}
     @Transactional(readOnly=true)
     public List<LinkOption> linkable(List<Long> productIds,MovementEnums.Direction direction,boolean returned){
@@ -237,8 +246,16 @@ public class ProductionTaskService {
         long completed=targets.isEmpty()?0:targets.getFirst().completedQuantity();
         int issues=(int)rows.stream().filter(m->m.getItems().stream().anyMatch(i->!i.getIssues().isEmpty())).count();
         int returns=(int)rows.stream().filter(Movement::isReturnMovement).count();
-        List<MovementResponse> linked=rows.stream().map(m->new MovementResponse(m.getId(),m.getRecordNo(),m.getDirection(),m.isReturnMovement(),m.getMovementTime(),m.getTotalCartons(),m.getItems().stream().map(MovementItem::getTotalUnits).filter(Objects::nonNull).mapToLong(Long::longValue).sum(),m.getItems().stream().map(MovementItem::getProductNameSnapshot).distinct().toList(),m.getStatus(),(int)m.getItems().stream().filter(i->i.isQuantityUnknown()||i.getTotalUnits()==null).count(),m.getItems().stream().map(MovementItem::getBaseUnitSnapshot).distinct().count()==1?m.getItems().getFirst().getBaseUnitSnapshot():null)).toList();
+        List<MovementResponse> linked=rows.stream().map(m->new MovementResponse(m.getId(),m.getRecordNo(),m.getDirection(),m.isReturnMovement(),m.getMovementTime(),m.getTotalCartons(),m.getItems().stream().map(MovementItem::getTotalUnits).filter(Objects::nonNull).mapToLong(Long::longValue).sum(),m.getItems().stream().map(MovementItem::getProductNameSnapshot).distinct().toList(),m.getStatus(),(int)m.getItems().stream().filter(i->i.isQuantityUnknown()||i.getTotalUnits()==null).count(),m.getItems().stream().map(MovementItem::getBaseUnitSnapshot).distinct().count()==1?m.getItems().getFirst().getBaseUnitSnapshot():null,movementMaterials(m))).toList();
         return new Response(t.getId(),t.getProduct().canonicalId(),t.displayName(),t.getProduct().getBaseUnit(),t.getTargetQuantity(),t.getPlannedDate(),t.getBatchNo(),t.getStatus(),t.getRemarks(),completed,progress,issues,returns,linked,t.getCreatedAt(),t.getUpdatedAt(),targets,output,t.displayName());
+    }
+    private List<MovementMaterialResponse> movementMaterials(Movement movement){
+        return movement.getItems().stream().collect(java.util.stream.Collectors.groupingBy(i->i.getProduct().canonicalId(),LinkedHashMap::new,java.util.stream.Collectors.toList()))
+            .values().stream().flatMap(productItems->MaterialQuantity.group(productItems).values().stream()).map(items->{
+                MovementItem first=items.getFirst();
+                MaterialQuantity totals=MaterialQuantity.of(items);
+                return new MovementMaterialResponse(first.getProduct().canonicalId(),first.getProductNameSnapshot(),first.getBatchNo(),first.effectiveMaterialBatch(),first.getSubBatch(),first.getBaseUnitSnapshot(),totals.totalCartons(),totals.totalQuantity(),totals.unknownItemCount(),totals.looseUnits(),totals.packaging());
+            }).toList();
     }
     private record BatchSelectionKey(String batch,String subBatch) {}
     private String blank(String value){return value==null||value.isBlank()?null:value.trim();}
