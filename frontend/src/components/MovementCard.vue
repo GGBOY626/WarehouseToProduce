@@ -8,12 +8,12 @@ withDefaults(defineProps<{ movement: MovementSummary; showDate?: boolean }>(), {
 <template>
   <RouterLink :to="`/movements/${movement.id}`" class="movement-card card">
     <div class="movement-items">
-      <MaterialSummary v-for="item in movement.items" :key="item.id" v-bind="item" :show-material-code="movement.direction === 'PRODUCTION_TO_WAREHOUSE' && !movement.returnMovement" :show-material-batch="true" />
+      <MaterialSummary compact v-for="item in movement.items" :key="item.id" v-bind="item" :show-material-code="movement.direction === 'PRODUCTION_TO_WAREHOUSE' && !movement.returnMovement" :show-material-batch="true" />
     </div>
     <div class="record-footer">
       <time :datetime="movement.movementTime">{{ showDate ? showDateTime(movement.movementTime) : showTime(movement.movementTime) }}</time>
       <span :class="['movement-direction', {return:movement.direction==='PRODUCTION_TO_WAREHOUSE'}]">{{ directionLabel(movement.direction) }}<span v-if="movement.returnMovement"> · 退回</span></span>
-      <span v-if="movement.photoCount" class="photo-tag">照片 {{ movement.photoCount }}</span>
+      <span class="photo-tag">照片 {{ movement.photoCount }}</span>
       <span v-if="movement.status==='VOID'" class="status neutral">已作废</span>
       <span v-if="movement.hasIssues" class="status warn">有异常</span>
     </div>

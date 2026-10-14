@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { useRouter } from "vue-router";
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { onBeforeRouteLeave, useRouter } from "vue-router";
+import TodayOverview from "../components/TodayOverview.vue";
 import MaterialSummary from "../components/MaterialSummary.vue";
 import MovementCard from "../components/MovementCard.vue";
 import RecordOriginals from "../components/RecordOriginals.vue";
@@ -40,6 +41,9 @@ function openMovement(id: number) {
   recordDialog.value?.close();
   void router.push(`/movements/${id}`);
 }
+const statsExpanded=ref(false);
+try { statsExpanded.value=sessionStorage.getItem('movement-stats-expanded')==='true'; } catch {}
+function statsToggled(event:Event){statsExpanded.value=(event.target as HTMLDetailsElement).open;try{sessionStorage.setItem('movement-stats-expanded',String(statsExpanded.value))}catch{}}
 const error = ref("");
 let searchTimer: ReturnType<typeof setTimeout> | undefined;
 const rows = ref<MovementSummary[]>([]),
@@ -142,8 +146,13 @@ watch(q, () => {
   loading.value = true;
   searchTimer = setTimeout(() => void load(), 300);
 });
-onBeforeUnmount(() => { clearTimeout(searchTimer); ++requestId; });
-onMounted(load);
+let alive=true;
+onBeforeUnmount(() => { alive=false; clearTimeout(searchTimer); ++requestId; });
+let restoreY=0;
+try { restoreY=Number(sessionStorage.getItem('movement-list-scroll') || 0); } catch { /* Optional browser storage. */ }
+onBeforeRouteLeave(()=>{try{sessionStorage.setItem('movement-list-scroll',String(window.scrollY))}catch{}});
+onMounted(async()=>{await load();await nextTick();if(alive && Number.isFinite(restoreY))window.scrollTo({top:restoreY,behavior:'instant'})});
+function showToday(value:Direction){q.value='';direction.value=value;preset('today');void nextTick(()=>document.getElementById('movement-filters')?.scrollIntoView({block:'start'}))}
 const directionLabel = (value: Direction) => value === "WAREHOUSE_TO_PRODUCTION" ? "仓库 → 生产车间" : "生产车间 → 仓库";
 const formatNumber = (value: number) => value.toLocaleString("zh-CN");
 </script>
@@ -156,32 +165,34 @@ const formatNumber = (value: number) => value.toLocaleString("zh-CN");
         <RouterLink class="btn btn-secondary" to="/movements/new/production-to-warehouse">新增入库 / 退回</RouterLink>
       </div>
     </div>
-    <section class="filters card card-pad">
+    <TodayOverview @direction="showToday" />
+    <section id="movement-filters" class="filters card card-pad">
       <div class="preset">
         <button class="quick-date" :class="{active:activePreset==='today'}" :aria-pressed="activePreset==='today'" @click="preset('today')">今天</button
         ><button class="quick-date" :class="{active:activePreset==='yesterday'}" :aria-pressed="activePreset==='yesterday'" @click="preset('yesterday')">昨天</button
         ><button class="quick-date" :class="{active:activePreset==='week'}" :aria-pressed="activePreset==='week'" @click="preset('week')">本周</button
         ><button class="quick-date" :class="{active:activePreset==='twoWeeks'}" :aria-pressed="activePreset==='twoWeeks'" @click="preset('twoWeeks')">两周</button>
       </div>
-      <div class="field single-day" :class="{selected:activePreset==='single'}">
-        <label for="single-day">只看某一天</label>
-        <input id="single-day" class="input" type="date" v-model="singleDate" :max="today()" @change="selectSingleDay" />
-      </div>
       <div class="field">
-        <label>方向</label>
+        <span class="sr-only">方向</span>
         <div class="direction-choice" role="group" aria-label="流转方向筛选">
           <button type="button" :class="{active:direction==='WAREHOUSE_TO_PRODUCTION'}" :aria-pressed="direction==='WAREHOUSE_TO_PRODUCTION'" @click="selectDirection('WAREHOUSE_TO_PRODUCTION')">仓库 → 生产车间</button>
           <button type="button" class="return" :class="{active:direction==='PRODUCTION_TO_WAREHOUSE'}" :aria-pressed="direction==='PRODUCTION_TO_WAREHOUSE'" @click="selectDirection('PRODUCTION_TO_WAREHOUSE')">车间 → 仓库</button>
         </div>
       </div>
       <div class="field">
-        <label for="material-search">搜索物料</label>
-        <input id="material-search" class="input" v-model.trim="q" placeholder="物料名称、编码、批次或区分批次" @keyup.enter="load" />
+        <label for="material-search" class="sr-only">搜索物料</label>
+        <input id="material-search" class="input" v-model.trim="q" placeholder="搜索物料名称、编码或批次…" @keyup.enter="load" />
       </div>
       <button class="more-toggle" type="button" :aria-expanded="moreFilters" aria-controls="advanced-filters" @click="moreFilters=!moreFilters">
-        <span>更多筛选</span><span aria-hidden="true">{{moreFilters ? '收起' : '展开'}} {{moreFilters ? '⌃' : '⌄'}}</span>
+        <span>{{ activePreset==='single' ? `指定日期 · ${from}` : activePreset==='range' ? `自定义 · ${from} 起` : '指定日期 / 更多筛选' }}</span><span aria-hidden="true">{{moreFilters ? '收起' : '展开'}} {{moreFilters ? '⌃' : '⌄'}}</span>
       </button>
       <div v-show="moreFilters" id="advanced-filters" class="advanced-filters">
+      <div class="field single-day" :class="{selected:activePreset==='single'}">
+        <label for="single-day">只看某一天</label>
+        <input id="single-day" class="input" type="date" v-model="singleDate" :max="today()" @change="selectSingleDay" />
+      </div>
+
         <div class="field">
           <label for="range-start">开始日期</label
           ><input id="range-start" class="input" type="date" v-model="from" :max="today()" @change="customDate" />
@@ -189,13 +200,12 @@ const formatNumber = (value: number) => value.toLocaleString("zh-CN");
         </div>
       </div>
     </section>
-    <RecordOriginals :from="from" :to="to" :direction="direction" />
     <section class="section">
-      <div v-if="!loading && !error" class="query-stats card">
-        <div class="stats-heading">
-          <strong>查询范围统计</strong>
-          <span>{{ appliedFrom }} ～ {{ appliedTo }}</span>
-        </div>
+      <details v-if="!loading && !error" class="query-stats card" :open="statsExpanded" @toggle="statsToggled">
+        <summary class="stats-heading">
+          <strong>查询范围统计 <span aria-hidden="true">⌄</span></strong>
+          <span>{{ appliedFrom===appliedTo ? appliedFrom : `${appliedFrom} ～ ${appliedTo}` }}</span>
+        </summary>
         <div v-if="!stats?.directions.length" class="stats-empty">当前查询范围暂无统计数据</div>
         <div v-else>
           <section v-for="group in stats.directions" :key="group.direction" class="direction-stat">
@@ -203,13 +213,13 @@ const formatNumber = (value: number) => value.toLocaleString("zh-CN");
             <div class="stats-total"><strong>共 {{ formatNumber(group.products.length) }} 组物料 / 批次</strong><span>·</span><strong>{{ formatNumber(group.totalCartons) }} 箱</strong><span v-if="group.unknownItemCount">· 含 {{ group.unknownItemCount }} 项数量不确定</span></div>
             <div>
               <button v-for="product in group.products" :key="JSON.stringify([product.productName, product.materialCode, product.materialBatch, product.subBatch, product.baseUnit])" type="button" class="product-stat" @click="openProduct(product)">
-                <MaterialSummary v-bind="{ ...product, ...statIdentifiers(product) }" />
+                <MaterialSummary compact v-bind="{ ...product, ...statIdentifiers(product) }" />
                 <span class="record-arrow" aria-hidden="true">›</span>
               </button>
             </div>
           </section>
         </div>
-      </div>
+      </details>
       <div class="section-head"><h2 class="section-title">记录列表</h2><span v-if="!loading && !error" class="hint">{{ rows.length }} 条</span></div>
       <div v-if="error" class="card empty" role="alert">{{ error }} <button type="button" class="btn" @click="load">重试</button></div>
       <div v-else-if="loading" class="card empty" role="status">正在查询…</div>
@@ -220,7 +230,7 @@ const formatNumber = (value: number) => value.toLocaleString("zh-CN");
         <MovementCard v-for="row in rows" :key="row.id" :movement="row" show-date />
       </div>
     </section>
-    <nav class="quick-links card" aria-label="管理与导出"><RouterLink to="/reports">导出 PDF</RouterLink><RouterLink v-if="authenticated" to="/persons">人员管理</RouterLink></nav>
+    <RecordOriginals :from="from" :to="to" :direction="direction" />
   </div>
     <dialog ref="recordDialog" class="record-dialog" aria-labelledby="record-dialog-title" @click="event => { if (event.target === recordDialog) recordDialog?.close(); }">
       <div class="dialog-heading"><h2 id="record-dialog-title">选择流转记录</h2><button type="button" class="btn" autofocus @click="recordDialog?.close()">关闭</button></div>
@@ -238,6 +248,7 @@ const formatNumber = (value: number) => value.toLocaleString("zh-CN");
     </dialog>
 </template>
 <style scoped>
+#movement-filters{scroll-margin-top:68px}.filters.card-pad{padding:12px}.stats-heading{cursor:pointer;min-height:44px}.query-stats[open] .stats-heading{border-bottom:1px solid var(--line)}.create-actions .btn{min-height:42px;padding:8px 12px;font-size:13px}.page-heading{align-items:center}.filters .input{min-height:42px}.filters .more-toggle{min-height:36px;padding:5px 2px 0;font-size:12px}
 .page-heading { flex-wrap: wrap; gap: 12px; }
 .page-heading .page-title { margin: 0; }
 .create-actions { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -246,7 +257,7 @@ const formatNumber = (value: number) => value.toLocaleString("zh-CN");
 .quick-links a + a { border-left: 1px solid #dce2e5; }
 .filters {
   display: grid;
-  gap: 13px;
+  gap: 8px;
 }
 .single-day{grid-template-columns:auto minmax(0,1fr);align-items:center;gap:12px}.single-day.selected label{color:#267566}.single-day input{min-width:0;width:100%;box-sizing:border-box}
 .preset {
@@ -258,7 +269,7 @@ const formatNumber = (value: number) => value.toLocaleString("zh-CN");
   background: #e7edef;
 }
 .quick-date {
-  min-height: 42px;
+  min-height: 36px;
   border: 0;
   border-radius: 8px;
   background: transparent;
@@ -271,7 +282,7 @@ const formatNumber = (value: number) => value.toLocaleString("zh-CN");
 .quick-date.active { background: #fff; color: #174a68; box-shadow: 0 2px 8px rgba(32,53,64,.14); }
 .quick-date:focus-visible,.more-toggle:focus-visible,.direction-choice button:focus-visible { outline: 3px solid rgba(31,107,138,.3); outline-offset: 2px; }
 .direction-choice { display: grid; grid-template-columns: repeat(2,1fr); gap: 4px; padding: 4px; border-radius: 11px; background: #e7edef; }
-.direction-choice button { min-height: 44px; border: 0; border-radius: 8px; padding: 8px 4px; background: transparent; color: #60737d; font: inherit; font-size: 13px; font-weight: 760; cursor: pointer; }
+.direction-choice button { min-height: 36px; border: 0; border-radius: 8px; padding: 8px 4px; background: transparent; color: #60737d; font: inherit; font-size: 13px; font-weight: 760; cursor: pointer; }
 .direction-choice button.active { background: #fff; color: #174a68; box-shadow: 0 2px 8px rgba(32,53,64,.14); }
 .direction-choice button.return.active { color: #267566; }
 .more-toggle {
@@ -317,7 +328,7 @@ const formatNumber = (value: number) => value.toLocaleString("zh-CN");
 .record-stack { gap: 10px; }
 @media (max-width: 560px) {
   .direction-choice button { font-size: 11px; }
-  .stats-heading { align-items: flex-start; flex-direction: column; gap: 4px; }
+  .stats-heading { align-items: center; flex-direction: row; gap: 8px; font-size:13px; padding:12px; }.stats-heading span{font-size:11px;text-align:right;max-width:58%}
   .product-stat { gap: 8px; font-size: 13px; }
   .record-dialog { padding: 14px; }
   .source-record { padding: 11px; }

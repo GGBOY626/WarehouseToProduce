@@ -37,8 +37,8 @@ async function submit() {
     <p class="page-lead">登录后可以新增和维护流转数据。</p>
     <form class="card card-pad stack" @submit.prevent="submit">
       <div v-if="message" class="form-alert" role="alert">{{ message }}</div>
-      <div class="field"><label class="required">账号</label><input class="input" v-model="username" autocomplete="username" autofocus /></div>
-      <div class="field"><label class="required">密码</label><input class="input" type="password" v-model="password" autocomplete="current-password" /></div>
+      <div class="field"><label for="login-username" class="required">账号</label><input id="login-username" name="username" class="input" v-model="username" autocomplete="username" /></div>
+      <div class="field"><label for="login-password" class="required">密码</label><input id="login-password" name="password" class="input" type="password" v-model="password" autocomplete="current-password" /></div>
       <button class="btn btn-primary btn-block" :disabled="submitting">{{ submitting ? "正在登录…" : "登录" }}</button>
     </form>
   </div>

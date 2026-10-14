@@ -5,31 +5,36 @@ defineEmits<{ select: [target: ProductionTaskTarget] }>();
 </script>
 <template>
   <div class="target-list">
-    <div v-for="(target, index) in targets" :key="`${target.productId}:${target.materialBatch}:${index}`" class="target-summary" :class="{card: cards, 'material-card': cards}">
-      <div class="target-title"><button v-if="interactive" class="material-link" @click="$emit('select', target)">{{ target.productName }} <span>查看流转 ›</span></button><strong v-else>{{ target.productName }}</strong><small>物料编码 {{ target.materialCode }}</small><small v-if="target.materialBatch">物料批次 {{ target.materialBatch }}</small></div>
+    <div v-for="(target,index) in targets" :key="`${target.productId}:${target.materialBatch}:${index}`" class="target-summary" :class="{card:cards,'material-card':cards}">
+      <div class="target-title"><button v-if="interactive" type="button" class="material-link" @click="$emit('select',target)">{{target.productName}} <span>查看流转 ›</span></button><strong v-else>{{target.productName}}</strong></div>
       <p v-if="!target.materialTarget" class="shortage">此目标属于旧版成品入库产品，请编辑任务，改选仓库 → 生产车间的物料。</p>
       <template v-else>
-        <div class="target-values"><span>{{ cards ? '已发料 / 所需' : '净发料 / 所需' }}</span><b>{{ (cards ? target.issuedQuantity : target.completedQuantity).toLocaleString() }} / {{ target.targetQuantity.toLocaleString() }} {{ target.baseUnit || '个' }}</b></div>
-        <div v-if="cards" class="material-quantities"><span>已退料 <b>{{ target.returnedQuantity.toLocaleString() }} {{ target.baseUnit || '个' }}</b></span><span>净发料 <b>{{ target.completedQuantity.toLocaleString() }} {{ target.baseUnit || '个' }}</b></span></div>
-        <small v-else class="quantities">已发 {{ target.issuedQuantity.toLocaleString() }} · 已退 {{ target.returnedQuantity.toLocaleString() }} {{ target.baseUnit || '个' }}</small>
-        <small v-if="target.estimatedUsedQuantity != null" class="quantities">按回仓产量预计耗用 {{ target.estimatedUsedQuantity.toLocaleString(undefined, { maximumFractionDigits: 6 }) }} {{ target.baseUnit || '个' }}</small>
-        <p v-if="target.shortageQuantity > 0" class="shortage">{{ target.unknownQuantityCount ? '按已知数量还缺' : '还缺' }} {{ target.shortageQuantity.toLocaleString() }} {{ target.baseUnit || '个' }}</p>
+        <div class="target-values"><span>{{cards ? '已发料 / 所需' : '净发料 / 所需'}}</span><b>{{(cards ? target.issuedQuantity : target.completedQuantity).toLocaleString()}} / {{target.targetQuantity.toLocaleString()}} {{target.baseUnit || '个'}}</b></div>
+        <p v-if="target.shortageQuantity>0" class="shortage">{{target.unknownQuantityCount ? '按已知数量还缺' : '还缺'}} {{target.shortageQuantity.toLocaleString()}} {{target.baseUnit || '个'}}</p>
         <p v-else-if="!target.unknownQuantityCount" class="ready">已备齐</p>
-        <p v-if="target.unknownQuantityCount" class="shortage">有 {{ target.unknownQuantityCount }} 条发料或退料明细数量不确定，请核对后确认是否备齐。</p>
-        <details v-if="target.batches?.length" class="batch-breakdown" @click.stop>
-          <summary>查看批次明细（{{ target.batches.length }} 项）</summary>
-          <div v-for="(batch, index) in target.batches" :key="index" class="batch-row">
-            <span>{{ batch.materialBatch || '历史记录' }}<template v-if="batch.subBatch"> · {{ batch.subBatch }}</template></span>
-            <span>发 {{ batch.issuedQuantity.toLocaleString() }} · 退 {{ batch.returnedQuantity.toLocaleString() }} · 净 {{ batch.netQuantity.toLocaleString() }} {{ target.baseUnit }}</span>
-            <small v-if="batch.unknownQuantityCount">另有 {{ batch.unknownQuantityCount }} 条数量不确定</small>
-          </div>
-        </details>
-        <div class="progress" role="progressbar" :aria-label="`${target.productName}备料进度`" :aria-valuenow="target.progressPercent" :aria-valuemin="0" :aria-valuemax="100"><i :style="{ width: `${target.progressPercent}%` }" /></div>
+        <p v-if="target.unknownQuantityCount" class="shortage">有 {{target.unknownQuantityCount}} 条发料或退料明细数量不确定，请核对后确认是否备齐。</p>
+        <div class="progress" role="progressbar" :aria-label="`${target.productName}备料进度`" :aria-valuenow="target.progressPercent" :aria-valuemin="0" :aria-valuemax="100"><i :style="{width:`${target.progressPercent}%`}" /></div>
       </template>
+      <component :is="cards ? 'details' : 'div'" :class="{'material-details':cards}">
+        <summary v-if="cards">物料详情 <span>编码、退料与耗用</span></summary>
+        <div class="detail-content">
+          <small>物料编码 {{target.materialCode}}</small><small v-if="target.materialBatch">物料批次 {{target.materialBatch}}</small>
+          <template v-if="target.materialTarget">
+            <div v-if="cards" class="material-quantities"><span>已退料 <b>{{target.returnedQuantity.toLocaleString()}} {{target.baseUnit || '个'}}</b></span><span>净发料 <b>{{target.completedQuantity.toLocaleString()}} {{target.baseUnit || '个'}}</b></span></div>
+            <small v-else class="quantities">已发 {{target.issuedQuantity.toLocaleString()}} · 已退 {{target.returnedQuantity.toLocaleString()}} {{target.baseUnit || '个'}}</small>
+            <small v-if="target.estimatedUsedQuantity!=null" class="quantities">按回仓产量预计耗用 {{target.estimatedUsedQuantity.toLocaleString(undefined,{maximumFractionDigits:6})}} {{target.baseUnit || '个'}}</small>
+            <details v-if="target.batches?.length" class="batch-breakdown" @click.stop>
+              <summary>查看批次明细（{{target.batches.length}} 项）</summary>
+              <div v-for="(batch,index) in target.batches" :key="index" class="batch-row"><span>{{batch.materialBatch || '历史记录'}}<template v-if="batch.subBatch"> · {{batch.subBatch}}</template></span><span>发 {{batch.issuedQuantity.toLocaleString()}} · 退 {{batch.returnedQuantity.toLocaleString()}} · 净 {{batch.netQuantity.toLocaleString()}} {{target.baseUnit}}</span><small v-if="batch.unknownQuantityCount">另有 {{batch.unknownQuantityCount}} 条数量不确定</small></div>
+            </details>
+          </template>
+        </div>
+      </component>
     </div>
   </div>
 </template>
 <style scoped>
+.material-details{border-top:1px solid var(--line);font-size:12px;color:var(--muted)}.material-details>summary{cursor:pointer;min-height:40px;padding:11px 0 0;color:var(--blue)}.material-details>summary span{color:var(--muted);margin-left:8px}.detail-content{display:grid;gap:10px;padding-top:10px}.material-card .target-title{gap:4px}.material-card .shortage,.material-card .ready{font-size:12px;font-weight:600}.material-card .ready{color:var(--muted)}
 .material-link{border:0;background:none;padding:4px 0;color:#174a68;font:inherit;font-weight:700;text-align:left;cursor:pointer}.material-link span{font-size:12px;font-weight:400;margin-left:8px}.material-link:hover{text-decoration:underline}.material-link:focus-visible{outline:2px solid #267566;outline-offset:4px}
 .batch-breakdown{font-size:13px;color:#52626b}.batch-breakdown summary{cursor:pointer;padding:6px 0}.batch-row{display:flex;flex-wrap:wrap;justify-content:space-between;gap:6px;padding:6px 0;border-top:1px solid #e5ecee}
 .shortage,.ready{margin:0;font-size:14px;font-weight:700}.shortage{color:#9b3d17}.ready{color:#267566}.quantities{color:#66747c}
