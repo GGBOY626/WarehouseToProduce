@@ -54,7 +54,7 @@ public final class MovementDtos {
                                  boolean hasIssues,boolean missingPhoto,Instant createdAt,Instant updatedAt,List<ListItemResponse> materials) {}
     public record ListResponse(Long id,String recordNo,MovementEnums.Direction direction,Instant movementTime,
                                String senderName,String receiverName,boolean returnMovement,int totalCartons,long totalQuantity,MovementEnums.Status status,
-                               List<String> productNames,int itemCount,int photoCount,boolean hasIssues,boolean hasUnknownQuantity,List<ListItemResponse> items) {}
+                               List<String> productNames,int itemCount,int photoCount,boolean hasIssues,boolean hasUnknownQuantity,List<ListItemResponse> items,Long productionTaskId,String productionTaskName) {}
     // batchNo remains the material code; per-item materialBatch takes precedence over the legacy header.
     public record ListItemResponse(Long id,String productName,String materialCode,String materialBatch,String baseUnit,
                                    long fullCartons,long looseUnits,Long totalQuantity,boolean quantityUnknown,long tailCartons,long totalCartons,long unknownItemCount,List<MaterialQuantity.Packaging> packaging,String subBatch) {}
@@ -77,7 +77,7 @@ public final class MovementDtos {
     static ListResponse summary(Movement m) {
         long totalQuantity=m.getItems().stream().map(MovementItem::getTotalUnits).filter(Objects::nonNull).mapToLong(Long::longValue).sum();
         return new ListResponse(m.getId(),m.getRecordNo(),m.getDirection(),m.getMovementTime(),m.getSenderNameSnapshot(),m.getReceiverNameSnapshot(),m.isReturnMovement(),m.getTotalCartons(),totalQuantity,m.getStatus(),m.getItems().stream().map(MovementItem::getProductNameSnapshot).distinct().limit(3).toList(),m.getItems().size(),m.getPhotos().size(),m.getItems().stream().anyMatch(i->!i.getIssues().isEmpty()),m.getItems().stream().anyMatch(MovementItem::isQuantityUnknown),
-                materialSummaries(m));
+                materialSummaries(m),m.getProductionTask()==null?null:m.getProductionTask().getId(),m.getProductionTask()==null?null:m.getProductionTask().displayName());
     }
     private static List<ListItemResponse> materialSummaries(Movement m){
         return MaterialQuantity.group(m.getItems()).values().stream().map(items->{

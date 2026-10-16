@@ -11,6 +11,7 @@ defineEmits<{ select: [] }>();
     <div class="output-values"><span>{{ output.unknownQuantityCount ? '已知回仓' : '累计回仓' }} <b>{{ output.receivedQuantity.toLocaleString() }}</b> {{ output.baseUnit }}</span><span v-if="output.receivedBoxes != null">折合 {{ output.receivedBoxes.toLocaleString(undefined, { maximumFractionDigits: 3 }) }} 盒 · {{ output.producedQuantity?.toLocaleString() }} {{ output.primaryMaterialUnit }}</span></div>
     <template v-if="output.quantityBasis">
       <div class="output-values"><span>实际净发 {{ output.primaryMaterialName }}：{{ output.netIssuedQuantity?.toLocaleString() }} {{ output.primaryMaterialUnit }}</span><b>{{ output.provisional ? '暂估损耗率' : '损耗率' }}：{{ output.lossPercent == null ? '—' : `${output.lossPercent}%` }}</b></div>
+      <div class="output-values"><b>{{ output.provisional ? '暂估损耗数量' : '损耗数量' }}：{{ output.lossPercent == null ? '—' : Math.max(0,(output.netIssuedQuantity ?? 0)-(output.producedQuantity ?? 0)).toLocaleString() }} {{ output.primaryMaterialUnit }}</b></div>
       <div v-if="!hideProgress" class="progress" role="progressbar" aria-label="生产完成度" :aria-valuenow="output.productionPercent ?? undefined" :aria-valuemin="0" :aria-valuemax="100"><i :style="{ width: `${output.productionPercent || 0}%` }" /></div>
       <p v-if="output.productionPercent == null" class="unknown">无有效净发料，或关联数量未确定，暂无法计算完成度与损耗率。</p>
       <p v-else-if="output.provisional" class="hint">暂估未转为成品的部分可能仍在车间生产；确认生产结束并补齐退料、回仓后再核对损耗。</p>

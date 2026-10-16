@@ -56,7 +56,7 @@ onBeforeUnmount(()=>{clearInterval(refreshTimer);window.removeEventListener('foc
       </section>
       <section class="section">
         <h2 class="section-title materials-heading">备料明细</h2>
-        <ProductionTaskTargets :targets="task.targets" interactive cards @select="showHistory($event)" />
+        <ProductionTaskTargets :targets="task.targets" :completed="task.status==='COMPLETED'" interactive cards @select="showHistory($event)" />
         <details class="calculation-note"><summary>进度计算说明</summary><p>备料进度为各物料备料比例的平均值，不同批次合计，净发料 = 已发料 − 已退料。生产完成度 = 回仓折算数量 ÷ 主料实际净发料，仅统计关联的有效记录；任务由人工标记完成。包装物料预计耗用按计划配比折算，实际损耗需在生产结束后核对。</p></details>
       </section>
       </div>

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { ProductionTaskTarget } from "../types";
-defineProps<{ targets: ProductionTaskTarget[]; interactive?: boolean; cards?: boolean }>();
+defineProps<{ targets: ProductionTaskTarget[]; interactive?: boolean; cards?: boolean; completed?: boolean }>();
 defineEmits<{ select: [target: ProductionTaskTarget] }>();
 </script>
 <template>
@@ -13,6 +13,15 @@ defineEmits<{ select: [target: ProductionTaskTarget] }>();
         <p v-if="target.shortageQuantity>0" class="shortage">{{target.unknownQuantityCount ? '按已知数量还缺' : '还缺'}} {{target.shortageQuantity.toLocaleString()}} {{target.baseUnit || '个'}}</p>
         <p v-else-if="!target.unknownQuantityCount" class="ready">已备齐</p>
         <p v-if="target.unknownQuantityCount" class="shortage">有 {{target.unknownQuantityCount}} 条发料或退料明细数量不确定，请核对后确认是否备齐。</p>
+        <div v-if="!target.unknownQuantityCount" class="return-summary">
+          <p v-if="target.issuedQuantity > target.targetQuantity">车间应退 {{ (target.issuedQuantity-target.targetQuantity).toLocaleString() }} {{target.baseUnit || '个'}} · 已退 {{target.returnedQuantity.toLocaleString()}} {{target.baseUnit || '个'}} · 尚差 {{Math.max(0,target.completedQuantity-target.targetQuantity).toLocaleString()}} {{target.baseUnit || '个'}}</p>
+          <p>{{completed ? '损耗数量' : '暂估损耗数量'}}：{{Math.max(0,target.completedQuantity-target.targetQuantity).toLocaleString()}} {{target.baseUnit || '个'}} · 损耗率：{{target.completedQuantity > 0 ? (Math.max(0,target.completedQuantity-target.targetQuantity)/target.completedQuantity*100).toFixed(2)+'%' : '—'}}</p>
+          <small>按计划需求核对：损耗 = 已发 − 已退 − 需求；损耗率按净发料计算。{{completed ? '' : '生产结束并核对退料后确认。'}}</small>
+        </div>
+        <div v-if="target.batches?.length" class="batch-breakdown">
+          <strong>批号数量汇总</strong>
+          <div v-for="(batch,index) in target.batches" :key="index" class="batch-row"><span>{{batch.materialBatch || '历史记录'}}<template v-if="batch.subBatch"> · {{batch.subBatch}}</template></span><span>已发 {{batch.issuedQuantity.toLocaleString()}} · 已退 {{batch.returnedQuantity.toLocaleString()}} · 净发 {{batch.netQuantity.toLocaleString()}} {{target.baseUnit}}</span><small v-if="batch.unknownQuantityCount">另有 {{batch.unknownQuantityCount}} 条数量不确定</small></div>
+        </div>
         <div class="progress" role="progressbar" :aria-label="`${target.productName}备料进度`" :aria-valuenow="target.progressPercent" :aria-valuemin="0" :aria-valuemax="100"><i :style="{width:`${target.progressPercent}%`}" /></div>
       </template>
       <component :is="cards ? 'details' : 'div'" :class="{'material-details':cards}">
@@ -23,10 +32,7 @@ defineEmits<{ select: [target: ProductionTaskTarget] }>();
             <div v-if="cards" class="material-quantities"><span>已退料 <b>{{target.returnedQuantity.toLocaleString()}} {{target.baseUnit || '个'}}</b></span><span>净发料 <b>{{target.completedQuantity.toLocaleString()}} {{target.baseUnit || '个'}}</b></span></div>
             <small v-else class="quantities">已发 {{target.issuedQuantity.toLocaleString()}} · 已退 {{target.returnedQuantity.toLocaleString()}} {{target.baseUnit || '个'}}</small>
             <small v-if="target.estimatedUsedQuantity!=null" class="quantities">按回仓产量预计耗用 {{target.estimatedUsedQuantity.toLocaleString(undefined,{maximumFractionDigits:6})}} {{target.baseUnit || '个'}}</small>
-            <details v-if="target.batches?.length" class="batch-breakdown" @click.stop>
-              <summary>查看批次明细（{{target.batches.length}} 项）</summary>
-              <div v-for="(batch,index) in target.batches" :key="index" class="batch-row"><span>{{batch.materialBatch || '历史记录'}}<template v-if="batch.subBatch"> · {{batch.subBatch}}</template></span><span>发 {{batch.issuedQuantity.toLocaleString()}} · 退 {{batch.returnedQuantity.toLocaleString()}} · 净 {{batch.netQuantity.toLocaleString()}} {{target.baseUnit}}</span><small v-if="batch.unknownQuantityCount">另有 {{batch.unknownQuantityCount}} 条数量不确定</small></div>
-            </details>
+
           </template>
         </div>
       </component>
@@ -39,4 +45,5 @@ defineEmits<{ select: [target: ProductionTaskTarget] }>();
 .batch-breakdown{font-size:13px;color:#52626b}.batch-breakdown summary{cursor:pointer;padding:6px 0}.batch-row{display:flex;flex-wrap:wrap;justify-content:space-between;gap:6px;padding:6px 0;border-top:1px solid #e5ecee}
 .shortage,.ready{margin:0;font-size:14px;font-weight:700}.shortage{color:#9b3d17}.ready{color:#267566}.quantities{color:#66747c}
 .target-list{display:grid;gap:14px;min-width:0}.target-summary{display:grid;gap:7px;min-width:0}.material-card{padding:16px;gap:10px}.material-quantities{display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;font-size:12px;color:var(--muted)}.material-quantities b{font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums}.target-title{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}.target-title strong{overflow-wrap:anywhere}.target-title small{color:#66747c;overflow-wrap:anywhere}.target-title span{margin-left:auto;color:#267566;font-weight:700}.target-values{display:flex;flex-wrap:wrap;justify-content:space-between;gap:6px;font-size:13px}.target-values span{color:#66747c}.target-values b{font-variant-numeric:tabular-nums}.progress{height:4px;background:#e5ecee;border-radius:3px;overflow:hidden}.progress i{display:block;height:100%;background:#267566}
+.return-summary{font-size:13px;color:var(--orange);line-height:1.6}.return-summary p{margin:3px 0}.return-summary small{color:var(--muted)}
 </style>

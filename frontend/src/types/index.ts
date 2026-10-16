@@ -173,6 +173,8 @@ export interface MaterialSummary {
   totalQuantity?: number | null;
 }
 export interface MovementSummary {
+  productionTaskId?: number;
+  productionTaskName?: string;
   id: number;
   recordNo: string;
   direction: Direction;

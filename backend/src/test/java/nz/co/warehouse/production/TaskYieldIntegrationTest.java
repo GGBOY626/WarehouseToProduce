@@ -47,6 +47,29 @@ class TaskYieldIntegrationTest {
         return movements.create(new MovementDtos.SaveRequest(UUID.randomUUID().toString(),direction,Instant.now(),person,person,null,returned,task,null,
             List.of(new MovementDtos.ItemRequest(product,"CODE",full,loose,null,false,null,List.of(),units,tails,tailQuantity,null,null,batch))));
     }
+    @Test void quickLinkPreservesRecordAndUpdatesTaskAndList(){
+        var task=tasks.create(plan(20000,1,ProductionTask.OutputQuantityBasis.UNIT));
+        var record=movements.detail(move(null,raw,"22677",1200,false).id());
+        var linked=movements.linkTask(record.id(),task.id());
+        assertThat(linked.productionTaskId()).isEqualTo(task.id());
+        assertThat(linked.items()).isEqualTo(record.items());
+        assertThat(linked.movementTime()).isEqualTo(record.movementTime());
+        assertThat(tasks.detail(task.id()).targets().getFirst().issuedQuantity()).isEqualTo(1200);
+        assertThat(movements.search(LocalDate.now().minusDays(1),LocalDate.now().plusDays(1),null,null,null,null,"",0,100).content())
+            .filteredOn(row->row.id().equals(record.id())).singleElement()
+            .satisfies(row->{assertThat(row.productionTaskId()).isEqualTo(task.id());assertThat(row.productionTaskName()).isEqualTo(task.name());});
+        assertThatThrownBy(()->movements.linkTask(record.id(),task.id())).hasMessageContaining("已关联");
+        var voided=move(null,raw,"22677",100,false);
+        movements.voidMovement(voided.id(),"test");
+        assertThatThrownBy(()->movements.linkTask(voided.id(),task.id()));
+    }
+    @Test void quickLinkEndpointRequiresLogin() throws Exception {
+        var task=tasks.create(plan(20000,1,ProductionTask.OutputQuantityBasis.UNIT));
+        var record=move(null,raw,"22677",1200,false);
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch("/api/movements/"+record.id()+"/production-task").param("taskId",task.id().toString()))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isUnauthorized());
+        assertThat(movements.detail(record.id()).productionTaskId()).isNull();
+    }
     @Test void demandCombinesBatchesAndNewTaskStartsImmediately(){
         var task=tasks.create(plan(20000,1,ProductionTask.OutputQuantityBasis.UNIT));
         assertThat(task.status()).isEqualTo(ProductionTask.Status.IN_PROGRESS);
