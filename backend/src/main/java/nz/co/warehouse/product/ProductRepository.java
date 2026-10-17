@@ -20,6 +20,9 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
 
     long countByMergedIntoId(long id);
 
+    @Query("select count(i) from WarehouseStockItem i where i.product.id = :productId")
+    long countWarehouseItems(@Param("productId") long productId);
+
     @Query("select count(i) from MovementItem i where i.product.id = :productId")
     long countMovementItems(@Param("productId") long productId);
 

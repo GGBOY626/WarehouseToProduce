@@ -14,6 +14,10 @@ import java.util.List;
 @Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+    @ExceptionHandler(org.springframework.orm.ObjectOptimisticLockingFailureException.class)
+    ResponseEntity<ApiError> handleStaleUpdate(org.springframework.orm.ObjectOptimisticLockingFailureException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(new ApiError("STALE_RECORD", "资料已被更新，请刷新后重新操作。", List.of()));
+    }
     @ExceptionHandler(org.springframework.http.converter.HttpMessageNotReadableException.class)
     ResponseEntity<ApiError> handleUnreadableRequest(org.springframework.http.converter.HttpMessageNotReadableException ex) {
         return ResponseEntity.badRequest().body(new ApiError("INVALID_REQUEST", "请检查填写内容，箱数和数量必须为范围内的整数。", List.of()));

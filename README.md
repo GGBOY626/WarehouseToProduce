@@ -2,6 +2,8 @@
 
 手机优先的内部物料交接系统。前端为 Vue 3，后端为 Java 21 / Spring Boot，数据库为 MySQL 8。
 
+仓库管理已支持 A–M 排上中下层、过道两排/四排、托盘物料及移位历史。现场录入与接口说明见 [仓库管理指南](docs/warehouse.md)。
+
 ## 本地开发
 
 1. 复制 `.env.example` 为 `.env`，仅本机保存真实密码。
@@ -10,7 +12,7 @@
 4. 前端：进入 `frontend`，运行 `npm install` 和 `npm run dev`。
 5. 打开 `http://localhost:5173`。
 
-Flyway 会执行 `V1__init_schema.sql`。正式环境使用 `ddl-auto=validate`，不要修改已经执行过的 Migration。
+Flyway 会按版本执行 `db/migration` 中尚未应用的迁移，仓库管理使用 `V17__warehouse_inventory.sql`。正式环境使用 `ddl-auto=validate`，不要修改已经执行过的 Migration。
 
 ## 生产部署
 

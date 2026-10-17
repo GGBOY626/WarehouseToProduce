@@ -9,6 +9,7 @@ const router=createRouter({history:createWebHistory(),scrollBehavior:(to)=>(to.p
   {path:'/movements/:id',component:()=>import('../views/MovementDetailView.vue')},
   {path:'/history',redirect:'/'},
   {path:'/products',component:()=>import('../views/ProductView.vue')},
+  {path:'/warehouse',component:()=>import('../views/WarehouseView.vue')},
   {path:'/persons',component:()=>import('../views/PersonView.vue')},
   {path:'/reports',component:()=>import('../views/ReportView.vue')},
   {path:'/production-tasks',component:()=>import('../views/ProductionTaskView.vue')},
