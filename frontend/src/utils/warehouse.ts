@@ -10,5 +10,5 @@ export function nextPosition(pallets:WarehousePallet[],areaId:number,lane:string
 }
 export function filterPallets(pallets:WarehousePallet[],query:string,areaId?:number,lane?:string,unknownOnly=false){
   const q=query.trim().toLocaleLowerCase();
-  return pallets.filter(p=>(!areaId||p.areaId===areaId)&&(!lane||p.lane===lane)&&(!unknownOnly||p.items.some(i=>i.quantity==null))&&(!q||[p.code,p.location,p.notes,...p.items.flatMap(i=>[i.productName,i.materialCode,i.batch])].filter(Boolean).join(' ').toLocaleLowerCase().includes(q)));
+  return pallets.filter(p=>(!areaId||p.areaId===areaId)&&(!lane||p.lane===lane)&&(!unknownOnly||p.items.some(i=>i.quantity==null))&&(!q||[p.code,p.location,p.notes,...p.items.flatMap(i=>[i.productName,i.materialCode,i.rawMaterialBatch,i.batch])].filter(Boolean).join(' ').toLocaleLowerCase().includes(q)));
 }

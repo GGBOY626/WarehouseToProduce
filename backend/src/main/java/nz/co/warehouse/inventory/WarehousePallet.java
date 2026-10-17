@@ -24,9 +24,11 @@ public class WarehousePallet extends PersistentEntity {
     public static class StockItem {
         @Id @GeneratedValue(strategy=GenerationType.IDENTITY) private Long id;
         @ManyToOne(fetch=FetchType.LAZY,optional=false) @JoinColumn(name="pallet_id") private WarehousePallet pallet;
-        @ManyToOne(fetch=FetchType.LAZY,optional=false) @JoinColumn(name="product_id") private Product product;
+        @ManyToOne(fetch=FetchType.LAZY) @JoinColumn(name="product_id") private Product product;
         @Column(name="product_name",nullable=false,length=200) private String productName;
-        @Column(name="material_code",nullable=false,length=100) private String materialCode;
+        @Column(name="material_code",length=100) private String materialCode;
+        @Column(name="raw_material_batch",length=100) private String rawMaterialBatch;
+        @ManyToOne(fetch=FetchType.LAZY) @JoinColumn(name="photo_id") private WarehousePhoto photo;
         @Column(length=100) private String batch;
         @Column(length=20) private String unit;
         private Long quantity;

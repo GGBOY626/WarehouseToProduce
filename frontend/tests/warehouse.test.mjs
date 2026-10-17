@@ -24,3 +24,9 @@ test('batch, product, location and unknown filters combine without mixing locati
   assert.deepEqual(filterPallets(pallets,'TP-1').map(p=>p.id),[1]);
   assert.equal(filterPallets(pallets,'22334',1,'LOWER').length,0);
 });
+test('raw material batch is searchable independently of batch and optional catalog fields',()=>{
+  const manual={id:4,areaId:2,lane:'LEFT_2',position:2,code:'TP-4',location:'A 排旁过道 / 左二 / 02 号',items:[{productId:null,productName:'备用外盒',rawMaterialBatch:'RAW-2026',batch:null,materialCode:null,quantity:null}]};
+  assert.deepEqual(filterPallets([...pallets,manual],'raw-2026').map(p=>p.id),[4]);
+  assert.deepEqual(filterPallets([...pallets,manual],'备用外盒').map(p=>p.id),[4]);
+  assert.deepEqual(filterPallets([...pallets,manual],'RAW-2026',2,'LEFT_2',true).map(p=>p.id),[4]);
+});

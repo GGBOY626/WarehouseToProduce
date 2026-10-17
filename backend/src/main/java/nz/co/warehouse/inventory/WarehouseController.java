@@ -7,6 +7,10 @@ import org.springframework.http.HttpStatus;
 @RestController @RequestMapping("/api/warehouse") @RequiredArgsConstructor
 public class WarehouseController {
     private final WarehouseService service;
+    private final WarehousePhotoService photos;
+    @PostMapping("/photos") public WarehousePhotoService.Response upload(@RequestParam("file") org.springframework.web.multipart.MultipartFile file){return photos.upload(file);}
+    @GetMapping("/photos/{id}/content") public org.springframework.http.ResponseEntity<byte[]> photo(@PathVariable long id){return org.springframework.http.ResponseEntity.ok().contentType(org.springframework.http.MediaType.IMAGE_JPEG).header("X-Content-Type-Options","nosniff").cacheControl(org.springframework.http.CacheControl.maxAge(java.time.Duration.ofDays(30)).cachePublic()).body(photos.content(id));}
+    @DeleteMapping("/photos/{id}") @ResponseStatus(HttpStatus.NO_CONTENT) public void discardPhoto(@PathVariable long id){photos.discard(id);}
     @GetMapping public WarehouseService.Overview overview(){return service.overview();}
     @GetMapping("/history") public WarehouseService.History history(@RequestParam(required=false) Long palletId,@RequestParam(defaultValue="0") int page){return service.history(palletId,page);}
     @PostMapping("/aisles") public WarehouseService.AreaResponse createAisle(@Valid @RequestBody WarehouseService.AreaRequest r){return service.createAisle(r);}
