@@ -2,8 +2,9 @@
 import { computed, nextTick, onMounted, ref } from "vue";
 import { productsApi } from "../api";
 import { errorMessage } from "../api/http";
-import type { Product, ProductUsage } from "../types";
+import type { Product, ProductUsage, BoxPacking } from "../types";
 import { availableCartonSpecs } from "../utils/cartonSpecs";
+import { packingError } from "../utils/boxPacking";
 import { useAuth } from "../auth";
 const { authenticated } = useAuth();
 const rows = ref<Product[]>([]),
@@ -22,6 +23,7 @@ const rows = ref<Product[]>([]),
 const loading=ref(false), saving=ref(false), busyId=ref<number>(), success=ref('');
 let requestId=0;
 const cartonSpecsText = ref("");
+const boxPackings=ref<BoxPacking[]>([]);
 const batchesText = ref("");
 const selectedDirection = ref<ProductUsage | "">("WAREHOUSE_TO_PRODUCTION");
 const visibleRows = computed(() => rows.value.filter(p => (p.movementDirection || "") === selectedDirection.value));
@@ -39,7 +41,8 @@ function open(p?: Product) {
   showEditor.value = true;
   editing.value = p;
   batchesText.value = (p?.materialBatches || (p?.materialBatch ? [p.materialBatch] : [])).join("\n");
-  cartonSpecsText.value = availableCartonSpecs(p).join("、");
+  boxPackings.value=(p?.boxPackings||[]).map(x=>({...x}));
+  cartonSpecsText.value = [p?.defaultUnitsPerCarton,...(p?.cartonSpecs||[])].filter((n):n is number=>n!=null).filter(n=>!boxPackings.value.some(x=>x.boxesPerCarton*x.unitsPerBox===n)).filter((n,i,a)=>a.indexOf(n)===i).join("、");
   form.value = p
     ? {
         name: p.name,
@@ -76,8 +79,10 @@ async function save() {
     if (cartonSpecs.length > 50 || cartonSpecs.some(n => !Number.isInteger(n) || n <= 0 || n > 2147483647)) {
       message.value = "常用规格最多 50 项，请输入正整数，用逗号或空格分隔。"; return;
     }
+    if(boxPackings.value.length>50){message.value='包装规格最多 50 项。';return;}
+    for(const packing of boxPackings.value){const error=packingError(packing,form.value.baseUnit);if(error){message.value=error;return;}}
     saving.value=true;
-    const payload = { ...form.value, materialBatches: batchesText.value.split(/\r?\n/).map(s => s.trim()).filter(Boolean), defaultUnitsPerCarton: !form.value.quantityUnknown && new Set(cartonSpecs).size === 1 ? cartonSpecs[0] : null, cartonSpecs: [...new Set(cartonSpecs)] };
+    const payload = { ...form.value, boxPackings:boxPackings.value, materialBatches: batchesText.value.split(/\r?\n/).map(s => s.trim()).filter(Boolean), defaultUnitsPerCarton: !form.value.quantityUnknown && new Set(cartonSpecs).size === 1 ? cartonSpecs[0] : null, cartonSpecs: [...new Set(cartonSpecs)] };
     if (editing.value) await productsApi.update(editing.value.id, payload);
     else await productsApi.create(payload);
     showEditor.value = false;
@@ -149,7 +154,7 @@ onMounted(load);
         <small class="hint">该产品只会出现在对应方向的产品搜索中。</small>
       </div>
       <div class="grid-2">
-        <div class="field">
+        <div v-if="form.movementDirection!=='PRODUCTION_TO_WAREHOUSE'" class="field">
           <label for="carton-specs">默认每箱数量（可设置多个）</label>
           <input id="carton-specs" class="input" v-model="cartonSpecsText" placeholder="例如 500、1000、1800" />
           <small class="hint">用逗号、顿号或空格分隔。只有一种时自动带入；多种时，出入库须选择本次使用的规格。</small>
@@ -164,6 +169,16 @@ onMounted(load);
           />
         </div>
       </div>
+      <section v-if="form.movementDirection==='PRODUCTION_TO_WAREHOUSE'" class="stack">
+        <strong>默认包装规格</strong>
+        <div v-for="(packing,index) in boxPackings" :key="index" class="packing-preset">
+          <div class="grid-2"><div class="field"><label :for="`boxes-${index}`">每箱装几盒</label><input :id="`boxes-${index}`" class="input" type="number" min="1" step="1" inputmode="numeric" v-model.number="packing.boxesPerCarton" placeholder="例如 28" /></div><div class="field"><label :for="`units-${index}`">每盒装几{{form.baseUnit||'个'}}</label><input :id="`units-${index}`" class="input" type="number" min="1" step="1" inputmode="numeric" v-model.number="packing.unitsPerBox" placeholder="例如 30" /></div></div>
+          <div class="row"><span class="hint">{{packingError(packing,form.baseUnit)||`${packing.boxesPerCarton} 盒 × ${packing.unitsPerBox} ${form.baseUnit}/盒 = ${(packing.boxesPerCarton*packing.unitsPerBox).toLocaleString()} ${form.baseUnit}/箱`}}</span><button class="btn btn-ghost" @click="boxPackings.splice(index,1)">移除规格</button></div>
+        </div>
+        <button class="btn btn-secondary" @click="boxPackings.push({boxesPerCarton:0,unitsPerBox:0})">＋ 添加包装规格</button>
+        <p class="hint">只有一种规格时自动带入回仓记录；多种规格需选择。尾箱直接填写实际盒数。基础单位填“条”时，例如 28 盒 × 30 条 = 840 条。</p>
+        <div v-if="cartonSpecsText" class="field"><label for="legacy-carton-specs">原每箱总数（待补录包装层级）</label><input id="legacy-carton-specs" class="input" v-model="cartonSpecsText" /><small class="hint">无法从总数反推盒数。补录上方规格后，请清除对应旧总数；不会修改历史流转数量。</small></div>
+      </section>
       <label class="unknown-quantity">
         <input type="checkbox" v-model="form.quantityUnknown" @change="quantityTypeChanged" />
         该产品数量不确定（无固定计量单位或无法清点）
@@ -187,6 +202,7 @@ onMounted(load);
         <component :is="authenticated ? 'button' : 'div'" class="product-main" :type="authenticated ? 'button' : undefined" :aria-label="authenticated ? `编辑 ${p.name}` : undefined" @click="authenticated && open(p)">
           <div class="product-title"><strong>{{p.name}}</strong><span class="status neutral">{{p.active ? '启用' : '停用'}}</span></div>
           <span class="material-code">编码 {{p.materialCode}}</span>
+          <span v-if="p.boxPackings?.length" class="product-spec">{{p.boxPackings.map(x=>`${x.boxesPerCarton} 盒/箱 × ${x.unitsPerBox} ${p.baseUnit}/盒`).join('；')}}</span>
           <span class="product-spec">{{ availableCartonSpecs(p).length ? `${availableCartonSpecs(p).join(' / ')} ${p.baseUnit || '个'}/箱` : '未设置箱规' }}<template v-if="p.quantityUnknown"> · 数量不确定</template></span>
           <span v-if="p.duplicateName" class="duplicate-warning">同名产品，请核对编码</span><span v-if="!p.movementDirection" class="duplicate-warning">未分类，请编辑</span>
         </component>

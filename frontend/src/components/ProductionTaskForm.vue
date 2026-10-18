@@ -3,6 +3,7 @@ import { computed, ref } from "vue";
 import { productionTasksApi, productsApi } from "../api";
 import { errorMessage } from "../api/http";
 import type { Product, ProductionTask } from "../types";
+import { initialBoxPacking } from "../utils/boxPacking";
 import { today } from "../utils/time";
 import SearchPicker from "./SearchPicker.vue";
 const props = defineProps<{ task?: ProductionTask }>();
@@ -33,6 +34,8 @@ function selectMaterial(target: ReturnType<typeof newTarget>, p?: Product) {
 function selectOutput(p?: Product) {
   outputUnit.value = p?.baseUnit || "";
   quantityBasis.value = p?.baseUnit === '盒' ? 'BOX' : 'UNIT';
+  const packing=initialBoxPacking(p);
+  boxesPerCarton.value=packing?.boxesPerCarton;unitsPerBox.value=packing?.unitsPerBox;
 }
 async function loadOutputs(q: string): Promise<Product[]> {
   return (await productsApi.search(q, !!props.task, 'PRODUCTION_TO_WAREHOUSE')).filter(p => !p.quantityUnknown && (p.active || p.id === props.task?.output?.productId));

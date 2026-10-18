@@ -74,6 +74,16 @@ public class ProductService {
                 throw BusinessException.badRequest("CARTON_SPECS_INVALID", "常用箱规最多 50 项，每箱数量必须为正整数。");
             p.getCartonSpecs().clear();p.getCartonSpecs().addAll(r.cartonSpecs());
         }
+        if(r.boxPackings()!=null){
+            if(r.boxPackings().size()>50)throw BusinessException.badRequest("BOX_PACKING_INVALID","包装规格最多 50 项。");
+            for(var packing:r.boxPackings()){
+                if(packing==null||packing.getBoxesPerCarton()==null||packing.getUnitsPerBox()==null||packing.getBoxesPerCarton()<=0||packing.getUnitsPerBox()<=0)
+                    throw BusinessException.badRequest("BOX_PACKING_INVALID","请填写有效的每箱盒数和每盒数量。");
+                try{packing.cartonUnits();}catch(ArithmeticException ex){throw BusinessException.badRequest("BOX_PACKING_INVALID","每箱数量超出可保存范围。");}
+                if("盒".equals(r.baseUnit())&&packing.getUnitsPerBox()!=1)throw BusinessException.badRequest("BOX_PACKING_INVALID","按盒计量时，每盒基础数量应为 1；按条计量请将基础单位设为条。");
+            }
+            p.getBoxPackings().clear();p.getBoxPackings().addAll(r.boxPackings());
+        }
         if(r.materialBatches()!=null) for(String batch:r.materialBatches()) rememberBatch(p,batch);
         rememberBatch(p,r.materialBatch());
         p.setName(name);p.setMaterialCode(materialCode);p.setMaterialBatch(blankToNull(r.materialBatch()));p.setMovementDirection(r.movementDirection());p.setQuantityUnknown(r.quantityUnknown());p.setDefaultUnitsPerCarton(r.quantityUnknown()?null:r.defaultUnitsPerCarton());p.setBaseUnit(r.quantityUnknown()?null:r.baseUnit().trim());

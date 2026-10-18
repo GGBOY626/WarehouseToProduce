@@ -7,6 +7,7 @@ import type { MovementDetail } from "../types";
 import { directionLabel, issueLabels } from "../utils/labels";
 import { showDateTime, nowLocalInput } from "../utils/time";
 import { createUuid } from "../utils/uuid";
+import { initialBoxPacking } from "../utils/boxPacking";
 import { initialCartonSpec } from "../utils/cartonSpecs";
 import { preparePhoto } from "../utils/photo";
 import { useAuth } from "../auth";
@@ -86,12 +87,15 @@ async function duplicate() {
       returnMovement: m.returnMovement,
       remarks: "",
       items: m.items.map((x) => ({
+        boxesPerCarton: initialBoxPacking(catalog.find(p=>p.id===x.productId))?.boxesPerCarton,
+        unitsPerBox: initialBoxPacking(catalog.find(p=>p.id===x.productId))?.unitsPerBox,
         productId: x.productId,
         product: {
           id: x.productId,
           name: x.productName,
           materialCode: x.batchNo,
           defaultUnitsPerCarton: catalog.find(p => p.id === x.productId)?.defaultUnitsPerCarton,
+          boxPackings: catalog.find(p=>p.id===x.productId)?.boxPackings,
           cartonSpecs: catalog.find(p => p.id === x.productId)?.cartonSpecs,
           materialBatches: catalog.find(p => p.id === x.productId)?.materialBatches,
           baseUnit: x.baseUnit,
@@ -193,6 +197,7 @@ onMounted(()=>void load());
             >
           </div>
           <div class="detail-packing">
+            <p v-if="item.boxesPerCarton&&item.unitsPerBox">{{item.boxesPerCarton}} 盒/箱 × {{item.unitsPerBox}} {{item.baseUnit}}/盒<template v-if="item.tailCartons&&item.tailUnitsPerCarton!=null"> · 尾箱 {{item.tailUnitsPerCarton/item.unitsPerBox}} 盒/箱</template></p>
             <p v-if="item.tailCartons">{{item.fullCartons}} 满箱 + {{item.tailCartons}} 尾箱</p>
             <PackagingBreakdown :base-unit="item.baseUnit" :packaging="[
               ...(item.fullCartons ? [{type:'FULL' as const, unitsPerCarton:item.unitsPerCarton ?? null, cartons:item.fullCartons}] : []),

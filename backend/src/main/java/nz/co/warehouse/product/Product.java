@@ -33,8 +33,13 @@ public class Product extends PersistentEntity {
     @Column(name="units_per_carton",nullable=false)
     @org.hibernate.annotations.BatchSize(size=100)
     private java.util.Set<Integer> cartonSpecs = new java.util.TreeSet<>();
+    @ElementCollection
+    @CollectionTable(name="product_box_packing",joinColumns=@JoinColumn(name="product_id"))
+    @org.hibernate.annotations.BatchSize(size=100)
+    private java.util.Set<BoxPacking> boxPackings = new java.util.LinkedHashSet<>();
     public java.util.Set<Integer> availableCartonSpecs() {
         var specs = new java.util.TreeSet<>(getCartonSpecs());
+        getBoxPackings().forEach(p -> specs.add(p.cartonUnits()));
         if (getDefaultUnitsPerCarton() != null) specs.add(getDefaultUnitsPerCarton());
         return specs;
     }

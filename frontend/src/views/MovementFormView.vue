@@ -12,6 +12,7 @@ import type {
   ItemInput,
   MovementDraft,
   Product,
+  BoxPacking,
   ProductionTaskOption,
   ProductionTask,
 } from "../types";
@@ -20,6 +21,7 @@ import { nowLocalInput, toInstant, toLocalInput } from "../utils/time";
 import { createUuid } from "../utils/uuid";
 import { calculateQuantity, quantityError, cartonCount } from "../utils/quantity";
 import { availableCartonSpecs, initialCartonSpec } from "../utils/cartonSpecs";
+import { initialBoxPacking, applyBoxPacking, syncBoxQuantity } from "../utils/boxPacking";
 import { taskCartonUnits, unitsForBoxes, boxesForUnits } from "../utils/taskPackaging";
 import { preparePhoto } from "../utils/photo";
 const route = useRoute(),
@@ -106,6 +108,7 @@ async function loadTaskPreview() {
       selectedTask.value = task;
       if (direction.value === 'PRODUCTION_TO_WAREHOUSE' && !draft.value.returnMovement && task.output?.boxesPerCarton && task.output.unitsPerBox) {
         for (const item of draft.value.items) if (!item.id && item.productId === task.output.productId) {
+          applyBoxPacking(item);
           item.unitsPerCarton = taskCartonUnits(task.output);
           quantityChanged(item);
         }
@@ -120,11 +123,13 @@ function taskPacking(item: ItemInput) {
 }
 function tailBoxes(item: ItemInput) {
   const packing = taskPacking(item);
+  if(!packing && item.unitsPerBox!=null)return item.tailBoxesPerCarton;
   return item.tailUnitsPerCarton == null ? undefined : packing ? boxesForUnits(packing, item.tailUnitsPerCarton) : item.tailUnitsPerCarton;
 }
 function setTailBoxes(item: ItemInput, event: Event) {
   const value = (event.target as HTMLInputElement).value;
   const packing = taskPacking(item);
+  if(!packing && item.unitsPerBox!=null){item.tailBoxesPerCarton=value===''?null:Number(value);quantityChanged(item);return;}
   item.tailUnitsPerCarton = value === '' ? null : packing ? unitsForBoxes(packing, Number(value)) : Number(value);
   quantityChanged(item);
 }
@@ -140,9 +145,15 @@ const calculate = calculateQuantity;
 function commonSpecs(item: ItemInput) {
   return availableCartonSpecs(item.product);
 }
+function boxed(item: ItemInput) {return !taskPacking(item)&&(item.boxesPerCarton!=null||item.unitsPerBox!=null)}
+function choosePacking(item: ItemInput, packing: BoxPacking){applyBoxPacking(item,packing);quantityChanged(item)}
+function chooseLegacy(item: ItemInput,size:number){applyBoxPacking(item);item.unitsPerCarton=size;quantityChanged(item)}
+function legacySpecs(item: ItemInput){return commonSpecs(item).filter(n=>!item.product?.boxPackings?.some(p=>p.boxesPerCarton*p.unitsPerBox===n))}
 function addSpecification(item: ItemInput) {
   const packing=taskPacking(item);
   draft.value.items.push({ ...blankItem(), productId: item.productId, product: item.product, batchNo: item.batchNo, materialBatch: item.materialBatch, subBatch: item.subBatch, unitsPerCarton: packing ? taskCartonUnits(packing) : initialCartonSpec(item.product) ?? null, quantityUnknown: item.quantityUnknown });
+  const added=draft.value.items[draft.value.items.length-1]!;
+  if(!packing)applyBoxPacking(added,initialBoxPacking(item.product));
 }
 function displayedTotal(item: ItemInput) {
   if (item.quantityUnknown) return undefined;
@@ -154,15 +165,17 @@ function selectProduct(item: ItemInput, p?: Product) {
   item.unitsPerCarton = initialCartonSpec(p) ?? null;
   item.product = p;
   item.productId = p?.id;
+  applyBoxPacking(item,initialBoxPacking(p));
   item.batchNo = p?.materialCode || "";
   const batches = p?.materialBatches || (p?.materialBatch ? [p.materialBatch] : []);
   item.materialBatch = batches.length === 1 ? batches[0] : "";
   item.manualTotal = false;
   item.quantityUnknown = !!p?.quantityUnknown;
 
-  item.totalUnits = calculate(item);
+  quantityChanged(item);
 }
 function quantityChanged(item: ItemInput) {
+  if(!taskPacking(item))syncBoxQuantity(item);
   if (!item.manualTotal) item.totalUnits = calculate(item);
 }
 function toggleUnknownQuantity(item: ItemInput) {
@@ -236,6 +249,9 @@ function payload() {
     items: draft.value.items.map((x) => ({
       id: x.id,
       productId: x.productId,
+      boxesPerCarton: taskPacking(x)?null:x.boxesPerCarton,
+      unitsPerBox: taskPacking(x)?null:x.unitsPerBox,
+      tailBoxesPerCarton: !taskPacking(x)&&boxed(x)&&x.tailCartons>0?x.tailBoxesPerCarton:null,
       unitsPerCarton: x.unitsPerCarton || null,
       tailCartons: Number(x.tailCartons) || 0,
       tailUnitsPerCarton: x.tailCartons > 0 ? Number(x.tailUnitsPerCarton) : null,
@@ -337,6 +353,9 @@ onMounted(async () => {
       remarks: m.remarks || "",
       items: m.items.map((x) => ({
         id: x.id,
+        boxesPerCarton:x.boxesPerCarton,
+        unitsPerBox:x.unitsPerBox,
+        tailBoxesPerCarton:x.unitsPerBox&&x.tailUnitsPerCarton!=null?x.tailUnitsPerCarton/x.unitsPerBox:null,
         unitsPerCarton: x.unitsPerCarton ?? null,
         tailCartons: x.tailCartons || 0,
         tailUnitsPerCarton: x.tailUnitsPerCarton,
@@ -347,6 +366,7 @@ onMounted(async () => {
           materialCode: x.batchNo,
           defaultUnitsPerCarton: x.unitsPerCarton,
           materialBatches: catalog.find(p => p.id === x.productId)?.materialBatches,
+          boxPackings: catalog.find(p=>p.id===x.productId)?.boxPackings,
           cartonSpecs: catalog.find(p => p.id === x.productId)?.cartonSpecs,
           baseUnit: x.baseUnit,
           quantityUnknown: false,
@@ -388,6 +408,7 @@ onMounted(async () => {
       if (current && item.product) {
         item.product.materialBatches = current.materialBatches;
         item.product.cartonSpecs = current.cartonSpecs;
+        item.product.boxPackings = current.boxPackings;
         item.product.defaultUnitsPerCarton = current.defaultUnitsPerCarton;
       }
     }
@@ -492,18 +513,22 @@ onBeforeUnmount(() => {
           </div>
           <div class="packing-fields">
             <p v-if="taskPacking(item)" class="hint">任务包装：{{ taskPacking(item)!.boxesPerCarton }} 盒/箱 × {{ taskPacking(item)!.unitsPerBox }} {{ taskPacking(item)!.primaryMaterialUnit }}/盒。尾箱可填写实际盒数。</p>
+            <div v-if="boxed(item)" class="grid-2"><div class="field"><label :for="`box-count-${index}`">每箱装几盒</label><input :id="`box-count-${index}`" class="input" type="number" min="1" step="1" inputmode="numeric" v-model.number="item.boxesPerCarton" @input="quantityChanged(item)" /></div><div class="field"><label :for="`box-units-${index}`">每盒装几{{item.product?.baseUnit||'个'}}</label><input :id="`box-units-${index}`" class="input" type="number" min="1" step="1" inputmode="numeric" v-model.number="item.unitsPerBox" @input="quantityChanged(item)" /></div></div>
             <div class="grid-2">
-              <div class="field"><label :for="`size-${index}`" :class="{required:item.fullCartons > 0 && commonSpecs(item).length > 1}">完整箱每箱数量</label><input :id="`size-${index}`" class="input mono" type="number" min="1" step="1" inputmode="numeric" v-model.number="item.unitsPerCarton" :readonly="!!taskPacking(item)" @input="quantityChanged(item)" placeholder="选择下方规格或输入每箱数量" /><small v-if="!taskPacking(item) && commonSpecs(item).length > 1" class="hint">有多种每箱数量，请选择本次完整箱规格；仅尾箱或散装可留空。</small></div>
+              <div class="field"><label :for="`size-${index}`" :class="{required:item.fullCartons > 0 && commonSpecs(item).length > 1}">{{boxed(item)?'每箱数量（自动计算）':'完整箱每箱数量'}}</label><input :id="`size-${index}`" class="input mono" type="number" min="1" step="1" inputmode="numeric" v-model.number="item.unitsPerCarton" :readonly="!!taskPacking(item)||boxed(item)" @input="quantityChanged(item)" placeholder="选择下方规格或输入每箱数量" /><small v-if="!taskPacking(item) && commonSpecs(item).length > 1" class="hint">有多种每箱数量，请选择本次完整箱规格；仅尾箱或散装可留空。</small></div>
               <div class="field"><label :for="`full-${index}`">完整箱数</label><input :id="`full-${index}`" class="input mono" type="number" min="0" step="1" inputmode="numeric" v-model.number="item.fullCartons" @input="quantityChanged(item)" /></div>
             </div>
-            <div v-if="!taskPacking(item) && commonSpecs(item).length" class="spec-options" aria-label="选择每箱数量">
-              <small class="hint">预设规格</small><button v-for="size in commonSpecs(item)" :key="size" type="button" :class="{active:item.unitsPerCarton===size}" :aria-pressed="item.unitsPerCarton===size" @click="item.unitsPerCarton=size;quantityChanged(item)">{{size}} {{item.product?.baseUnit || '个'}}/箱</button>
+            <div v-if="!taskPacking(item) && item.product?.boxPackings?.length" class="spec-options" aria-label="选择包装规格"><button v-for="packing in item.product.boxPackings" :key="`${packing.boxesPerCarton}/${packing.unitsPerBox}`" type="button" :aria-pressed="item.boxesPerCarton===packing.boxesPerCarton&&item.unitsPerBox===packing.unitsPerBox" :class="{active:item.boxesPerCarton===packing.boxesPerCarton&&item.unitsPerBox===packing.unitsPerBox}" @click="choosePacking(item,packing)">{{packing.boxesPerCarton}} 盒 × {{packing.unitsPerBox}} {{item.product.baseUnit}}/盒</button></div>
+            <button v-if="productUsage==='PRODUCTION_TO_WAREHOUSE'&&!taskPacking(item)&&!boxed(item)" type="button" class="btn btn-ghost" @click="choosePacking(item,{boxesPerCarton:0,unitsPerBox:0})">填写每箱盒数 / 每盒数量</button>
+            <p v-if="productUsage==='PRODUCTION_TO_WAREHOUSE'&&!taskPacking(item)&&!boxed(item)" class="hint">旧规格只有总数，补录盒数与每盒数量后，尾箱即可按盒计算。</p>
+            <div v-if="!taskPacking(item) && legacySpecs(item).length" class="spec-options" aria-label="选择每箱数量">
+              <small class="hint">预设规格</small><button v-for="size in legacySpecs(item)" :key="size" type="button" :class="{active:item.unitsPerCarton===size}" :aria-pressed="item.unitsPerCarton===size" @click="chooseLegacy(item,size)">{{size}} {{item.product?.baseUnit || '个'}}/箱</button>
             </div>
             <details :open="item.tailCartons>0 || item.looseUnits>0" class="optional-packing">
               <summary>尾箱 / 真正散装（可选）</summary>
               <div class="grid-2">
                 <div class="field"><label :for="`tail-${index}`">尾箱箱数</label><input :id="`tail-${index}`" class="input mono" type="number" min="0" step="1" inputmode="numeric" v-model.number="item.tailCartons" @input="quantityChanged(item)" /></div>
-                <div v-if="taskPacking(item)" class="field"><label :for="`tail-boxes-${index}`">每个尾箱实际盒数</label><input :id="`tail-boxes-${index}`" class="input mono" type="number" min="1" step="1" :value="tailBoxes(item)" @input="setTailBoxes(item, $event)" placeholder="例如 3 盒" /><small class="hint">实际 {{ item.tailUnitsPerCarton || 0 }} {{ item.product?.baseUnit }} / 尾箱</small></div>
+                <div v-if="taskPacking(item)||boxed(item)" class="field"><label :for="`tail-boxes-${index}`">每个尾箱实际盒数</label><input :id="`tail-boxes-${index}`" class="input mono" type="number" min="1" step="1" :value="tailBoxes(item)" @input="setTailBoxes(item, $event)" placeholder="例如 12 盒" /><small class="hint">实际 {{ item.tailUnitsPerCarton || 0 }} {{ item.product?.baseUnit }} / 尾箱</small></div>
                 <div v-else class="field"><label :for="`tail-size-${index}`">每个尾箱实际数量</label><input :id="`tail-size-${index}`" class="input mono" type="number" min="1" step="1" inputmode="numeric" v-model.number="item.tailUnitsPerCarton" @input="quantityChanged(item)" placeholder="例如 3" /></div>
               </div>
               <small class="hint">尾箱计入总箱数。尾箱数量不同时，点击“添加同物料规格 / 批次”分开填写。</small>

@@ -1,6 +1,7 @@
 package nz.co.warehouse.product;
 
 import jakarta.validation.constraints.*;
+import jakarta.validation.Valid;
 import java.time.Instant;
 
 public final class ProductDtos {
@@ -11,7 +12,10 @@ public final class ProductDtos {
                           @NotNull ProductUsage movementDirection,
                           @Positive Integer defaultUnitsPerCarton,
                           @Size(max=20) String baseUnit,
-                          boolean quantityUnknown, java.util.List<@NotNull @Positive Integer> cartonSpecs, java.util.List<@NotBlank @Size(max=100) String> materialBatches) {
+                          boolean quantityUnknown, java.util.List<@NotNull @Positive Integer> cartonSpecs, java.util.List<@NotBlank @Size(max=100) String> materialBatches, java.util.List<@Valid BoxPacking> boxPackings) {
+        public Request(String name,String materialCode,String materialBatch,ProductUsage movementDirection,Integer defaultUnitsPerCarton,String baseUnit,boolean quantityUnknown,java.util.List<Integer> cartonSpecs,java.util.List<String> materialBatches){
+            this(name,materialCode,materialBatch,movementDirection,defaultUnitsPerCarton,baseUnit,quantityUnknown,cartonSpecs,materialBatches,null);
+        }
         public Request(String name,String materialCode,String materialBatch,ProductUsage movementDirection,Integer defaultUnitsPerCarton,String baseUnit,boolean quantityUnknown,java.util.List<Integer> cartonSpecs){
             this(name,materialCode,materialBatch,movementDirection,defaultUnitsPerCarton,baseUnit,quantityUnknown,cartonSpecs,null);
         }
@@ -23,8 +27,8 @@ public final class ProductDtos {
         }
     }
     public record Response(Long id, String name, String materialCode, String materialBatch, Integer defaultUnitsPerCarton,
-                           String baseUnit, boolean quantityUnknown, ProductUsage movementDirection, boolean active, boolean duplicateName, Instant createdAt, Instant updatedAt, java.util.List<Integer> cartonSpecs, java.util.List<String> materialBatches) {
+                           String baseUnit, boolean quantityUnknown, ProductUsage movementDirection, boolean active, boolean duplicateName, Instant createdAt, Instant updatedAt, java.util.List<Integer> cartonSpecs, java.util.List<String> materialBatches, java.util.List<BoxPacking> boxPackings) {
         static Response from(Product p) { return from(p, false); }
-        static Response from(Product p, boolean duplicateName) { return new Response(p.getId(), p.getName(), p.getMaterialCode(), p.getMaterialBatch(), p.getDefaultUnitsPerCarton(), p.getBaseUnit(), p.isQuantityUnknown(), p.getMovementDirection(), p.isActive(), duplicateName, p.getCreatedAt(), p.getUpdatedAt(), p.getCartonSpecs().stream().sorted().toList(),p.availableBatches().stream().toList()); }
+        static Response from(Product p, boolean duplicateName) { return new Response(p.getId(), p.getName(), p.getMaterialCode(), p.getMaterialBatch(), p.getDefaultUnitsPerCarton(), p.getBaseUnit(), p.isQuantityUnknown(), p.getMovementDirection(), p.isActive(), duplicateName, p.getCreatedAt(), p.getUpdatedAt(), p.getCartonSpecs().stream().sorted().toList(),p.availableBatches().stream().toList(),p.getBoxPackings().stream().sorted(java.util.Comparator.comparing(BoxPacking::getBoxesPerCarton).thenComparing(BoxPacking::getUnitsPerBox)).toList()); }
     }
 }

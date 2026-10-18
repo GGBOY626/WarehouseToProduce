@@ -190,26 +190,51 @@ public class MovementService {
 
     private MovementItem buildItem(MovementDtos.ItemRequest r,int order,boolean allowInactive,ProductUsage expectedUsage,MovementItem original){
         Product p=products.getForMovement(r.productId(),expectedUsage,allowInactive);
+        Integer packedUnits=null;
+        Long tailUnits=r.tailUnitsPerCarton();
+        boolean boxed=r.boxesPerCarton()!=null||r.unitsPerBox()!=null;
+        if(boxed){
+            if(r.boxesPerCarton()==null||r.unitsPerBox()==null||r.boxesPerCarton()<=0||r.unitsPerBox()<=0)
+                throw BusinessException.badRequest("BOX_PACKING_INVALID","请填写每箱盒数和每盒数量。");
+            if("盒".equals(original==null?p.getBaseUnit():original.getBaseUnitSnapshot())&&r.unitsPerBox()!=1)
+                throw BusinessException.badRequest("BOX_PACKING_INVALID","按盒计量时，每盒基础数量应为 1。");
+            try{packedUnits=Math.multiplyExact(r.boxesPerCarton(),r.unitsPerBox());}
+            catch(ArithmeticException ex){throw BusinessException.badRequest("QUANTITY_OVERFLOW","每箱数量超出可保存范围。");}
+            if(r.unitsPerCarton()!=null&&!Objects.equals(r.unitsPerCarton(),packedUnits))throw BusinessException.badRequest("BOX_PACKING_INVALID","每箱总数量与包装换算不一致。");
+            if(r.tailCartons()>0){
+                if(r.tailBoxesPerCarton()==null||r.tailBoxesPerCarton()<=0)throw BusinessException.badRequest("BOX_PACKING_INVALID","请填写每个尾箱实际盒数。");
+                tailUnits=(long)r.tailBoxesPerCarton()*r.unitsPerBox();
+                if(r.tailUnitsPerCarton()!=null&&!Objects.equals(tailUnits,r.tailUnitsPerCarton()))throw BusinessException.badRequest("BOX_PACKING_INVALID","尾箱数量与盒数换算不一致。");
+            }
+        }
+        if(r.tailBoxesPerCarton()!=null&&(!boxed||r.tailCartons()==0))throw BusinessException.badRequest("BOX_PACKING_INVALID","尾箱盒数需要完整包装规格和尾箱箱数。");
         var specs=p.availableCartonSpecs();
-        if(original==null&&r.fullCartons()>0&&r.unitsPerCarton()==null&&specs.size()>1)
+        if(original==null&&r.fullCartons()>0&&packedUnits==null&&r.unitsPerCarton()==null&&specs.size()>1)
             throw BusinessException.badRequest("CARTON_SPEC_REQUIRED","该产品有多种每箱数量，请选择本次完整箱规格。");
-        Integer unitsPerCarton=r.unitsPerCarton()!=null?r.unitsPerCarton():original!=null?original.getUnitsPerCartonSnapshot():specs.size()==1?specs.iterator().next():null;
+        Integer unitsPerCarton=packedUnits!=null?packedUnits:r.unitsPerCarton()!=null?r.unitsPerCarton():original!=null?original.getUnitsPerCartonSnapshot():specs.size()==1?specs.iterator().next():null;
         MovementItem i=new MovementItem();i.setProduct(p);i.setProductNameSnapshot(original==null?p.getName():original.getProductNameSnapshot());i.setSkuSnapshot(original==null?null:original.getSkuSnapshot());i.setUnitsPerCartonSnapshot(unitsPerCarton);i.setBatchNo(r.batchNo().trim());i.setSortOrder(order);i.setRemarks(blank(r.remarks()));
+        i.setBoxesPerCartonSnapshot(r.boxesPerCarton());i.setUnitsPerBoxSnapshot(r.unitsPerBox());
+        // Older clients may omit the factors when editing notes/counts. Keep the
+        // snapshot only when their quantities still match that original packing.
+        if(!boxed&&original!=null&&original.getUnitsPerBoxSnapshot()!=null&&Objects.equals(unitsPerCarton,original.getUnitsPerCartonSnapshot())&&
+                (tailUnits==null||tailUnits%original.getUnitsPerBoxSnapshot()==0)){
+            i.setBoxesPerCartonSnapshot(original.getBoxesPerCartonSnapshot());i.setUnitsPerBoxSnapshot(original.getUnitsPerBoxSnapshot());
+        }
         String subBatch=r.subBatch()==null&&original!=null?original.getSubBatch():blank(r.subBatch());
         if(subBatch!=null&&subBatch.length()>100)throw BusinessException.badRequest("SUB_BATCH_INVALID","区分批次最多填写 100 个字符。");
         i.setSubBatch(subBatch);
         boolean quantityUnknown=(original==null&&p.isQuantityUnknown())||r.quantityUnknown();
         if(r.fullCartons()<0||r.tailCartons()<0||r.looseUnits()<0||(r.unitsPerCarton()!=null&&r.unitsPerCarton()<=0)||(r.totalUnits()!=null&&r.totalUnits()<0))
             throw BusinessException.badRequest("QUANTITY_INVALID","箱数和数量不能为负数，每箱数量必须为正整数。");
-        if((r.tailCartons()>0&&(r.tailUnitsPerCarton()==null||r.tailUnitsPerCarton()<=0))||(r.tailCartons()==0&&r.tailUnitsPerCarton()!=null))
+        if((r.tailCartons()>0&&(tailUnits==null||tailUnits<=0))||(r.tailCartons()==0&&tailUnits!=null))
             throw BusinessException.badRequest("TAIL_QUANTITY_INVALID","有尾箱时请填写尾箱箱数及每箱实际数量；没有尾箱时请清空尾箱数量。");
-        i.setTailCartons(r.tailCartons());i.setTailUnitsPerCarton(r.tailUnitsPerCarton());
+        i.setTailCartons(r.tailCartons());i.setTailUnitsPerCarton(tailUnits);
         if(!quantityUnknown&&r.tailCartons()==0&&!QuantityRules.hasQuantity(r.fullCartons(),r.looseUnits(),r.totalUnits()))throw BusinessException.badRequest("QUANTITY_REQUIRED","每个产品至少填写一种数量，或选择数量不确定。");
         i.setBaseUnitSnapshot(original==null?(p.getBaseUnit()==null?"—":p.getBaseUnit()):original.getBaseUnitSnapshot());i.setFullCartons(r.fullCartons());i.setLooseUnits(r.looseUnits());
         Long calculated;
         try {
             i.getTotalCartons();
-            calculated=QuantityRules.calculate(i.getUnitsPerCartonSnapshot(),r.fullCartons(),r.tailCartons(),r.tailUnitsPerCarton(),r.looseUnits());
+            calculated=QuantityRules.calculate(i.getUnitsPerCartonSnapshot(),r.fullCartons(),r.tailCartons(),tailUnits,r.looseUnits());
         } catch(ArithmeticException ex){throw BusinessException.badRequest("QUANTITY_OVERFLOW","数量超出可保存范围。");}
         if(quantityUnknown)calculated=null;
         i.setCalculatedTotalUnits(calculated);i.setTotalUnits(quantityUnknown?null:(r.totalUnits()!=null?r.totalUnits():calculated));i.setTotalUnitsOverridden(!quantityUnknown&&i.getTotalUnits()!=null&&!Objects.equals(i.getTotalUnits(),calculated));i.setQuantityUnknown(quantityUnknown);

@@ -1,4 +1,5 @@
 import type { ItemInput } from '../types';
+import { packingError } from './boxPacking.ts';
 import { availableCartonSpecs } from './cartonSpecs.ts';
 
 export function cartonCount(item: Pick<ItemInput, 'fullCartons' | 'tailCartons'>) {
@@ -12,6 +13,11 @@ export function calculateQuantity(item: ItemInput): number | undefined {
   return full * Number(item.unitsPerCarton || 0) + tail * Number(item.tailUnitsPerCarton || 0) + Number(item.looseUnits || 0);
 }
 export function quantityError(item: ItemInput): string {
+  if (item.boxesPerCarton != null || item.unitsPerBox != null) {
+    const error=packingError({boxesPerCarton:item.boxesPerCarton??undefined,unitsPerBox:item.unitsPerBox??undefined},item.product?.baseUnit);
+    if(error)return error;
+    if(item.tailCartons>0&&(!Number.isInteger(item.tailBoxesPerCarton)||Number(item.tailBoxesPerCarton)<=0))return '请填写每个尾箱实际盒数。';
+  }
   const counts = [item.fullCartons || 0, item.tailCartons || 0, item.looseUnits || 0];
   if (counts.some(n => !Number.isSafeInteger(n) || n < 0)) return '箱数和散装数量必须为非负整数。';
   if (cartonCount(item) > 2147483647) return '箱数超出可保存范围。';

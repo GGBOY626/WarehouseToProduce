@@ -9,7 +9,9 @@ export type IssueType =
   | "QUANTITY_MISMATCH"
   | "PACKAGING_ISSUE"
   | "OTHER";
+export interface BoxPacking { boxesPerCarton: number; unitsPerBox: number }
 export interface Product {
+  boxPackings?: BoxPacking[];
   id: number;
   name: string;
   materialCode: string;
@@ -34,6 +36,9 @@ export interface IssueInput {
   description?: string;
 }
 export interface ItemInput {
+  boxesPerCarton?: number | null;
+  unitsPerBox?: number | null;
+  tailBoxesPerCarton?: number | null;
   id?: number;
   unitsPerCarton?: number | null;
   tailCartons: number;
@@ -74,6 +79,8 @@ export interface Photo {
   createdAt: string;
 }
 export interface MovementItem {
+  boxesPerCarton?: number | null;
+  unitsPerBox?: number | null;
   tailCartons: number;
   tailUnitsPerCarton?: number | null;
   totalCartons: number;
