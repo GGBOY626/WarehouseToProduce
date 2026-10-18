@@ -4,6 +4,8 @@
 
 仓库管理已支持 A–M 排上中下层、过道两排/四排、托盘物料及移位历史。现场录入与接口说明见 [仓库管理指南](docs/warehouse.md)。
 
+Gemini 只读业务助手已接入独立 Python FastAPI 服务，支持库存、批次货位和生产任务分析。[配置与启动说明](ai-service/README.md) · [实现及测试记录](docs/ai-assistant.md)。
+
 ## 本地开发
 
 1. 复制 `.env.example` 为 `.env`，仅本机保存真实密码。

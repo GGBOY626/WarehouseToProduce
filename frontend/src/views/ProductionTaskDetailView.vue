@@ -10,6 +10,7 @@ import ProductionTaskOutput from "../components/ProductionTaskOutput.vue";
 import ProductionTaskTargets from "../components/ProductionTaskTargets.vue";
 import TaskMaterialHistory from "../components/TaskMaterialHistory.vue";
 import { showDateTime } from "../utils/time";
+import AiAssistant from '../components/AiAssistant.vue';
 const id=Number(useRoute().params.id), router=useRouter(), task=ref<ProductionTask>(), message=ref("");
 const { authenticated }=useAuth();
 const editing=ref(false), changingStatus=ref(false), deleting=ref(false);
@@ -43,6 +44,7 @@ onBeforeUnmount(()=>{clearInterval(refreshTimer);window.removeEventListener('foc
     <div v-if="!task" class="card empty">正在读取生产任务…</div>
     <template v-else>
       <div class="task-head"><span class="status" :class="task.status==='COMPLETED'?'ok':'neutral'">{{ labels[task.status] }}</span><h1 class="page-title">{{ task.name }}</h1><p class="page-lead">{{ task.batchNo }} · 计划 {{ task.plannedDate }}</p></div>
+      <AiAssistant :scope="{taskId:id}"/>
       <div class="progress-pair">
         <section class="progress-card material-progress" aria-labelledby="material-progress-title"><h2 id="material-progress-title">备料进度</h2><strong>{{ task.progressPercent }}<small>%</small></strong><div class="progress-track" role="progressbar" aria-label="备料进度" :aria-valuenow="task.progressPercent" :aria-valuemin="0" :aria-valuemax="100"><i :style="{width:`${task.progressPercent}%`}" /></div><p>各物料净发料 / 计划需求</p></section>
         <section class="progress-card production-progress" aria-labelledby="production-progress-title"><h2 id="production-progress-title">生产完成度</h2><strong>{{ productionPercent == null ? '—' : productionPercent }}<small v-if="productionPercent != null">%</small></strong><div class="progress-track" role="progressbar" aria-label="生产完成度" :aria-valuenow="productionPercent ?? undefined" :aria-valuetext="productionPercent == null ? '暂无可计算数据' : undefined" :aria-valuemin="0" :aria-valuemax="100"><i :style="{width:`${productionPercent || 0}%`}" /></div><p>{{ productionPercent == null ? '待净发料与包装数据齐全后计算' : '成品折算数量 / 主料净发料' }}</p></section>

@@ -13,6 +13,10 @@ import WarehouseLocationBoard from '../components/WarehouseLocationBoard.vue';
 import WarehousePalletCard from '../components/WarehousePalletCard.vue';
 import WarehouseMaterialSummary from '../components/WarehouseMaterialSummary.vue';
 import { summarizeWarehouse } from '../utils/warehouseSummary';
+import AiAssistant from '../components/AiAssistant.vue';
+import { useRoute, useRouter } from 'vue-router';
+import { watch } from 'vue';
+const route=useRoute(),router=useRouter();
 const {authenticated}=useAuth();
 const data=ref<WarehouseOverview>({areas:[],pallets:[]}),products=ref<Product[]>([]),loading=ref(true),busy=ref(false),message=ref(''),notice=ref('');
 const filters=ref(emptyWarehouseFilters()),loaded=ref(false);
@@ -82,7 +86,10 @@ const historyDialog=ref<HTMLDialogElement>(),history=ref<WarehouseHistory>(),his
 async function openHistory(id?:number){historyId.value=id;historyPage.value=0;history.value=undefined;await nextTick();historyDialog.value?.showModal();await loadHistory()}
 async function loadHistory(){historyBusy.value=true;historyError.value='';try{history.value=await warehouseApi.history(historyPage.value,historyId.value)}catch(e){historyError.value=errorMessage(e)}finally{historyBusy.value=false}}
 function historyState(value?:string):WarehousePallet|undefined{if(!value)return;try{return JSON.parse(value)}catch{return undefined}}
-onMounted(load);
+async function openLinkedPallet(){const id=Number(route.query.palletId);if(!id)return;const p=data.value.pallets.find(p=>p.id===id);if(p)await openDetail(p);else notice.value='对应托盘已不存在，请刷新后核对。'}
+function clearPalletLink(){if(route.path==='/warehouse'&&route.query.palletId){const query={...route.query};delete query.palletId;void router.replace({query})}}
+watch(()=>route.query.palletId,openLinkedPallet);
+onMounted(async()=>{await load();await openLinkedPallet()});
 </script>
 <template>
   <div class="page wide warehouse-page">
@@ -97,6 +104,7 @@ onMounted(load);
       <div class="toolbar-actions"><button class="btn btn-ghost" :disabled="loading||busy" @click="load">{{loading?'刷新中…':'刷新'}}</button><button class="btn btn-ghost" @click="openHistory()">操作历史</button><button v-if="authenticated" class="btn btn-ghost" :disabled="busy||loading" @click="openAisles">管理过道</button></div>
     </div>
     <WarehouseLocationBoard :data="data" :filters="filters" :loading="loading" @select="selectArea" @clear="clearLocation"/>
+    <AiAssistant :scope="filters"/>
     <section class="stock-results" aria-labelledby="stock-list-title" :aria-busy="loading">
       <div class="stock-filters card">
         <div class="field search-field"><label for="warehouse-search">查找物料或托盘</label><input id="warehouse-search" v-model="filters.query" name="warehouse-search" autocomplete="off" :spellcheck="false" class="input" type="search" placeholder="产品、原料批号、批号、托盘号或货位…"></div>
@@ -119,7 +127,7 @@ onMounted(load);
       <WarehouseMaterialSummary v-else-if="viewMode==='material'" :materials="materials"/>
       <div v-else class="pallet-grid"><WarehousePalletCard v-for="p in visible" :key="p.id" :pallet="p" :authenticated="authenticated" :busy="busy||loading" @detail="openDetail(p)" @history="openHistory(p.id)" @edit="openForm(p)" @remove="requestRemove(p)"/></div>
     </section>
-    <dialog ref="detailDialog" class="warehouse-dialog" aria-labelledby="pallet-detail-title"><header class="dialog-heading"><h2 id="pallet-detail-title">托盘详情</h2><button class="btn btn-secondary" @click="detailDialog?.close()">关闭</button></header><WarehousePalletCard v-if="detailPallet" :pallet="detailPallet" :authenticated="authenticated" :busy="busy||loading" :interactive="false" @history="openHistory(detailPallet.id)" @edit="detailDialog?.close();openForm(detailPallet)" @remove="detailDialog?.close();requestRemove(detailPallet)"/></dialog>
+    <dialog ref="detailDialog" @close="clearPalletLink" class="warehouse-dialog" aria-labelledby="pallet-detail-title"><header class="dialog-heading"><h2 id="pallet-detail-title">托盘详情</h2><button class="btn btn-secondary" @click="detailDialog?.close()">关闭</button></header><WarehousePalletCard v-if="detailPallet" :pallet="detailPallet" :authenticated="authenticated" :busy="busy||loading" :interactive="false" @history="openHistory(detailPallet.id)" @edit="detailDialog?.close();openForm(detailPallet)" @remove="detailDialog?.close();requestRemove(detailPallet)"/></dialog>
     <dialog ref="removeDialog" class="warehouse-dialog remove-dialog" aria-labelledby="remove-title" aria-describedby="remove-description" @cancel="busy&&$event.preventDefault()">
       <h2 id="remove-title">移除这个托盘？</h2>
       <div v-if="removing" class="remove-summary"><strong class="mono">{{removing.code}}</strong><p>{{removing.location}}</p><ul><li v-for="(item,index) in removing.items" :key="index">{{item.productName}} · {{item.quantity==null?'数量未确认':`${item.quantity.toLocaleString()} ${item.unit||''}`}}</li></ul></div>
