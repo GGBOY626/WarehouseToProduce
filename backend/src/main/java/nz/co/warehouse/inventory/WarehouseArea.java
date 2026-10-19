@@ -11,6 +11,6 @@ public class WarehouseArea extends PersistentEntity {
     @Enumerated(EnumType.STRING) @Column(nullable=false,length=10) private Kind kind;
     @Column(nullable=false,unique=true,length=60) private String name;
     @Column(nullable=false) private int lanes;
-    @Column(name="rack_row",length=1) private String rackRow;
+    @Column(name="rack_row",length=2) private String rackRow;
     @Version private long version;
 }

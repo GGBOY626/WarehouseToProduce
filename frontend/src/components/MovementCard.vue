@@ -33,6 +33,7 @@ async function saveLink(){
     <div class="record-footer">
       <time :datetime="movement.movementTime">{{ showDate ? showDateTime(movement.movementTime) : showTime(movement.movementTime) }}</time>
       <span :class="['movement-direction', {return:movement.direction==='PRODUCTION_TO_WAREHOUSE'}]">{{ directionLabel(movement.direction) }}<span v-if="movement.returnMovement"> · 退回</span></span>
+      <span v-if="movement.finished" class="status ok">成品</span>
       <span class="photo-tag">照片 {{ movement.photoCount }}</span>
       <span v-if="movement.status==='VOID'" class="status neutral">已作废</span>
       <span v-if="movement.hasIssues" class="status warn">有异常</span>

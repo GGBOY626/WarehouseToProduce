@@ -114,6 +114,7 @@ export interface MovementDetail {
   receiverName: string;
   manufactureLot?: string;
   returnMovement: boolean;
+  finished: boolean;
   productionTaskId?: number;
   productionTaskName?: string;
   totalCartons: number;
@@ -161,7 +162,7 @@ export interface ProductionTaskTarget {
   batches?: TaskBatchQuantity[];
   materialBatch?: string | null;
   productId: number; productName: string; materialCode: string; baseUnit?: string;
-  targetQuantity: number; completedQuantity: number; progressPercent: number;
+  targetQuantity: number; completedQuantity: number; progressPercent: number; shortageCartonSize?: number | null;
   issuedQuantity: number; returnedQuantity: number; shortageQuantity: number;
   unknownQuantityCount: number; materialTarget: boolean; estimatedUsedQuantity?: number | null;
 }
@@ -189,6 +190,7 @@ export interface MovementSummary {
   senderName: string;
   receiverName: string;
   returnMovement: boolean;
+  finished: boolean;
   totalCartons: number;
   totalQuantity: number;
   status: MovementStatus;

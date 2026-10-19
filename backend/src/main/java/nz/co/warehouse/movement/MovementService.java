@@ -64,11 +64,6 @@ public class MovementService {
     }
 
     @Transactional
-    public MovementDtos.DetailResponse voidMovement(long id,String reason) {
-        Movement m=getActiveDetail(id);m.setStatus(MovementEnums.Status.VOID);m.setVoidReason(reason.trim());m.setVoidedAt(Instant.now());return MovementDtos.detail(m);
-    }
-
-    @Transactional
     public void delete(long id) {
         Movement movement=repository.findDetailById(id).orElseThrow(()->BusinessException.notFound("MOVEMENT_NOT_FOUND","找不到该流转记录。"));
         List<String> photoPaths=movement.getPhotos().stream().map(MovementPhoto::getFilePath).toList();
@@ -153,7 +148,7 @@ public class MovementService {
                 &&m.getDirection()==r.direction()&&m.isReturnMovement()==r.returnMovement();
         Map<Long,String> oldBatches=new HashMap<>();
         m.getItems().forEach(i->oldBatches.put(i.getId(),i.effectiveMaterialBatch()));
-        m.setDirection(r.direction());m.setReturnMovement(r.returnMovement());m.setMovementTime(r.movementTime());m.setSenderPerson(sender);m.setSenderNameSnapshot(senderName);m.setReceiverPerson(receiver);m.setReceiverNameSnapshot(receiverName);
+        m.setDirection(r.direction());m.setReturnMovement(r.returnMovement());m.setFinished(r.direction()==MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE&&!r.returnMovement());m.setMovementTime(r.movementTime());m.setSenderPerson(sender);m.setSenderNameSnapshot(senderName);m.setReceiverPerson(receiver);m.setReceiverNameSnapshot(receiverName);
         m.setRemarks(blank(r.remarks()));
         Set<Long> existingProductIds=m.getItems().stream().map(x->x.getProduct().canonicalId()).collect(java.util.stream.Collectors.toSet());
         Map<Long,MovementItem> originals=new HashMap<>();

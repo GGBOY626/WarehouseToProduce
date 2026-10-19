@@ -4,13 +4,13 @@ export function areaLanes(area?:WarehouseArea):string[]{
   if(!area)return [];
   return area.kind==='RACK'?['UPPER','MIDDLE','LOWER']:area.lanes===4?['LEFT_1','LEFT_2','RIGHT_1','RIGHT_2']:['LEFT_1','RIGHT_1'];
 }
-export function nextPosition(pallets:WarehousePallet[],areaId:number,lane:string):number{
+export function nextPosition(pallets:WarehousePallet[],areaId:number,lane:string,start=5):number{
   const used=new Set(pallets.filter(p=>p.areaId===areaId&&p.lane===lane).map(p=>p.position));
-  let position=1;while(used.has(position)&&position<=9999)position++;return position;
+  let position=start;while(used.has(position)&&position<=(start===5?16:9999))position++;return position;
 }
 export function filterPallets(pallets:WarehousePallet[],query:string,areaId?:number,lane?:string,unknownOnly=false){
-  const q=query.trim().toLocaleLowerCase();
-  return pallets.filter(p=>(!areaId||p.areaId===areaId)&&(!lane||p.lane===lane)&&(!unknownOnly||p.items.some(i=>i.quantity==null))&&(!q||[p.code,p.location,p.notes,...p.items.flatMap(i=>[i.productName,i.materialCode,i.rawMaterialBatch,i.batch])].filter(Boolean).join(' ').toLocaleLowerCase().includes(q)));
+  const q=query.normalize('NFKC').trim().toLocaleLowerCase();
+  return pallets.filter(p=>(!areaId||p.areaId===areaId)&&(!lane||p.lane===lane)&&(!unknownOnly||p.items.some(i=>i.quantity==null))&&(!q||[p.code,p.location,p.notes,...p.items.flatMap(i=>[i.productName,i.materialCode,i.rawMaterialBatch,i.batch])].filter(Boolean).join(' ').normalize('NFKC').toLocaleLowerCase().includes(q)));
 }
 
 export interface WarehouseFilters {
@@ -20,9 +20,10 @@ export interface WarehouseFilters {
   areaId?: number;
   lane: string;
   unknownOnly: boolean;
+  hideFinished: boolean;
 }
 export function emptyWarehouseFilters(): WarehouseFilters {
-  return {query:'',kind:'',row:'',lane:'',unknownOnly:false};
+  return {query:'',kind:'',row:'',lane:'',unknownOnly:false,hideFinished:false};
 }
 export function warehouseRow(area?: WarehouseArea): string {
   return area?.kind==='RACK' ? area.name : area?.rackRow || '';
@@ -30,6 +31,8 @@ export function warehouseRow(area?: WarehouseArea): string {
 export function filterWarehousePallets(pallets:WarehousePallet[],areas:WarehouseArea[],filters:WarehouseFilters) {
   const areaById=new Map(areas.map(area=>[area.id,area]));
   return filterPallets(pallets,filters.query,filters.areaId,filters.lane,filters.unknownOnly)
+    .map(p=>filters.hideFinished?{...p,items:p.items.filter(i=>!i.finished)}:p)
+    .filter(p=>!filters.hideFinished||p.items.length>0)
     .filter(p=>(!filters.kind||p.kind===filters.kind)&&(!filters.row||warehouseRow(areaById.get(p.areaId))===filters.row));
 }
 // Pending is a separate dimension, never an additional location count.

@@ -22,18 +22,20 @@ public class WarehouseService {
     private final ProductService products;
     private final ObjectMapper json;
     private final WarehousePhotoService photos;
-    public record AreaRequest(@NotBlank @Size(max=60) String name,@Min(2) @Max(4) int lanes,@PositiveOrZero Long version,@Pattern(regexp="[A-M]") String rackRow) {
+    public record AreaRequest(@NotBlank @Size(max=60) String name,@Min(2) @Max(4) int lanes,@PositiveOrZero Long version,@Pattern(regexp="[A-M]{2}") String rackRow) {
         public AreaRequest(String name,int lanes,Long version){this(name,lanes,version,null);}
     }
     public record AreaResponse(Long id,String name,WarehouseArea.Kind kind,int lanes,long version,String rackRow) {}
     public record ItemRequest(Long productId,@Size(max=100) String batch,@Positive @Max(9007199254740991L) Long quantity,@PositiveOrZero Integer cartons,
-                              @Size(max=200) String productName,@Size(max=100) String materialCode,@Size(max=20) String unit,@Size(max=100) String rawMaterialBatch,Long photoId) {
-        public ItemRequest(Long productId,String batch,Long quantity,Integer cartons){this(productId,batch,quantity,cartons,null,null,null,null,null);}
+                              @Size(max=200) String productName,@Size(max=100) String materialCode,@Size(max=20) String unit,@Size(max=100) String rawMaterialBatch,Long photoId,
+                              @Positive Integer unitsPerCarton,@Positive Integer boxesPerCarton,@Positive Integer unitsPerBox,boolean finished) {
+        public ItemRequest(Long productId,String batch,Long quantity,Integer cartons){this(productId,batch,quantity,cartons,null,null,null,null,null,null,null,null,false);}
+        public ItemRequest(Long productId,String batch,Long quantity,Integer cartons,String productName,String materialCode,String unit,String rawMaterialBatch,Long photoId){this(productId,batch,quantity,cartons,productName,materialCode,unit,rawMaterialBatch,photoId,null,null,null,false);}
     }
     public record SaveRequest(@NotBlank @Size(max=60) String code,@NotNull Long areaId,@NotBlank String lane,
                               @Min(1) @Max(9999) int position,@Size(max=2000) String notes,
                               @NotEmpty @Size(max=50) List<@Valid ItemRequest> items,@PositiveOrZero Long version) {}
-    public record ItemResponse(Long productId,String productName,String materialCode,String batch,String unit,Long quantity,Integer cartons,String rawMaterialBatch,Long photoId,String photoUrl) {}
+    public record ItemResponse(Long productId,String productName,String materialCode,String batch,String unit,Long quantity,Integer cartons,String rawMaterialBatch,Long photoId,String photoUrl,Integer unitsPerCarton,Integer boxesPerCarton,Integer unitsPerBox,boolean finished) {}
     public record PalletResponse(Long id,String code,Long areaId,String areaName,WarehouseArea.Kind kind,String lane,int position,
                                  String location,String notes,List<ItemResponse> items,long version,Instant createdAt,Instant updatedAt) {}
     public record Overview(List<AreaResponse> areas,List<PalletResponse> pallets) {}
@@ -85,7 +87,7 @@ public class WarehouseService {
     private void apply(WarehousePallet p,SaveRequest r){
         var a=area(r.areaId());
         var allowed=a.getKind()==WarehouseArea.Kind.RACK?List.of("UPPER","MIDDLE","LOWER"):a.getLanes()==2?List.of("LEFT_1","RIGHT_1"):List.of("LEFT_1","LEFT_2","RIGHT_1","RIGHT_2");
-        if(!allowed.contains(r.lane()))throw BusinessException.badRequest("LOCATION_INVALID","层位或过道排位无效，请重新选择。");
+        if(!allowed.contains(r.lane())||(a.getKind()==WarehouseArea.Kind.RACK&&(r.position()<5||r.position()>16)))throw BusinessException.badRequest("LOCATION_INVALID",a.getKind()==WarehouseArea.Kind.RACK?"货架位置必须在 05 至 16 之间。":"过道位置无效。");
         if(pallets.existsByAreaIdAndLaneAndPositionAndIdNot(a.getId(),r.lane(),r.position(),p.getId()==null?-1:p.getId()))throw conflict("LOCATION_OCCUPIED","这个位置已有托盘，请选择其他位置，或编辑原托盘添加物料。");
         var existing=new HashMap<Long,WarehousePallet.StockItem>();p.getItems().stream().filter(i->i.getProduct()!=null).forEach(i->existing.put(i.getProduct().canonicalId(),i));
         var items=new ArrayList<WarehousePallet.StockItem>();
@@ -102,22 +104,23 @@ public class WarehouseService {
             }
             i.setRawMaterialBatch(blank(input.rawMaterialBatch()));
             if(input.photoId()!=null)i.setPhoto(photos.retain(input.photoId()));
-            i.setBatch(blank(input.batch()));i.setQuantity(input.quantity());i.setCartons(input.cartons());items.add(i);
+            i.setBatch(blank(input.batch()));i.setQuantity(input.quantity());i.setCartons(input.cartons());i.setUnitsPerCarton(input.unitsPerCarton());i.setBoxesPerCarton(input.boxesPerCarton());i.setUnitsPerBox(input.unitsPerBox());i.setFinished(input.finished());items.add(i);
         }
         p.setCode(r.code().trim());p.setArea(a);p.setLane(r.lane());p.setPosition(r.position());p.setNotes(blank(r.notes()));p.getItems().clear();p.getItems().addAll(items);
     }
     private WarehouseArea area(long id){return areas.lockById(id).orElseThrow(()->BusinessException.notFound("AREA_NOT_FOUND","找不到库区，请刷新后重试。"));}
     private WarehousePallet pallet(long id){return pallets.findById(id).orElseThrow(()->BusinessException.notFound("PALLET_NOT_FOUND","找不到托盘，请刷新后重试。"));}
-    private void checkAisle(WarehouseArea a){if(a.getKind()!=WarehouseArea.Kind.AISLE)throw BusinessException.badRequest("RACK_FIXED","A–M 货架为固定库区，无需修改或删除。");}
+    private void checkAisle(WarehouseArea a){if(a.getKind()!=WarehouseArea.Kind.AISLE)throw BusinessException.badRequest("RACK_FIXED","AA–MM 货架为固定库区，无需修改或删除。");}
     private void checkLanes(int lanes){if(lanes!=2&&lanes!=4)throw BusinessException.badRequest("LANES_INVALID","过道只支持两排或四排。");}
-    private void checkRackA(String rackRow,int lanes){if("A".equals(rackRow)&&lanes!=4)throw BusinessException.badRequest("A_AISLE_FOUR_LANES","A 排旁过道需要左一、左二、右一、右二四排。");}
+    private void checkRackA(String rackRow,int lanes){if("AA".equals(rackRow)&&lanes!=4)throw BusinessException.badRequest("A_AISLE_FOUR_LANES","AA 排旁过道需要左一、左二、右一、右二四排。");}
     private void checkVersion(long actual,Long requested){if(requested==null||actual!=requested)throw conflict("STALE_RECORD","资料已被更新，请刷新后重新操作，避免覆盖其他人的修改。");}
     private BusinessException conflict(String code,String message){return new BusinessException(code,message,HttpStatus.CONFLICT);}
     private String blank(String value){return value==null||value.isBlank()?null:value.trim();}
     private AreaResponse areaResponse(WarehouseArea a){return new AreaResponse(a.getId(),a.getName(),a.getKind(),a.getLanes(),a.getVersion(),a.getRackRow());}
     private PalletResponse response(WarehousePallet p){
         var a=p.getArea();String lane=switch(p.getLane()){case "UPPER"->"上层";case "MIDDLE"->"中层";case "LOWER"->"下层";case "LEFT_1"->"左一";case "LEFT_2"->"左二";case "RIGHT_1"->"右一";default->"右二";};
-        return new PalletResponse(p.getId(),p.getCode(),a.getId(),a.getName(),a.getKind(),p.getLane(),p.getPosition(),(a.getRackRow()==null?"":a.getRackRow()+" 排旁 · ")+a.getName()+(a.getKind()==WarehouseArea.Kind.RACK?" 排":"")+" / "+lane+" / "+String.format("%02d",p.getPosition())+" 号",p.getNotes(),p.getItems().stream().map(i->new ItemResponse(i.getProduct()==null?null:i.getProduct().canonicalId(),i.getProductName(),i.getMaterialCode(),i.getBatch(),i.getUnit(),i.getQuantity(),i.getCartons(),i.getRawMaterialBatch(),i.getPhoto()==null?null:i.getPhoto().getId(),WarehousePhotoService.url(i.getPhoto()==null?null:i.getPhoto().getId()))).toList(),p.getVersion(),p.getCreatedAt(),p.getUpdatedAt());
+        String location=a.getKind()==WarehouseArea.Kind.RACK?a.getName()+"-"+String.format("%02d",p.getPosition())+" / "+lane:(a.getRackRow()==null?"":a.getRackRow()+" 排旁 · ")+a.getName()+" / "+lane+" / "+String.format("%02d",p.getPosition());
+        return new PalletResponse(p.getId(),p.getCode(),a.getId(),a.getName(),a.getKind(),p.getLane(),p.getPosition(),location,p.getNotes(),p.getItems().stream().map(i->new ItemResponse(i.getProduct()==null?null:i.getProduct().canonicalId(),i.getProductName(),i.getMaterialCode(),i.getBatch(),i.getUnit(),i.getQuantity(),i.getCartons(),i.getRawMaterialBatch(),i.getPhoto()==null?null:i.getPhoto().getId(),WarehousePhotoService.url(i.getPhoto()==null?null:i.getPhoto().getId()),i.getUnitsPerCarton(),i.getBoxesPerCarton(),i.getUnitsPerBox(),i.isFinished())).toList(),p.getVersion(),p.getCreatedAt(),p.getUpdatedAt());
     }
     private void audit(WarehousePallet p,String action,String description,PalletResponse before,PalletResponse after){
         var e=new WarehouseEvent();if(p!=null){e.setPalletId(p.getId());e.setPalletCode(p.getCode());}e.setAction(action);e.setDescription(description);

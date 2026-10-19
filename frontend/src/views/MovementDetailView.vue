@@ -51,16 +51,6 @@ async function deletePhoto(photoId: number) {
   await movementsApi.deletePhoto(id, photoId);
   await load();
 }
-async function voidRecord() {
-  const reason = prompt("请输入作废原因：");
-  if (!reason?.trim()) return;
-  try {
-    await movementsApi.void(id, reason);
-    await load();
-  } catch (e) {
-    message.value = errorMessage(e);
-  }
-}
 async function deleteRecord() {
   if (!data.value || !confirm(`确定永久删除记录“${data.value.recordNo}”吗？产品明细和照片也会一并删除，且无法恢复。`)) return;
   try {
@@ -131,7 +121,7 @@ onMounted(()=>void load());
         <div>
           <span v-if="data.status === 'VOID'" class="status neutral">已作废</span
           ><span v-else-if="data.photos.length" class="status ok photo-count">{{ data.photos.length }} 张照片</span
-          ><span v-if="data.hasIssues" class="status warn">存在异常</span>
+          ><span v-if="data.finished" class="status ok">成品</span><span v-if="data.hasIssues" class="status warn">存在异常</span>
           <h1 class="page-title">流转详情</h1>
         </div>
       </div>
@@ -254,8 +244,7 @@ onMounted(()=>void load());
         <RouterLink v-if="data.status === 'ACTIVE'" class="btn btn-secondary edit-action" :to="`/movements/${id}/edit`"
           >编辑记录</RouterLink
         ><button v-if="data.status === 'ACTIVE'" class="btn btn-secondary" @click="duplicate">复制记录</button
-        ><button v-if="data.status === 'ACTIVE'" class="btn btn-danger" @click="voidRecord">作废记录</button
-        ><button class="btn btn-danger permanent-delete" @click="deleteRecord">永久删除记录</button>
+        ><button class="btn btn-danger permanent-delete" @click="deleteRecord">删除记录</button>
       </section>
       <footer class="trace-reference">
         <span>流转单号 <span class="mono">{{ data.recordNo }}</span></span>

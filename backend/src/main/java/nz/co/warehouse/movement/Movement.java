@@ -29,6 +29,7 @@ public class Movement extends PersistentEntity {
     @Enumerated(EnumType.STRING) @Column(nullable=false,length=20) private MovementEnums.Status status=MovementEnums.Status.ACTIVE;
     @Column(name="void_reason",length=500) private String voidReason;
     @Column(name="voided_at") private Instant voidedAt;
+    @Column(nullable=false) private boolean finished;
     @OneToMany(mappedBy="movement",cascade=CascadeType.ALL,orphanRemoval=true)
     @BatchSize(size=100)
     @OrderBy("sortOrder asc") private List<MovementItem> items=new ArrayList<>();

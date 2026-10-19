@@ -47,7 +47,7 @@ public class ProductionTaskService {
             this(productId,targetQuantity,plannedDate,batchNo,remarks,null);
         }
     }
-    public record TargetResponse(Long productId,String productName,String materialCode,String baseUnit,long targetQuantity,
+    public record TargetResponse(Long productId,String productName,String materialCode,String baseUnit,long targetQuantity,Integer shortageCartonSize,
                                  long completedQuantity,int progressPercent,long issuedQuantity,long returnedQuantity,
                                  long shortageQuantity,int unknownQuantityCount,boolean materialTarget,BigDecimal estimatedUsedQuantity,String materialBatch,List<BatchResponse> batches) {}
     public record BatchResponse(String materialBatch,String subBatch,long issuedQuantity,long returnedQuantity,long netQuantity,int unknownQuantityCount) {}
@@ -224,7 +224,7 @@ public class ProductionTaskService {
             }
             long completed=issued-returned;
             boolean material=p.getMovementDirection()==ProductUsage.WAREHOUSE_TO_PRODUCTION;
-            return new TargetResponse(p.getId(),p.getName(),p.getMaterialCode(),p.getBaseUnit(),required,completed,
+            return new TargetResponse(p.getId(),p.getName(),p.getMaterialCode(),p.getBaseUnit(),required,p.availableCartonSpecs().stream().findFirst().orElse(null),completed,
                     material?(int)Math.max(0,Math.min(100,completed*100.0/required)):0,
                     issued,returned,Math.max(0,required-completed),unknown,material,t.getOutputProduct()==null||!material?null:BigDecimal.valueOf(outputReceived).multiply(BigDecimal.valueOf(required))
                             .divide(BigDecimal.valueOf(t.getTargetOutputQuantity()),6,RoundingMode.HALF_UP),null,

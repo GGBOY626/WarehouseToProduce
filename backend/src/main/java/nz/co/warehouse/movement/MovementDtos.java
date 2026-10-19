@@ -43,8 +43,6 @@ public final class MovementDtos {
             this(idempotencyKey,direction,movementTime,senderPersonId,receiverPersonId,manufactureLot,returnMovement,null,remarks,items);
         }
     }
-    public record VoidRequest(@NotBlank @Size(max=500) String reason) {}
-
     public record IssueResponse(Long id,MovementEnums.IssueType type,String description) {}
     public record ItemResponse(Long id,Long productId,String productName,String sku,Integer unitsPerCarton,String baseUnit,
                                String batchNo,int fullCartons,long looseUnits,Long calculatedTotalUnits,Long totalUnits,
@@ -52,11 +50,11 @@ public final class MovementDtos {
     public record PhotoResponse(Long id,String url,String originalName,String mimeType,long fileSize,int width,int height,Instant createdAt) {}
     public record DetailResponse(Long id,String recordNo,MovementEnums.Direction direction,Instant movementTime,
                                  Long senderPersonId,String senderName,Long receiverPersonId,String receiverName,
-                                 String manufactureLot,boolean returnMovement,Long productionTaskId,String productionTaskName,int totalCartons,String remarks,MovementEnums.Status status,
+                                 String manufactureLot,boolean returnMovement,boolean finished,Long productionTaskId,String productionTaskName,int totalCartons,String remarks,MovementEnums.Status status,
                                  String voidReason,Instant voidedAt,List<ItemResponse> items,List<PhotoResponse> photos,
                                  boolean hasIssues,boolean missingPhoto,Instant createdAt,Instant updatedAt,List<ListItemResponse> materials) {}
     public record ListResponse(Long id,String recordNo,MovementEnums.Direction direction,Instant movementTime,
-                               String senderName,String receiverName,boolean returnMovement,int totalCartons,long totalQuantity,MovementEnums.Status status,
+                               String senderName,String receiverName,boolean returnMovement,boolean finished,int totalCartons,long totalQuantity,MovementEnums.Status status,
                                List<String> productNames,int itemCount,int photoCount,boolean hasIssues,boolean hasUnknownQuantity,List<ListItemResponse> items,Long productionTaskId,String productionTaskName) {}
     // batchNo remains the material code; per-item materialBatch takes precedence over the legacy header.
     public record ListItemResponse(Long id,String productName,String materialCode,String materialBatch,String baseUnit,
@@ -75,11 +73,11 @@ public final class MovementDtos {
         List<ItemResponse> items=m.getItems().stream().map(i->new ItemResponse(i.getId(),i.getProduct().canonicalId(),i.getProductNameSnapshot(),i.getSkuSnapshot(),i.getUnitsPerCartonSnapshot(),i.getBaseUnitSnapshot(),i.getBatchNo(),i.getFullCartons(),i.getLooseUnits(),i.getCalculatedTotalUnits(),i.getTotalUnits(),i.isTotalUnitsOverridden(),i.isQuantityUnknown(),i.getRemarks(),i.getIssues().stream().map(x->new IssueResponse(x.getId(),x.getIssueType(),x.getDescription())).toList(),i.getTailCartons(),i.getTailUnitsPerCarton(),i.getTotalCartons(),i.getSubBatch(),i.effectiveMaterialBatch(),i.getBoxesPerCartonSnapshot(),i.getUnitsPerBoxSnapshot())).toList();
         List<PhotoResponse> photos=m.getPhotos().stream().map(p->new PhotoResponse(p.getId(),"/api/movements/"+m.getId()+"/photos/"+p.getId()+"/content",p.getOriginalName(),p.getMimeType(),p.getFileSize(),p.getWidth(),p.getHeight(),p.getCreatedAt())).toList();
         boolean issues=items.stream().anyMatch(i->!i.issues().isEmpty());
-        return new DetailResponse(m.getId(),m.getRecordNo(),m.getDirection(),m.getMovementTime(),m.getSenderPerson().getId(),m.getSenderNameSnapshot(),m.getReceiverPerson().getId(),m.getReceiverNameSnapshot(),m.getManufactureLot(),m.isReturnMovement(),m.getProductionTask()==null?null:m.getProductionTask().getId(),m.getProductionTask()==null?null:m.getProductionTask().displayName(),m.getTotalCartons(),m.getRemarks(),m.getStatus(),m.getVoidReason(),m.getVoidedAt(),items,photos,issues,photos.isEmpty(),m.getCreatedAt(),m.getUpdatedAt(),materialSummaries(m));
+        return new DetailResponse(m.getId(),m.getRecordNo(),m.getDirection(),m.getMovementTime(),m.getSenderPerson().getId(),m.getSenderNameSnapshot(),m.getReceiverPerson().getId(),m.getReceiverNameSnapshot(),m.getManufactureLot(),m.isReturnMovement(),m.isFinished(),m.getProductionTask()==null?null:m.getProductionTask().getId(),m.getProductionTask()==null?null:m.getProductionTask().displayName(),m.getTotalCartons(),m.getRemarks(),m.getStatus(),m.getVoidReason(),m.getVoidedAt(),items,photos,issues,photos.isEmpty(),m.getCreatedAt(),m.getUpdatedAt(),materialSummaries(m));
     }
     static ListResponse summary(Movement m) {
         long totalQuantity=m.getItems().stream().map(MovementItem::getTotalUnits).filter(Objects::nonNull).mapToLong(Long::longValue).sum();
-        return new ListResponse(m.getId(),m.getRecordNo(),m.getDirection(),m.getMovementTime(),m.getSenderNameSnapshot(),m.getReceiverNameSnapshot(),m.isReturnMovement(),m.getTotalCartons(),totalQuantity,m.getStatus(),m.getItems().stream().map(MovementItem::getProductNameSnapshot).distinct().limit(3).toList(),m.getItems().size(),m.getPhotos().size(),m.getItems().stream().anyMatch(i->!i.getIssues().isEmpty()),m.getItems().stream().anyMatch(MovementItem::isQuantityUnknown),
+        return new ListResponse(m.getId(),m.getRecordNo(),m.getDirection(),m.getMovementTime(),m.getSenderNameSnapshot(),m.getReceiverNameSnapshot(),m.isReturnMovement(),m.isFinished(),m.getTotalCartons(),totalQuantity,m.getStatus(),m.getItems().stream().map(MovementItem::getProductNameSnapshot).distinct().limit(3).toList(),m.getItems().size(),m.getPhotos().size(),m.getItems().stream().anyMatch(i->!i.getIssues().isEmpty()),m.getItems().stream().anyMatch(MovementItem::isQuantityUnknown),
                 materialSummaries(m),m.getProductionTask()==null?null:m.getProductionTask().getId(),m.getProductionTask()==null?null:m.getProductionTask().displayName());
     }
     private static List<ListItemResponse> materialSummaries(Movement m){

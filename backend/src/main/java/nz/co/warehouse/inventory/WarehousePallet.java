@@ -33,5 +33,9 @@ public class WarehousePallet extends PersistentEntity {
         @Column(length=20) private String unit;
         private Long quantity;
         private Integer cartons;
+        @Column(name="units_per_carton") private Integer unitsPerCarton;
+        @Column(name="boxes_per_carton") private Integer boxesPerCarton;
+        @Column(name="units_per_box") private Integer unitsPerBox;
+        @Column(nullable=false) private boolean finished;
     }
 }
