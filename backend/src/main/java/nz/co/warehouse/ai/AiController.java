@@ -18,18 +18,21 @@ import java.util.Map;
 @RestController
 public class AiController {
     private final AiAccess access;
-    private final RestClient client;
+    private final String url;
     public AiController(AiAccess access,@Value("${AI_SERVICE_URL:http://127.0.0.1:8000}") String url){
         this.access=access;
+        this.url=url;
+    }
+    private RestClient client(){
         var factory=new JdkClientHttpRequestFactory(HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build());
         factory.setReadTimeout(Duration.ofSeconds(80));
-        client=RestClient.builder().baseUrl(url).requestFactory(factory).build();
+        return RestClient.builder().baseUrl(url).requestFactory(factory).build();
     }
     @PostMapping("/api/ai/chat")
     public ResponseEntity<JsonNode> chat(@Valid @RequestBody AiDtos.Chat body,HttpServletRequest request){
         String ticket=access.issue(request,body.scope());
         try{
-            return client.post().uri("/chat").header("Authorization","Bearer "+access.token()).contentType(MediaType.APPLICATION_JSON)
+            return client().post().uri("/chat").header("Authorization","Bearer "+access.token()).contentType(MediaType.APPLICATION_JSON)
                 .body(Map.of("message",body.message(),"scope",body.scope(),"ticket",ticket)).retrieve().toEntity(JsonNode.class);
         }catch(RestClientResponseException ex){
             HttpStatus status=switch(ex.getStatusCode().value()){case 429->HttpStatus.TOO_MANY_REQUESTS;case 504->HttpStatus.GATEWAY_TIMEOUT;default->HttpStatus.SERVICE_UNAVAILABLE;};
@@ -48,7 +51,7 @@ public class AiController {
                 };
             }catch(java.io.IOException ignored){/* Keep the sanitized fallback. */}
             throw new BusinessException("AI_UNAVAILABLE",message,status);
-        }catch(RestClientException ex){throw new BusinessException("AI_UNAVAILABLE","无法连接 AI 服务，普通仓库功能仍可使用。",HttpStatus.SERVICE_UNAVAILABLE);}
+        }catch(RestClientException | IllegalArgumentException ex){throw new BusinessException("AI_UNAVAILABLE","无法连接 AI 服务，普通仓库功能仍可使用。",HttpStatus.SERVICE_UNAVAILABLE);}
         finally{access.revoke(ticket);}
     }
 }

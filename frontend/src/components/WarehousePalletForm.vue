@@ -15,7 +15,7 @@ const code=ref(props.pallet?.code || `TP-${createUuid().slice(0,8).toUpperCase()
 const position=ref(props.pallet?.position||nextPosition(props.pallets,areaId.value!,lane.value,props.areas.find(a=>a.id===areaId.value)?.kind==='RACK'?5:1)),notes=ref(props.pallet?.notes||'');
 type DraftItem={key:number;productId:number|undefined;mode:'manual'|'catalog';productName:string;materialCode:string;unit:string;rawMaterialBatch:string;batch:string;quantity:number|null|'';cartons:number|null|'';unitsPerCarton:number|null|'';boxesPerCarton:number|null|'';unitsPerBox:number|null|'';finished:boolean;photoId?:number|null;photoUrl?:string|null};
 let key=0;
-function blankItem():DraftItem{return {key:key++,productId:undefined,mode:'manual',productName:'',materialCode:'',unit:'',rawMaterialBatch:'',batch:'',quantity:null,cartons:null,unitsPerCarton:'',boxesPerCarton:'',unitsPerBox:'',finished:true}}
+function blankItem():DraftItem{return {key:key++,productId:undefined,mode:'manual',productName:'',materialCode:'',unit:'',rawMaterialBatch:'',batch:'',quantity:null,cartons:null,unitsPerCarton:'',boxesPerCarton:'',unitsPerBox:'',finished:false}}
 const items=ref<DraftItem[]>(props.pallet?.items.map(i=>({...blankItem(),...i,productId:i.productId??undefined,mode:i.productId?'catalog':'manual',materialCode:i.materialCode||'',unit:i.unit||'',rawMaterialBatch:i.rawMaterialBatch||'',batch:i.batch||'',unitsPerCarton:i.unitsPerCarton??'',boxesPerCarton:i.boxesPerCarton??'',unitsPerBox:i.unitsPerBox??'',finished:i.finished??false}))||[blankItem()]);
 const busy=ref(false),message=ref(''),another=ref(props.continueEntry||false);
 const area=computed(()=>props.areas.find(a=>a.id===areaId.value));

@@ -27,6 +27,10 @@ class MaterialRequirementsIntegrationTest {
     @Autowired org.springframework.test.web.servlet.MockMvc mvc;
     Long inner,outer,drink,person;
 
+    // Legacy VOID rows still exist even though the public operation is now delete.
+    private void historicalVoid(long id,String reason){
+        jdbc.update("UPDATE movement SET status='VOID', void_reason=? WHERE id=?",reason,id);
+    }
     @BeforeEach void setup(){
         inner=product("Inner",ProductUsage.WAREHOUSE_TO_PRODUCTION);
         outer=product("Outer",ProductUsage.WAREHOUSE_TO_PRODUCTION);
@@ -59,7 +63,7 @@ class MaterialRequirementsIntegrationTest {
         var other=tasks.create(request(target(inner,400)));
         move(other.id(),inner,400L,false,false);
         var voided=move(task.id(),inner,400L,false,false);
-        movements.voidMovement(voided.id(),"duplicate");
+        historicalVoid(voided.id(),"duplicate");
         move(task.id(),inner,null,false,true);
         move(task.id(),outer,800L,false,false);
         move(task.id(),outer,null,true,true);
@@ -119,7 +123,7 @@ class MaterialRequirementsIntegrationTest {
         assertThat(target.completedQuantity()).isEqualTo(-50);
         assertThat(target.shortageQuantity()).isEqualTo(450);
         assertThat(target.progressPercent()).isZero();
-        movements.voidMovement(returned.id(),"incorrect return");
+        historicalVoid(returned.id(),"incorrect return");
         assertThat(tasks.detail(task.id()).targets().getFirst().shortageQuantity()).isZero();
     }
 
@@ -192,7 +196,7 @@ class MaterialRequirementsIntegrationTest {
         assertThat(tasks.detail(first.id()).output().receivedQuantity()).isZero();
         assertThat(tasks.detail(first.id()).output().unknownQuantityCount()).isEqualTo(1);
         assertThat(tasks.detail(second.id()).output().receivedQuantity()).isEqualTo(2400);
-        movements.voidMovement(receipt.id(),"duplicate");
+        historicalVoid(receipt.id(),"duplicate");
         assertThat(tasks.detail(second.id()).output().receivedQuantity()).isZero();
         var deleted=move(second.id(),drink,1200L,false,false);
         movements.delete(deleted.id());

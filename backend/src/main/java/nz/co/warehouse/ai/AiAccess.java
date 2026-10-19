@@ -15,6 +15,10 @@ import java.util.*;
 public class AiAccess {
     @Value("${AI_INTERNAL_TOKEN:}") private String token;
     @Value("${AI_ENABLED:true}") private boolean enabled;
+    @jakarta.annotation.PostConstruct
+    void loadLocalToken(){
+        token=AiLocalToken.resolve(token,java.nio.file.Path.of("ai-service/.env"),java.nio.file.Path.of("../ai-service/.env"));
+    }
     private final Map<String,Permit> permits=new HashMap<>();
     private final Deque<Long> requests=new ArrayDeque<>();
     private record Permit(AiDtos.Scope scope,HttpSession session,long expires,int[] calls) {}

@@ -1,21 +1,44 @@
 """Isolated UI smoke fixture: no database or Gemini. Run from repo root on port 5189."""
 from pathlib import Path
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 app = FastAPI()
 dist = Path(__file__).resolve().parents[2] / 'frontend' / 'dist'
-areas = [dict(id=1,name='A',kind='RACK',lanes=3,version=0,rackRow=None)]
+areas = [dict(id=1,name='AA',kind='RACK',lanes=3,version=0,rackRow=None)]
 item = dict(productId=1,productName='关节饮',materialCode='M1',batch='22344',unit='件',quantity=12000,cartons=None,rawMaterialBatch='RAW-1',photoId=None,photoUrl=None)
-pallet = dict(id=1,code='TP-001',areaId=1,areaName='A',kind='RACK',lane='UPPER',position=1,location='A 排 / 上层 / 01 号',notes=None,items=[item],version=0,createdAt='2026-10-18T00:00:00Z',updatedAt='2026-10-18T00:00:00Z')
+pallet = dict(id=1,code='TP-001',areaId=1,areaName='AA',kind='RACK',lane='UPPER',position=5,location='A 排 / 上层 / 01 号',notes=None,items=[item],version=0,createdAt='2026-10-18T00:00:00Z',updatedAt='2026-10-18T00:00:00Z')
 amounts = dict(quantities={'件':'12000'},pending=0,unitUnknown=0,palletIds=[1])
-location = dict(**amounts,location=pallet['location'],areaId=1,lane='UPPER',position=1,pallets=['TP-001'],rawBatches=['RAW-1'])
+location = dict(**amounts,location=pallet['location'],areaId=1,lane='UPPER',position=5,pallets=['TP-001'],rawBatches=['RAW-1'])
 batch = dict(**amounts,label='22344',missing=False,locations=[location])
 material = dict(**amounts,name='关节饮',code='M1',productId=1,batches=[batch])
 
 @app.get('/api/auth/status')
-def auth(): return dict(authenticated=True,username='UI fixture')
+def auth(request: Request): return dict(authenticated=request.cookies.get('ui_auth') == 'yes',username='UI fixture')
+
+@app.post('/api/auth/login')
+def login(response: Response):
+    response.set_cookie('ui_auth','yes',httponly=True)
+    return dict(authenticated=True,username='UI fixture')
+
+@app.post('/api/auth/logout')
+def logout(response: Response):
+    response.delete_cookie('ui_auth')
+    return dict(authenticated=False,username='')
+
+@app.get('/api/movements/stats')
+def today_stats(): return dict(totalCartons=0,totalQuantity=0,unknownItemCount=0,products=[])
+
+@app.get('/api/movements/stats/query')
+def query_stats(): return dict(directions=[])
+
+@app.get('/api/movements')
+def movements(): return dict(content=[],page=0,size=100,totalElements=0,totalPages=0)
+
+@app.get('/api/production-tasks')
+def tasks(): return []
+
 
 @app.get('/api/warehouse')
 def warehouse(): return dict(areas=areas,pallets=[pallet])

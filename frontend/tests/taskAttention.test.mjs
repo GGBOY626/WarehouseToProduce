@@ -4,8 +4,8 @@ import {activeTask,taskAlerts,attentionFirst} from '../src/utils/taskAttention.t
 const target={materialTarget:true,shortageQuantity:0,unknownQuantityCount:0};
 const normal={id:1,status:'IN_PROGRESS',targets:[target]};
 test('attention identifies shortages and uncertain quantities without adding different units',()=>{
- const task={...normal,targets:[{...target,shortageQuantity:20,baseUnit:'条'},{...target,shortageQuantity:50,baseUnit:'个'}]};
- assert.equal(taskAlerts(task),'2 种物料缺料');
+ const task={...normal,targets:[{...target,productName:'主料',shortageQuantity:20,baseUnit:'条'},{...target,productName:'外盒',shortageQuantity:50,baseUnit:'个'}]};
+ assert.equal(taskAlerts(task),'主料 缺 20 条 · 外盒 缺 50 个');
  assert.equal(taskAlerts({...normal,output:{unknownQuantityCount:1}}),'有数量待确认');
  assert.equal(taskAlerts(normal),'');
 });

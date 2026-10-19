@@ -9,7 +9,7 @@ if (-not $env:AI_INTERNAL_TOKEN -and (Test-Path -LiteralPath $aiEnvPath)) {
     }
 }
 if (-not $env:AI_INTERNAL_TOKEN -or $env:AI_INTERNAL_TOKEN.Length -lt 32) {
-    throw 'Set AI_INTERNAL_TOKEN (at least 32 random characters) in ai-service/.env first.'
+    Write-Warning 'AI is unavailable: set AI_INTERNAL_TOKEN (at least 32 random characters) in ai-service/.env. Starting ordinary warehouse services.'
 }
 if (-not $env:AI_SERVICE_URL) { $env:AI_SERVICE_URL = 'http://127.0.0.1:8000' }
 Push-Location (Join-Path $PSScriptRoot '../backend')

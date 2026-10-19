@@ -2,7 +2,8 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 Text = Annotated[str, Field(max_length=200)]
-Row = Literal['', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M']
+Row = Literal['', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
+              'AA', 'BB', 'CC', 'DD', 'EE', 'FF', 'GG', 'HH', 'II', 'JJ', 'KK', 'LL', 'MM']
 Lane = Literal['', 'UPPER', 'MIDDLE', 'LOWER', 'LEFT_1', 'LEFT_2', 'RIGHT_1', 'RIGHT_2']
 
 
@@ -18,6 +19,8 @@ class Scope(StrictModel):
     lane: Lane | None = ''
     unknownOnly: bool = False
     taskId: int | None = Field(default=None, gt=0)
+    finished: bool | None = None
+    hideFinished: bool = False
 
 
 class ChatRequest(StrictModel):

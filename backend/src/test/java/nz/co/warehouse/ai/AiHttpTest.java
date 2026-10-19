@@ -16,6 +16,23 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 class AiHttpTest {
+    @Test void badAiConfigurationDoesNotBlockWarehouseReadOrWrite() throws Exception {
+        for(String token:List.of("", "test-only-token-longer-than-32-characters")) {
+            var access=new AiAccess();
+            ReflectionTestUtils.setField(access,"token",token);ReflectionTestUtils.setField(access,"enabled",true);
+            var warehouse=mock(WarehouseService.class);
+            when(warehouse.overview()).thenReturn(new WarehouseService.Overview(List.of(),List.of()));
+            var mvc=MockMvcBuilders.standaloneSetup(new AiController(access,"http://[invalid"),new WarehouseController(warehouse,mock(WarehousePhotoService.class)))
+                .setControllerAdvice(new GlobalExceptionHandler()).addInterceptors(new WriteAuthorizationInterceptor()).build();
+            var session=new MockHttpSession();session.setAttribute(AuthController.AUTH_SESSION_KEY,true);
+            mvc.perform(post("/api/ai/chat").session(session).contentType("application/json").content("{\"message\":\"inventory\",\"scope\":{}}"))
+                .andExpect(status().isServiceUnavailable());
+            mvc.perform(get("/api/warehouse")).andExpect(status().isOk());
+            mvc.perform(post("/api/warehouse/aisles").session(session).contentType("application/json").content("{\"name\":\"Test aisle\",\"lanes\":2}"))
+                .andExpect(status().isOk());
+            verify(warehouse).createAisle(any());
+        }
+    }
     @Test void productionProjectionUsesExistingServiceAndExcludesSensitiveFields() throws Exception {
         var access=new AiAccess();String token="test-only-token-longer-than-32-characters";
         ReflectionTestUtils.setField(access,"token",token);ReflectionTestUtils.setField(access,"enabled",true);

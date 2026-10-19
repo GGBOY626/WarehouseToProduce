@@ -26,6 +26,8 @@ notepad .env
 .\ai-service\start-backend.ps1
 ```
 
+从仓库根目录或 backend 目录直接运行 Java / Maven 时，后端也会从本地 `ai-service/.env` 读取内部 Token；环境变量 `AI_INTERNAL_TOKEN` 优先。IDE 的工作目录请设为仓库根目录或 backend。Gemini Key 仍只由 Python 读取。Token 缺失、AI 地址配置错误或 Python 离线都不会阻止普通业务启动；只在提问时显示 AI 错误。修改 Token 后需重启 Java 和 Python。
+
 再在已激活 Python 虚拟环境的终端执行：
 
 ```powershell

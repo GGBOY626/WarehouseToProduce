@@ -55,14 +55,15 @@ const rows = ref<MovementSummary[]>([]),
   to = ref(initialFilters.to),
   direction = ref<Direction>(initialFilters.direction),
   q = ref(initialFilters.q),
+  materialKind = ref(initialFilters.materialKind ?? 'all'),
   moreFilters = ref(initialFilters.moreFilters),
   activePreset = ref<DatePreset>(initialFilters.activePreset);
 const singleDate = ref(initialFilters.activePreset === 'single' ? initialFilters.from : '');
-watch([from, to, direction, q, moreFilters, activePreset], () => {
+watch([from, to, direction, q, materialKind, moreFilters, activePreset], () => {
   if (!validDate(from.value) || !validDate(to.value) || from.value > to.value) return;
   try {
     sessionStorage.setItem(HOME_FILTERS_KEY, JSON.stringify({ from: from.value, to: to.value,
-      direction: direction.value, q: q.value, moreFilters: moreFilters.value, activePreset: activePreset.value }));
+      direction: direction.value, q: q.value, materialKind: materialKind.value, moreFilters: moreFilters.value, activePreset: activePreset.value }));
   } catch { /* Filtering still works without browser storage. */ }
 }, { flush: 'sync' });
 let requestId = 0;
@@ -86,6 +87,7 @@ async function load() {
       direction: direction.value,
       status: "ACTIVE" as const,
       q: q.value,
+      finished: materialKind.value === 'all' ? undefined : materialKind.value === 'finished',
     };
     const [page, currentStats] = await Promise.all([
       movementsApi.list({ ...params, page: 0, size: 100 }),
@@ -183,6 +185,12 @@ const formatNumber = (value: number) => value.toLocaleString("zh-CN");
       <div class="field">
         <label for="material-search" class="sr-only">搜索物料</label>
         <input id="material-search" class="input" v-model.trim="q" placeholder="搜索物料名称、编码或批次…" @keyup.enter="load" />
+      </div>
+      <div class="field">
+        <label for="movement-material-kind">物料类型</label>
+        <select id="movement-material-kind" class="input" v-model="materialKind" @change="load">
+          <option value="all">全部类型</option><option value="finished">成品</option><option value="material">正常物料（含退回）</option>
+        </select>
       </div>
       <button class="more-toggle" type="button" :aria-expanded="moreFilters" aria-controls="advanced-filters" @click="moreFilters=!moreFilters">
         <span>{{ activePreset==='single' ? `指定日期 · ${from}` : activePreset==='range' ? `自定义 · ${from} 起` : '指定日期 / 更多筛选' }}</span><span aria-hidden="true">{{moreFilters ? '收起' : '展开'}} {{moreFilters ? '⌃' : '⌄'}}</span>

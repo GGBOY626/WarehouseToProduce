@@ -26,6 +26,10 @@ class TaskYieldIntegrationTest {
     @Autowired JdbcTemplate jdbc;
     @Autowired org.springframework.test.web.servlet.MockMvc mvc;
     Long raw,inner,output,person;
+    // Legacy VOID rows still exist even though the public operation is now delete.
+    private void historicalVoid(long id,String reason){
+        jdbc.update("UPDATE movement SET status='VOID', void_reason=? WHERE id=?",reason,id);
+    }
     @BeforeEach void setup(){
         raw=product(ProductUsage.WAREHOUSE_TO_PRODUCTION,"条");inner=product(ProductUsage.WAREHOUSE_TO_PRODUCTION,"个");
         output=product(ProductUsage.PRODUCTION_TO_WAREHOUSE,"盒");
@@ -60,7 +64,7 @@ class TaskYieldIntegrationTest {
             .satisfies(row->{assertThat(row.productionTaskId()).isEqualTo(task.id());assertThat(row.productionTaskName()).isEqualTo(task.name());});
         assertThatThrownBy(()->movements.linkTask(record.id(),task.id())).hasMessageContaining("已关联");
         var voided=move(null,raw,"22677",100,false);
-        movements.voidMovement(voided.id(),"test");
+        historicalVoid(voided.id(),"test");
         assertThatThrownBy(()->movements.linkTask(voided.id(),task.id()));
     }
     @Test void quickLinkEndpointRequiresLogin() throws Exception {
@@ -103,7 +107,7 @@ class TaskYieldIntegrationTest {
         var task=tasks.create(plan(20000,30,ProductionTask.OutputQuantityBasis.BOX));
         var issue=move(task.id(),raw,"22677",1000,false);
         var receipt=move(task.id(),output,"22678",10,false);
-        movements.voidMovement(receipt.id(),"correction");
+        historicalVoid(receipt.id(),"correction");
         tasks.delete(task.id());
         assertThatThrownBy(()->tasks.detail(task.id())).hasMessageContaining("找不到");
         assertThat(tasks.list(null)).extracting(ProductionTaskService.Response::id).doesNotContain(task.id());
@@ -162,9 +166,9 @@ class TaskYieldIntegrationTest {
         assertThat(receipt.items().getFirst().totalUnits()).isEqualTo(9000);
         assertThat(tasks.detail(task.id()).output().productionPercent()).isEqualByComparingTo("100");
         assertThat(tasks.detail(task.id()).output().netIssuedQuantity()).isEqualTo(9000);
-        movements.voidMovement(returned.id(),"correction");
+        historicalVoid(returned.id(),"correction");
         assertThat(tasks.detail(task.id()).output().productionPercent()).isEqualByComparingTo("90");
-        movements.voidMovement(receipt.id(),"correction");
+        historicalVoid(receipt.id(),"correction");
         assertThat(tasks.detail(task.id()).output().receivedQuantity()).isZero();
         assertThat(tasks.linkableBatches(new ProductionTaskService.LinkRequest(List.of(new ProductionTaskService.BatchSelection(raw,"22677")),MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE,true))).extracting(ProductionTaskService.LinkOption::id).contains(task.id());
         assertThat(tasks.linkableBatches(new ProductionTaskService.LinkRequest(List.of(new ProductionTaskService.BatchSelection(inner,"22677")),MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE,false))).extracting(ProductionTaskService.LinkOption::id).doesNotContain(task.id());

@@ -6,6 +6,7 @@ export interface HomeFilters {
   to: string;
   direction: Direction;
   q: string;
+  materialKind?: 'all' | 'finished' | 'material';
   moreFilters: boolean;
   activePreset: DatePreset;
 }
@@ -29,7 +30,7 @@ export function presetRange(kind: 'today' | 'yesterday' | 'week' | 'twoWeeks', c
 }
 export function singleDayRange(date: string) { return { from: date, to: date }; }
 export function readHomeFilters(raw: string | null, current: string): HomeFilters {
-  const defaults: HomeFilters = { from: current, to: current, direction: 'WAREHOUSE_TO_PRODUCTION', q: '', moreFilters: false, activePreset: 'today' };
+  const defaults: HomeFilters = { from: current, to: current, direction: 'WAREHOUSE_TO_PRODUCTION', q: '', materialKind: 'all', moreFilters: false, activePreset: 'today' };
   try {
     const saved = JSON.parse(raw || 'null');
     if (!saved || !validDate(saved.from) || !validDate(saved.to) || saved.from > saved.to ||
@@ -37,6 +38,6 @@ export function readHomeFilters(raw: string | null, current: string): HomeFilter
         !['today', 'yesterday', 'week', 'twoWeeks', 'single', 'range'].includes(saved.activePreset)) return defaults;
     if (saved.activePreset === 'single' && saved.from !== saved.to) return defaults;
     return { from: saved.from, to: saved.to, direction: saved.direction,
-      q: typeof saved.q === 'string' ? saved.q : '', moreFilters: saved.moreFilters === true, activePreset: saved.activePreset };
+      q: typeof saved.q === 'string' ? saved.q : '', materialKind: ['finished','material'].includes(saved.materialKind) ? saved.materialKind : 'all', moreFilters: saved.moreFilters === true, activePreset: saved.activePreset };
   } catch { return defaults; }
 }

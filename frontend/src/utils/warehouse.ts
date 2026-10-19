@@ -21,6 +21,7 @@ export interface WarehouseFilters {
   lane: string;
   unknownOnly: boolean;
   hideFinished: boolean;
+  finished?: boolean;
 }
 export function emptyWarehouseFilters(): WarehouseFilters {
   return {query:'',kind:'',row:'',lane:'',unknownOnly:false,hideFinished:false};
@@ -30,9 +31,9 @@ export function warehouseRow(area?: WarehouseArea): string {
 }
 export function filterWarehousePallets(pallets:WarehousePallet[],areas:WarehouseArea[],filters:WarehouseFilters) {
   const areaById=new Map(areas.map(area=>[area.id,area]));
-  return filterPallets(pallets,filters.query,filters.areaId,filters.lane,filters.unknownOnly)
-    .map(p=>filters.hideFinished?{...p,items:p.items.filter(i=>!i.finished)}:p)
-    .filter(p=>!filters.hideFinished||p.items.length>0)
+  const finished=filters.finished ?? (filters.hideFinished ? false : undefined);
+  const typed=finished===undefined?pallets:pallets.map(p=>({...p,items:p.items.filter(i=>Boolean(i.finished)===finished)})).filter(p=>p.items.length>0);
+  return filterPallets(typed,filters.query,filters.areaId,filters.lane,filters.unknownOnly)
     .filter(p=>(!filters.kind||p.kind===filters.kind)&&(!filters.row||warehouseRow(areaById.get(p.areaId))===filters.row));
 }
 // Pending is a separate dimension, never an additional location count.

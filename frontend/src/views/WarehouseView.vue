@@ -28,10 +28,10 @@ const visible=computed(()=>filterWarehousePallets(data.value.pallets,data.value.
 const viewMode=ref<'pallet'|'material'>('pallet');
 const materials=computed(()=>summarizeWarehouse(data.value.pallets,data.value.areas,filters.value));
 const detailDialog=ref<HTMLDialogElement>(),detailPallet=ref<WarehousePallet>();
-async function openDetail(p:WarehousePallet){detailPallet.value=p;await nextTick();detailDialog.value?.showModal()}
+async function openDetail(p:WarehousePallet){detailPallet.value=data.value.pallets.find(row=>row.id===p.id)??p;await nextTick();detailDialog.value?.showModal()}
 const stats=computed(()=>warehouseStats(data.value.pallets));
 const metrics=computed(()=>[{label:'已录入托盘总数',value:stats.value.total,note:'所有位置'}, {label:'货架内托盘数',value:stats.value.rack,note:'AA–MM 货架'}, {label:'过道内托盘数',value:stats.value.aisle,note:'全部过道'}, {label:'待盘点托盘数',value:stats.value.pending,note:'含数量未确认的物料'}]);
-const hasFilters=computed(()=>Boolean(filters.value.query||filters.value.kind||filters.value.row||areaId.value||filters.value.unknownOnly||filters.value.hideFinished));
+const hasFilters=computed(()=>Boolean(filters.value.query||filters.value.kind||filters.value.row||areaId.value||filters.value.unknownOnly||filters.value.hideFinished||filters.value.finished!==undefined));
 function count(id:number,l?:string){return data.value.pallets.filter(p=>p.areaId===id&&(!l||p.lane===l)).length}
 function selectArea(id?:number,l=''){const area=data.value.areas.find(a=>a.id===id);if(area)filters.value=selectWarehouseLocation(filters.value,area,l);else clearLocation()}
 function clearLocation(){filters.value={...filters.value,kind:'',row:'',areaId:undefined,lane:''}}
@@ -51,6 +51,7 @@ async function load(){
 
 const formDialog=ref<HTMLDialogElement>(),formKey=ref(0),editing=ref<WarehousePallet>(),initialArea=ref<number>(),initialLane=ref('LOWER'),continueEntry=ref(false);
 async function openForm(pallet?:WarehousePallet){
+  if(pallet)pallet=data.value.pallets.find(row=>row.id===pallet!.id)??pallet;
   if(busy.value)return;busy.value=true;message.value='';continueEntry.value=false;
   try{products.value=await productsApi.search('',true)}catch{products.value=[];notice.value='已有产品列表暂时无法读取，仍可手动填写产品名称。'}
   editing.value=pallet;initialArea.value=pallet?.areaId||areaId.value||racks.value[0]?.id;initialLane.value=pallet?.lane||lane.value||(selectedArea.value?.kind==='AISLE'?'LEFT_1':'LOWER');formKey.value++;await nextTick();formDialog.value?.showModal();busy.value=false;
@@ -61,7 +62,7 @@ async function saved(pallet:WarehousePallet,another:boolean){
   if(another){initialArea.value=pallet.areaId;initialLane.value=pallet.lane;continueEntry.value=true;editing.value=undefined;formKey.value++;await nextTick();formDialog.value?.scrollTo({top:0});formDialog.value?.querySelector<HTMLInputElement>('input')?.focus()}else formDialog.value?.close();
 }
 const removeDialog=ref<HTMLDialogElement>(),removing=ref<WarehousePallet>(),removeError=ref('');
-async function requestRemove(p:WarehousePallet){if(busy.value)return;removing.value=p;removeError.value='';await nextTick();removeDialog.value?.showModal()}
+async function requestRemove(p:WarehousePallet){if(busy.value)return;removing.value=data.value.pallets.find(row=>row.id===p.id)??p;removeError.value='';await nextTick();removeDialog.value?.showModal()}
 async function remove(){
   const p=removing.value;if(busy.value||!p)return;
   busy.value=true;removeError.value='';
@@ -110,7 +111,8 @@ onMounted(async()=>{await load();await openLinkedPallet()});
         <div class="field search-field"><label for="warehouse-search">查找物料或托盘</label><input id="warehouse-search" v-model="filters.query" name="warehouse-search" autocomplete="off" :spellcheck="false" class="input" type="search" placeholder="产品、原料批号、批号、托盘号或货位…"></div>
         <div class="field"><label for="warehouse-kind">位置类型</label><select id="warehouse-kind" name="warehouse-kind" class="select" :value="filters.kind" @change="changeScope({kind:($event.target as HTMLSelectElement).value as ''|'RACK'|'AISLE'})"><option value="">全部位置</option><option value="RACK">货架</option><option value="AISLE">过道</option></select></div>
         <div class="field"><label for="warehouse-row">排号</label><select id="warehouse-row" name="warehouse-row" class="select" :value="filters.row" @change="changeScope({row:($event.target as HTMLSelectElement).value})"><option value="">全部排号</option><option v-for="rack in racks" :key="rack.id" :value="rack.name">{{rack.name}} 排</option></select></div>
-        <label class="unknown-filter"><input v-model="filters.unknownOnly" name="warehouse-pending" type="checkbox">只看待盘点</label><label class="unknown-filter"><input v-model="filters.hideFinished" name="warehouse-hide-finished" type="checkbox">隐藏成品</label>
+        <div class="field"><label for="warehouse-material-kind">物料类型</label><select id="warehouse-material-kind" class="select" v-model="filters.finished"><option :value="undefined">全部类型</option><option :value="true">成品</option><option :value="false">正常物料</option></select></div>
+        <label class="unknown-filter"><input v-model="filters.unknownOnly" name="warehouse-pending" type="checkbox">只看待盘点</label>
       </div>
       <div v-if="hasFilters" class="active-filters" aria-label="当前筛选条件">
         <button v-if="filters.query" @click="filters.query=''" :aria-label="`清除关键词 ${filters.query}`">关键词：{{filters.query}} ×</button>
@@ -118,7 +120,7 @@ onMounted(async()=>{await load();await openLinkedPallet()});
         <button v-if="filters.row" @click="changeScope({row:''})">{{filters.row}} 排 ×</button>
         <button v-if="selectedArea" @click="filters.areaId=undefined;filters.lane=''">货位：{{selectedArea.name}}{{lane?' · '+laneLabels[lane]:''}} ×</button>
         <button v-if="filters.unknownOnly" @click="filters.unknownOnly=false">只看待盘点 ×</button>
-        <button v-if="filters.hideFinished" @click="filters.hideFinished=false">隐藏成品 ×</button>
+        <button v-if="filters.finished!==undefined" @click="filters.finished=undefined">{{filters.finished?'成品':'正常物料'}} ×</button>
         <button class="clear-filters" @click="clearFilters">清除全部筛选</button>
       </div>
       <div class="results-heading"><h2 id="stock-list-title">{{viewMode==='pallet'?'托盘明细':'物料汇总'}} <span role="status">{{loaded?(viewMode==='pallet'?`找到 ${visible.length} 托 / 共 ${stats.total} 托`:`当前范围 ${materials.length} 种物料`):'等待读取'}}</span></h2><div class="view-switch" role="group" aria-label="查看方式"><button :aria-pressed="viewMode==='pallet'" @click="viewMode='pallet'">按托盘查看</button><button :aria-pressed="viewMode==='material'" @click="viewMode='material'">按物料汇总</button></div></div>

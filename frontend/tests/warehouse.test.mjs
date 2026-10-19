@@ -6,6 +6,15 @@ const pallets=[
   {id:2,areaId:1,lane:'UPPER',position:3,code:'TP-2',location:'A 排 / 上层 / 03 号',items:[{productName:'外盒',materialCode:'BOX',batch:'22335',quantity:null}]},
   {id:3,areaId:2,lane:'LEFT_2',position:1,code:'TP-3',location:'过道 1 / 左二 / 01 号',items:[{productName:'主料',materialCode:'RAW',batch:'22334',quantity:500}]}
 ];
+test('material type filters mixed pallets before keyword and pending checks without changing source items',()=>{
+  const mixed=[{...pallets[0],kind:'RACK',items:[{productName:'成品饮料',finished:true,quantity:null},{productName:'外盒',finished:false,quantity:100}]}];
+  const scope={...emptyWarehouseFilters(),finished:false};
+  assert.deepEqual(filterWarehousePallets(mixed,[],scope)[0].items.map(i=>i.productName),['外盒']);
+  assert.equal(filterWarehousePallets(mixed,[],{...scope,query:'饮料'}).length,0);
+  assert.equal(filterWarehousePallets(mixed,[],{...scope,unknownOnly:true}).length,0);
+  assert.deepEqual(filterWarehousePallets(mixed,[],{...scope,finished:true})[0].items.map(i=>i.productName),['成品饮料']);
+  assert.equal(mixed[0].items.length,2);
+});
 test('rack levels and aisle widths only expose valid locations',()=>{
   assert.deepEqual(areaLanes({kind:'RACK',lanes:3}),['UPPER','MIDDLE','LOWER']);
   assert.deepEqual(areaLanes({kind:'AISLE',lanes:2}),['LEFT_1','RIGHT_1']);
@@ -36,7 +45,7 @@ test('row includes its rack and linked aisles, never unlinked aisles',()=>{
 });
 test('board selection synchronizes controls and preserves search/pending filters',()=>{
   const filters=selectWarehouseLocation({...emptyWarehouseFilters(),query:'22335',unknownOnly:true,kind:'AISLE',row:'B'},areas[0],'UPPER');
-  assert.deepEqual(filters,{query:'22335',unknownOnly:true,kind:'RACK',row:'A',areaId:1,lane:'UPPER'});
+  assert.deepEqual(filters,{query:'22335',unknownOnly:true,hideFinished:false,kind:'RACK',row:'A',areaId:1,lane:'UPPER'});
   assert.deepEqual(filterWarehousePallets(inventory,areas,filters).map(p=>p.id),[2]);
   assert.equal(filterWarehousePallets(inventory,areas,{...filters,lane:'LOWER'}).length,0);
   const unlinked=selectWarehouseLocation(filters,areas[3],'LEFT_1');
@@ -58,9 +67,10 @@ test('a moved pallet is counted once and disappears from its former location',()
   assert.deepEqual(filterWarehousePallets(moved,areas,selectWarehouseLocation(emptyWarehouseFilters(),areas[1],'RIGHT_2')).map(p=>p.id),[1]);
 });
 test('continuous entry suggests the first unused position in exactly one lane',()=>{
-  assert.equal(nextPosition(pallets,1,'UPPER'),2);
-  assert.equal(nextPosition(pallets,1,'LOWER'),1);
-  assert.equal(nextPosition(pallets,2,'LEFT_2'),2);
+  const physical=pallets.map(p=>p.areaId===1?{...p,position:p.position+4}:p);
+  assert.equal(nextPosition(physical,1,'UPPER'),6);
+  assert.equal(nextPosition(physical,1,'LOWER'),5);
+  assert.equal(nextPosition(physical,2,'LEFT_2',1),2);
 });
 test('batch, product, location and unknown filters combine without mixing locations',()=>{
   assert.deepEqual(filterPallets(pallets,'22334').map(p=>p.id),[1,3]);

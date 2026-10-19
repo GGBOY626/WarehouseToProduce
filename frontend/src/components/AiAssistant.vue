@@ -17,7 +17,7 @@ function clear(){controller?.abort();controller=undefined;busy.value=false;messa
 watch(()=>JSON.stringify(props.scope),clear);
 watch(authenticated,value=>{if(!value){clear();dialog.value?.close()}});
 onBeforeUnmount(clear);
-async function open(summary=false){dialog.value?.showModal();await nextTick();if(window.matchMedia('(pointer:fine)').matches)input.value?.focus();if(summary)await send(props.scope.taskId?'总结当前任务的备料、回仓和需要核对的问题。':'总结当前范围的物料、批次、货位和待盘点情况。')}
+async function open(summary=false){if(!authenticated.value)return;dialog.value?.showModal();await nextTick();if(window.matchMedia('(pointer:fine)').matches)input.value?.focus();if(summary)await send(props.scope.taskId?'总结当前任务的备料、回仓和需要核对的问题。':'总结当前范围的物料、批次、货位和待盘点情况。')}
 async function send(text=question.value){
   if(busy.value||!text.trim()||!authenticated.value)return;
   const current=new AbortController();controller=current;busy.value=true;error.value='';question.value='';
@@ -33,7 +33,7 @@ async function send(text=question.value){
     <button class="btn btn-secondary" @click="open()">{{scope.taskId?'AI 分析':'问仓库'}}</button>
     <button class="btn btn-ghost" @click="open(true)">{{scope.taskId?'任务总结':'总结当前范围'}}</button>
   </div>
-  <dialog ref="dialog" class="ai-drawer" aria-labelledby="ai-title" @close="controller?.abort()">
+  <dialog v-if="authenticated" ref="dialog" class="ai-drawer" aria-labelledby="ai-title" @close="controller?.abort()">
     <header class="ai-heading"><div><span class="hint">只读业务助手</span><h2 id="ai-title">{{scope.taskId?'生产任务分析':'问仓库'}}</h2></div><button class="btn btn-secondary" @click="dialog?.close()">关闭</button></header>
     <div class="ai-scope"><strong>查询范围</strong><p>{{scopeLabel}}</p><small>跟随页面筛选。查询全仓请关闭此窗口并清除页面筛选。</small></div>
     <div class="ai-quick"><button v-for="q in quick" :key="q" :disabled="busy" @click="send(q)">{{q}}</button></div>

@@ -439,6 +439,7 @@ onBeforeUnmount(() => {
       {{ directionLabel(direction) }}
     </div>
     <h1 class="page-title">{{ editId ? "编辑流转记录" : "登记物料流转" }}</h1>
+    <p v-if="direction === 'PRODUCTION_TO_WAREHOUSE'" class="hint"><span v-if="!draft.returnMovement" class="status ok">成品</span>{{ draft.returnMovement ? '退回物料按正常物料登记，不标记为成品。' : '本次车间入仓的产品将自动标记为成品。' }}</p>
     <p class="page-lead">带 * 的内容必须填写。没有照片也可以保存。</p>
     <div v-if="message" class="form-alert" role="alert">{{ message }}</div>
     <section class="card card-pad stack">

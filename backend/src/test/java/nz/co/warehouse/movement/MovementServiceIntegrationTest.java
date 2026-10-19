@@ -33,12 +33,46 @@ class MovementServiceIntegrationTest {
     @Autowired com.fasterxml.jackson.databind.ObjectMapper objectMapper;
     Long sender,receiver,product,inboundProduct;
 
+    // Legacy VOID rows still exist even though the public operation is now delete.
+    private void historicalVoid(long id,String reason){
+        jdbc.update("UPDATE movement SET status='VOID', void_reason=? WHERE id=?",reason,id);
+    }
     @BeforeEach void setup(){
         String suffix=UUID.randomUUID().toString().substring(0,8);
         sender=persons.create(new PersonDtos.Request("仓库人员-"+suffix,null)).id();
         receiver=persons.create(new PersonDtos.Request("生产人员-"+suffix,null)).id();
         product=products.create(new ProductDtos.Request("测试产品-"+suffix,"MAT-"+suffix,"LOT-"+suffix,ProductUsage.WAREHOUSE_TO_PRODUCTION,30,"个")).id();
         inboundProduct=products.create(new ProductDtos.Request("入库产品-"+suffix,"IN-"+suffix,null,ProductUsage.PRODUCTION_TO_WAREHOUSE,30,"个")).id();
+    }
+
+    @Test void finishedFilterSeparatesReceiptsFromReturnsAndMatchesStatistics() throws Exception {
+        String batch="FIN-"+UUID.randomUUID();
+        var outbound=movements.create(new MovementDtos.SaveRequest(UUID.randomUUID().toString(),MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,
+                Instant.parse("2026-09-28T01:00:00Z"),sender,receiver,batch,false,null,List.of(new MovementDtos.ItemRequest(product,batch,1,0,null,null,List.of()))));
+        var receiptRequest=new MovementDtos.SaveRequest(UUID.randomUUID().toString(),MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE,
+                Instant.parse("2026-09-28T02:00:00Z"),sender,receiver,null,false,null,List.of(new MovementDtos.ItemRequest(inboundProduct,batch,2,0,null,null,List.of())));
+        var receipt=movements.create(receiptRequest);
+        var returnRequest=new MovementDtos.SaveRequest(UUID.randomUUID().toString(),MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE,
+                Instant.parse("2026-09-28T03:00:00Z"),sender,receiver,batch,true,null,List.of(new MovementDtos.ItemRequest(product,batch,1,0,null,null,List.of())));
+        var returned=movements.create(returnRequest);
+        assertThat(receipt.finished()).isTrue();
+        assertThat(returned.finished()).isFalse();
+        assertThat(outbound.finished()).isFalse();
+        var day=LocalDate.of(2026,9,28);
+        var finished=movements.search(day,day,null,null,null,null,batch,0,1,true);
+        assertThat(finished.totalElements()).isEqualTo(1);
+        assertThat(finished.content()).extracting(MovementDtos.ListResponse::id).containsExactly(receipt.id());
+        assertThat(movements.search(day,day,null,null,null,null,batch,0,100,false).content())
+                .extracting(MovementDtos.ListResponse::id).containsExactlyInAnyOrder(returned.id(),outbound.id());
+        var stats=movements.queryStats(day,day,null,null,null,null,batch,true);
+        assertThat(stats.directions()).hasSize(1);
+        assertThat(stats.directions().getFirst().totalQuantity()).isEqualTo(60);
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/movements")
+                .param("from",day.toString()).param("to",day.toString()).param("q",batch).param("finished","true"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.totalElements").value(1));
+        // Editing the type recomputes the marker instead of retaining stale finished status.
+        assertThat(movements.update(receipt.id(),returnRequest).finished()).isFalse();
+        assertThat(movements.update(receipt.id(),receiptRequest).finished()).isTrue();
     }
 
     @Test void createsAndReturnsSameMovementForRepeatedIdempotencyKey(){
@@ -99,7 +133,7 @@ class MovementServiceIntegrationTest {
     }
 
     @Test void voidedMovementCannotBeEdited(){
-        var saved=movements.create(request(UUID.randomUUID().toString(),MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,1,0));movements.voidMovement(saved.id(),"重复登记");
+        var saved=movements.create(request(UUID.randomUUID().toString(),MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,1,0));historicalVoid(saved.id(),"重复登记");
         assertThatThrownBy(()->movements.update(saved.id(),request(UUID.randomUUID().toString(),MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,2,0))).hasMessageContaining("已作废");
     }
 
@@ -231,7 +265,7 @@ class MovementServiceIntegrationTest {
         var second=movements.create(request(UUID.randomUUID().toString(),MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,4,2));
         var third=movements.create(request(UUID.randomUUID().toString(),MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,6,1));
         var voided=movements.create(request(UUID.randomUUID().toString(),MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,99,0));
-        movements.voidMovement(voided.id(),"不参与统计");
+        historicalVoid(voided.id(),"不参与统计");
         movements.create(new MovementDtos.SaveRequest(UUID.randomUUID().toString(),MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,Instant.parse("2026-09-29T01:00:00Z"),sender,receiver,"TRACE-OUTSIDE",null,List.of(firstItem)));
         var result=movements.queryStats(LocalDate.of(2026,9,28),LocalDate.of(2026,9,28),MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,MovementEnums.Status.ACTIVE,null,null,first.items().getFirst().productName()).directions().getFirst().products().getFirst();
         assertThat(result.movements()).extracting(MovementDtos.StatMovementResponse::id).containsExactlyInAnyOrder(first.id(),second.id(),third.id());
@@ -473,7 +507,7 @@ class MovementServiceIntegrationTest {
         assertThat(groups).hasSize(1);
         assertThat(groups.getFirst().subBatch()).isEqualTo(label);
         assertThat(groups.getFirst().totalQuantity()).isEqualTo(5);
-        movements.voidMovement(page.content().getFirst().id(),"duplicate");
+        historicalVoid(page.content().getFirst().id(),"duplicate");
         assertThat(movements.queryStats(LocalDate.of(2026,9,28),LocalDate.of(2026,9,28),null,MovementEnums.Status.ACTIVE,null,null,label).directions()).isEmpty();
     }
 

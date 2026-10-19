@@ -7,10 +7,18 @@ import java.util.*;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class AiInventoryTest {
+    @Test void finishedScopeCannotIncludeMaterialsOfTheOtherType(){
+        var finished=new ItemResponse(2L,"Finished","F","B","box",10L,null,null,null,null,null,null,null,true);
+        var data=new Overview(areas,List.of(pallet(1,1,item("B",20L),finished)));
+        var scope=new AiDtos.Scope("","","",null,"",false,null,true,false);
+        assertThat(AiInventory.summarize(data,scope,none).materials()).extracting(m->m.name).containsExactly("Finished");
+        var raw=new AiDtos.Scope("","","",null,"",false,null,false,false);
+        assertThat(AiInventory.summarize(data,raw,none).materials()).noneMatch(m->m.name.equals("Finished"));
+    }
     private final AiDtos.Scope all=new AiDtos.Scope("","","",null,"",false,null);
     private final AiDtos.Filters none=new AiDtos.Filters("","","","","",null,false);
     private final List<AreaResponse> areas=List.of(new AreaResponse(1L,"A",WarehouseArea.Kind.RACK,3,0,null),new AreaResponse(2L,"B",WarehouseArea.Kind.RACK,3,0,null),new AreaResponse(3L,"收货过道",WarehouseArea.Kind.AISLE,4,0,"A"));
-    private ItemResponse item(Long id,String name,String code,String batch,Long q,String unit){return new ItemResponse(id,name,code,batch,unit,q,null,"RAW-1",null,null);}
+    private ItemResponse item(Long id,String name,String code,String batch,Long q,String unit){return new ItemResponse(id,name,code,batch,unit,q,null,"RAW-1",null,null,null,null,null,false);}
     private ItemResponse item(String batch,Long q){return item(1L,"关节饮","M1",batch,q,"件");}
     private PalletResponse pallet(long id,long area,ItemResponse... items){return new PalletResponse(id,"TP-"+id,area,"",area==3?WarehouseArea.Kind.AISLE:WarehouseArea.Kind.RACK,area==3?"LEFT_1":"UPPER",(int)id,"位置"+id,null,List.of(items),0,null,null);}
     private AiInventory.Result sum(List<PalletResponse> rows){return AiInventory.summarize(new Overview(areas,rows),all,none);}

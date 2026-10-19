@@ -47,6 +47,8 @@ public final class AiInventory {
             if(!matches(scope.row(),row)||!matches(filters.row(),row)||!matches(scope.kind(),p.kind().name())||!matches(filters.kind(),p.kind().name())||
                !matches(scope.lane(),p.lane())||!matches(filters.lane(),p.lane())||scope.areaId()!=null&&!scope.areaId().equals(p.areaId()))continue;
             for(var i:p.items()) {
+                Boolean finished=scope.finished()!=null?scope.finished():scope.hideFinished()?Boolean.FALSE:null;
+                if(finished!=null&&i.finished()!=finished)continue;
                 if((scope.unknownOnly()||filters.unknownOnly())&&i.quantity()!=null)continue;
                 if(!search(scope.query(),i,p)||!search(filters.query(),i,p)||!matches(filters.batch(),clean(i.batch())))continue;
                 var ids=clean(i.materialCode()).isEmpty()?null:catalog.get(signature(i));

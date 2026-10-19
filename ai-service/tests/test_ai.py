@@ -261,3 +261,11 @@ def test_large_scope_omitted_details_are_not_an_empty_ledger():
     r.inventory.detailsOmitted = True
     text = '\n'.join(statements([r]))
     assert '100 种物料' in text and '明细过多' in text
+
+
+def test_finished_scope_accepts_physical_rows_and_preserves_filter():
+    from app.schemas import Scope
+    value = Scope(row='AA', finished=False)
+    assert value.row == 'AA'
+    assert value.model_dump()['finished'] is False
+    assert Scope(row='MM', finished=True).finished is True
