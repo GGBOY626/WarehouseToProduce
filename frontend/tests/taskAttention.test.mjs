@@ -1,8 +1,15 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {activeTask,taskAlerts,attentionFirst} from '../src/utils/taskAttention.ts';
+import {activeTask,taskAlerts,attentionFirst,taskWarnings} from '../src/utils/taskAttention.ts';
 const target={materialTarget:true,shortageQuantity:0,unknownQuantityCount:0};
 const normal={id:1,status:'IN_PROGRESS',targets:[target]};
+
+test('structured warning presentation preserves all existing attention conditions and carton rounding',()=>{
+ const task={...normal,targets:[{...target,productName:'外盒',baseUnit:'个',shortageQuantity:3800,shortageCartonSize:400,unknownQuantityCount:1},{...target,materialTarget:false}],output:{producedQuantity:101,netIssuedQuantity:100}};
+ assert.deepEqual(taskWarnings(task),['有数量待确认','备料配置待核对','回仓数量待核对']);
+ assert.equal(taskAlerts(task),`外盒 缺 ${(3800).toLocaleString()} 个，还需 10 箱（按 400 个/箱） · 有数量待确认 · 备料配置待核对 · 回仓数量待核对`);
+ assert.deepEqual(taskWarnings(normal),[]);
+});
 test('attention identifies shortages and uncertain quantities without adding different units',()=>{
  const task={...normal,targets:[{...target,productName:'主料',shortageQuantity:20,baseUnit:'条'},{...target,productName:'外盒',shortageQuantity:50,baseUnit:'个'}]};
  assert.equal(taskAlerts(task),'主料 缺 20 条 · 外盒 缺 50 个');
