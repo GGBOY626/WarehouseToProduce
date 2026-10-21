@@ -18,9 +18,10 @@ const productionPercent = computed(() => props.task.output?.quantityBasis ? prop
 
 <template>
   <article class="task-card" :aria-labelledby="`task-title-${task.id}`">
+    <RouterLink :to="`/production-tasks/${task.id}`" class="task-card-link" :aria-label="`${task.name}，查看任务详情`" />
     <header class="task-heading">
       <h3 :id="`task-title-${task.id}`">
-        <RouterLink :to="`/production-tasks/${task.id}`" class="task-link">{{ task.name }}<span class="sr-only">，查看任务详情</span></RouterLink>
+        {{ task.name }}
       </h3>
       <div class="task-heading-end">
         <span class="task-status" :class="{ completed: task.status === 'COMPLETED' }">{{ labels[task.status] }}</span>
@@ -76,9 +77,8 @@ const productionPercent = computed(() => props.task.output?.quantityBasis ? prop
 .task-card:active{border-color:var(--blue2)}
 .task-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
 .task-heading h3{margin:0;min-width:0;font-family:"Microsoft YaHei UI","PingFang SC",sans-serif;font-size:18px;font-weight:700;line-height:1.5;overflow-wrap:anywhere;text-wrap:pretty}
-.task-link::after{content:"";position:absolute;inset:0;z-index:1;border-radius:var(--radius)}
-.task-link:focus-visible{outline:none}
-.task-link:focus-visible::after{outline:3px solid var(--blue2);outline-offset:3px}
+.task-card-link{position:absolute;inset:0;z-index:1;border-radius:var(--radius);touch-action:manipulation}
+.task-card-link:focus-visible{outline:3px solid var(--blue2);outline-offset:3px}
 .task-heading-end{display:flex;align-items:center;gap:14px;flex-shrink:0;padding-top:2px}
 .task-status{padding:4px 10px;border-radius:6px;font-size:12px;font-weight:650;line-height:1.5;color:var(--blue);background:var(--soft-blue);white-space:nowrap}
 .task-status.completed{color:var(--green);background:var(--soft-green)}

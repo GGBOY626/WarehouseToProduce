@@ -19,10 +19,8 @@ public record FinishedReceiptForecast(String status, List<String> messages, Stri
                                              long received, int unknownOutput) {
         var messages = new ArrayList<String>();
         boolean packed = task.outputCartonUnits() != null && task.outputCartonUnits() > 0;
-        boolean configured = packed && task.getOutputProduct() != null && primary != null
-                && task.getYieldMaterialQuantity() != null && task.getYieldOutputQuantity() != null
-                && task.getYieldMaterialQuantity() > 0 && task.getYieldOutputQuantity() > 0;
-        if (!configured) messages.add("待配置：请选择成品、主料、成品箱规及投入 / 产出配比。");
+        boolean configured = packed && task.getOutputProduct() != null && primary != null;
+        if (!configured) messages.add("待配置：请选择成品、主料及成品箱规。");
         if (task.getOutputProduct() != null && task.getOutputProduct().canonical().getMovementDirection() != ProductUsage.PRODUCTION_TO_WAREHOUSE) {
             configured = false;
             messages.add("待配置：任务出货产品须属于成品分类。");
@@ -35,14 +33,16 @@ public record FinishedReceiptForecast(String status, List<String> messages, Stri
         if (!configured || !inputKnown)
             return new FinishedReceiptForecast(configured ? "NEEDS_REVIEW" : "NEEDS_CONFIGURATION", messages,
                     actual.toString(), null, actualPacked, null, null, null, unknownOutput > 0);
-        // Exact rational arithmetic: do not round fractional cartons, boxes, pallets or base units.
-        BigInteger denominator = BigInteger.valueOf(task.getYieldMaterialQuantity());
-        BigInteger expected = BigInteger.valueOf(primary.completedQuantity()).multiply(BigInteger.valueOf(task.getYieldOutputQuantity()));
+        // One unit of net-issued primary material yields one finished inner unit.
+        // BOX receipts count boxes, so convert through the saved units-per-box snapshot.
+        BigInteger denominator = BigInteger.valueOf(task.getOutputQuantityBasis() == ProductionTask.OutputQuantityBasis.BOX
+                ? task.getOutputUnitsPerBox() : 1);
+        BigInteger expected = BigInteger.valueOf(primary.completedQuantity());
         BigInteger difference = expected.subtract(actual.multiply(denominator));
         BigDecimal progress = expected.signum() == 0 || unknownOutput > 0 ? null
                 : new BigDecimal(actual.multiply(denominator).multiply(BigInteger.valueOf(100)))
                     .divide(new BigDecimal(expected), 2, RoundingMode.HALF_UP);
-        if (difference.signum() < 0) messages.add("超额回库：已知回库数量已超过预计产量，请核对配比和关联记录。");
+        if (difference.signum() < 0) messages.add("超额回库：已知回库数量已超过预计产量，请核对主料净发量和关联记录。");
         return new FinishedReceiptForecast(unknownOutput > 0 ? "NEEDS_REVIEW" : "READY", messages, actual.toString(),
                 pack(expected, denominator, task), actualPacked,
                 unknownOutput > 0 ? null : pack(difference.max(BigInteger.ZERO), denominator, task),

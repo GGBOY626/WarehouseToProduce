@@ -20,7 +20,7 @@ const tasks=[
 ];
 const packed=(cartons,boxes='0',units='0',fraction=null,pallets=null,palletCartons=null)=>({cartons,boxes,units,fraction,pallets,palletCartons});
 const forecast=(expected,received,remaining,progressPercent,excess=null)=>({status:'READY',messages:[],knownReceivedQuantity:'55440',expected,received,remaining,excess,progressPercent,receivedIncomplete:false});
-tasks[0].output={...tasks[0].output,baseUnit:'个',quantityBasis:'UNIT',boxesPerCarton:22,unitsPerBox:30,cartonsPerPallet:40,yieldMaterialQuantity:2,yieldOutputQuantity:1,primaryMaterialProductId:1,primaryMaterialName:'小绿芯铁',primaryMaterialUnit:'个',netIssuedQuantity:132000};
+tasks[0].output={...tasks[0].output,baseUnit:'个',quantityBasis:'UNIT',boxesPerCarton:22,unitsPerBox:30,cartonsPerPallet:40,primaryMaterialProductId:1,primaryMaterialName:'小绿芯铁',primaryMaterialUnit:'个',netIssuedQuantity:66000};
 tasks[0].forecast=forecast(packed('100','0','0',null,'2','20'),packed('84','0','0',null,'2','4'),packed('16','0','0',null,'0','16'),84);
 tasks[1].forecast=forecast(packed('2','0','13','1/3','1','0'),packed('2','2','20',null,'1','0'),packed('0','0','0',null,'0','0'),105,packed('0','2','6','2/3','0','0'));
 tasks[1].output={...tasks[0].output,productName:'小绿芯',cartonsPerPallet:2};

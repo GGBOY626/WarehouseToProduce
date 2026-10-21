@@ -41,9 +41,9 @@ class FinishedReceiptForecastTest {
         return movements.create(new MovementDtos.SaveRequest(UUID.randomUUID().toString(),direction,Instant.now(),person,person,null,returned,task,null,
                 List.of(new MovementDtos.ItemRequest(product,"CODE",0,quantity,null,false,null,List.of(),null,0,null,null,null,"A"))));
     }
-    @Test void explicitRatioAndMultipleReceiptsUseFinishedPackingRatherThanRawPacking(){
+    @Test void oneToOneAndMultipleReceiptsUseFinishedPackingRatherThanRawPacking(){
         var task=tasks.create(plan(2L,1L,40));
-        move(task.id(),raw,132000,false); // 2 raw units -> 1 finished unit -> 100 cartons of 660
+        move(task.id(),raw,66000,false); // Legacy 2:1 request is ignored; 1:1 yields 100 cartons.
         move(task.id(),output,40*660,false);move(task.id(),output,44*660,false);
         var f=tasks.detail(task.id()).forecast();
         assertThat(f.expected().cartons()).isEqualTo("100");assertThat(f.expected().pallets()).isEqualTo("2");
@@ -51,13 +51,15 @@ class FinishedReceiptForecastTest {
         assertThat(f.received().cartons()).isEqualTo("84");assertThat(f.remaining().cartons()).isEqualTo("16");
         assertThat(f.progressPercent()).isEqualByComparingTo("84");assertThat(f.excess()).isNull();
         assertThat(tasks.list(null).stream().filter(t->t.id().equals(task.id())).findFirst().orElseThrow().forecast()).isEqualTo(f);
+        jdbc.update("UPDATE production_task SET yield_material_quantity=2, yield_output_quantity=1 WHERE id=?", task.id());
+        assertThat(tasks.detail(task.id()).forecast()).isEqualTo(f); // Persisted legacy ratios are ignored.
         // Product preset edits do not rewrite the task snapshot.
         products.update(output,new ProductDtos.Request(name,"FIN",null,ProductUsage.PRODUCTION_TO_WAREHOUSE,null,"个",false,List.of(),List.of(),List.of(new BoxPacking(10,10,10))));
         assertThat(tasks.detail(task.id()).forecast()).isEqualTo(f);
     }
     @Test void unrelatedSameNameReturnsVoidsAndDeletesCannotDoubleCount(){
         var task=tasks.create(plan(2L,1L,null));
-        move(task.id(),raw,132000,false);move(task.id(),raw,1320,true);
+        move(task.id(),raw,66000,false);move(task.id(),raw,660,true);
         move(null,output,66000,false);
         var receipt=move(task.id(),output,660,false);
         var voided=move(task.id(),output,660,false);
@@ -69,34 +71,34 @@ class FinishedReceiptForecastTest {
         assertThat(tasks.detail(task.id()).forecast().received().cartons()).isEqualTo("0");
         assertThat(tasks.detail(task.id()).forecast().remaining().cartons()).isEqualTo("99");
     }
-    @Test void missingRatioIsNotGuessedAndNoIssuesOrReceiptsAreZero(){
+    @Test void missingRatioDefaultsToOneToOneAndNoIssuesOrReceiptsAreZero(){
         var legacy=tasks.create(plan(null,null,null));
         move(legacy.id(),raw,66000,false);
-        assertThat(tasks.detail(legacy.id()).forecast().status()).isEqualTo("NEEDS_CONFIGURATION");
-        assertThat(tasks.detail(legacy.id()).forecast().expected()).isNull();
+        assertThat(tasks.detail(legacy.id()).forecast().status()).isEqualTo("READY");
+        assertThat(tasks.detail(legacy.id()).forecast().expected().cartons()).isEqualTo("100");
         var configured=tasks.create(plan(2L,1L,null));
         assertThat(configured.forecast().expected().cartons()).isEqualTo("0");
         assertThat(configured.forecast().received().cartons()).isEqualTo("0");
         assertThat(configured.forecast().progressPercent()).isNull();
-        move(configured.id(),raw,1320,false);
+        move(configured.id(),raw,660,false);
         assertThat(tasks.detail(configured.id()).forecast().remaining().cartons()).isEqualTo("1");
         assertThat(tasks.detail(configured.id()).forecast().progressPercent()).isZero();
         var noIssue=tasks.create(plan(2L,1L,null));move(noIssue.id(),output,660,false);
         assertThat(tasks.detail(noIssue.id()).forecast().excess().cartons()).isEqualTo("1");
         assertThat(tasks.detail(noIssue.id()).forecast().progressPercent()).isNull();
     }
-    @Test void overReceiptsAndFractionalPackingAreNeverRoundedAway(){
+    @Test void overReceiptsAndPackingRemaindersAreNeverRoundedAway(){
         var task=tasks.create(plan(3L,2L,2));
-        move(task.id(),raw,2000,false); // 1333 + 1/3 units = 2 cartons, 13 + 1/3 units
+        move(task.id(),raw,1373,false); // 2 cartons, 1 box and 23 units.
         var f=tasks.detail(task.id()).forecast();
-        assertThat(f.expected().cartons()).isEqualTo("2");assertThat(f.expected().units()).isEqualTo("13");
-        assertThat(f.expected().fraction()).isEqualTo("1/3");assertThat(f.expected().pallets()).isEqualTo("1");
+        assertThat(f.expected().cartons()).isEqualTo("2");assertThat(f.expected().boxes()).isEqualTo("1");
+        assertThat(f.expected().units()).isEqualTo("23");assertThat(f.expected().fraction()).isNull();assertThat(f.expected().pallets()).isEqualTo("1");
         move(task.id(),output,1400,false);
         f=tasks.detail(task.id()).forecast();
         assertThat(f.received().boxes()).isEqualTo("2");assertThat(f.received().units()).isEqualTo("20");
-        assertThat(f.remaining().cartons()).isEqualTo("0");assertThat(f.excess().boxes()).isEqualTo("2");
-        assertThat(f.excess().units()).isEqualTo("6");assertThat(f.excess().fraction()).isEqualTo("2/3");
-        assertThat(f.progressPercent()).isEqualByComparingTo("105");
+        assertThat(f.remaining().cartons()).isEqualTo("0");assertThat(f.excess().boxes()).isEqualTo("0");
+        assertThat(f.excess().units()).isEqualTo("27");assertThat(f.excess().fraction()).isNull();
+        assertThat(f.progressPercent()).isGreaterThan(new java.math.BigDecimal("100"));
     }
     @Test void unknownQuantitiesAndNegativeNetIssuesDoNotProduceFalseProgress(){
         var task=tasks.create(plan(1L,1L,null));
@@ -118,17 +120,15 @@ class FinishedReceiptForecastTest {
         assertThat(tasks.detail(task.id()).forecast().expected().cartons()).isEqualTo("100");
         assertThat(tasks.detail(task.id()).forecast().remaining().cartons()).isEqualTo("16");
     }
-    @Test void productPalletAndRatioValidationAndOldProgressRemainIndependent(){
+    @Test void productPalletValidationAndOldProgressRemainIndependent(){
         assertThatThrownBy(()->products.update(output,new ProductDtos.Request(name,"FIN",null,ProductUsage.PRODUCTION_TO_WAREHOUSE,null,"个",false,List.of(),List.of(),List.of(new BoxPacking(22,30,0)))))
                 .hasMessageContaining("托盘");
         assertThatThrownBy(()->products.update(output,new ProductDtos.Request(name,"FIN",null,ProductUsage.PRODUCTION_TO_WAREHOUSE,null,"个",false,List.of(),List.of(),List.of(new BoxPacking(22,30,40),new BoxPacking(22,30,50)))))
                 .hasMessageContaining("同一箱规");
         assertThat(products.search("FIN",false,ProductUsage.PRODUCTION_TO_WAREHOUSE)).filteredOn(p->p.id().equals(output)).singleElement()
                 .satisfies(p->assertThat(p.boxPackings().getFirst().getCartonsPerPallet()).isEqualTo(40));
-        assertThatThrownBy(()->tasks.create(plan(0L,1L,null))).hasMessageContaining("配比");
-        assertThatThrownBy(()->tasks.create(plan(1L,null,null))).hasMessageContaining("配比");
         assertThatThrownBy(()->tasks.create(plan(1L,1L,0))).hasMessageContaining("托盘");
-        var task=tasks.create(plan(null,null,null));move(task.id(),raw,1320,false);move(task.id(),output,660,false);
+        var task=tasks.create(plan(null,null,null));move(task.id(),raw,660,false);move(task.id(),output,660,false);
         var original=tasks.detail(task.id());var changed=tasks.update(task.id(),plan(2L,1L,40));
         assertThat(changed.progressPercent()).isEqualTo(original.progressPercent());
         assertThat(changed.output().productionPercent()).isEqualByComparingTo(original.output().productionPercent());

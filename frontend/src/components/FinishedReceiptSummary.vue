@@ -28,15 +28,15 @@ const progress = computed(() => forecast.value?.progressPercent);
       </div>
     </div>
     <div class="receipt-progress"><span>成品回库进度</span><strong>{{progress==null?'—':`${progress}%`}}</strong><div class="receipt-track" role="progressbar" :aria-label="`${task.name}：成品回库进度`" :aria-valuemin="0" :aria-valuemax="100" :aria-valuenow="progress==null?undefined:Math.min(100,progress)" :aria-valuetext="progress==null?'暂无可计算数据':`${progress}%${forecast?.excess?'，超额回库':''}`"><i :style="{width:`${Math.max(0,Math.min(100,progress??0))}%`}" /></div></div>
-    <p v-if="!forecast || forecast.status==='NEEDS_CONFIGURATION'" class="receipt-note">待配置成品、主料、箱规及产出配比。</p>
+    <p v-if="!forecast || forecast.status==='NEEDS_CONFIGURATION'" class="receipt-note">待配置成品、主料及箱规。</p>
     <p v-else-if="forecast.status==='NEEDS_REVIEW'" class="receipt-warning">数量待核对，暂不显示完整待回库量及进度。</p>
-    <p v-if="forecast?.excess" class="receipt-warning">{{forecast.receivedIncomplete?'已知回库已超额，另有数量待核对。':'已回库超过预计产量，请核对配比和关联记录。'}}</p>
+    <p v-if="forecast?.excess" class="receipt-warning">{{forecast.receivedIncomplete?'已知回库已超额，另有数量待核对。':'已回库超过预计产量，请核对主料净发量和关联记录。'}}</p>
     <div v-if="detailed" class="receipt-basis">
       <h3>计算依据</h3>
-      <p v-if="task.output?.yieldMaterialQuantity">主料 {{task.output.primaryMaterialName}}（{{task.output.primaryMaterialUnit}}）：净发 {{task.output.netIssuedQuantity?.toLocaleString() ?? '—'}}；每投入 {{task.output.yieldMaterialQuantity.toLocaleString()}}，对应产出 {{task.output.yieldOutputQuantity?.toLocaleString()}} {{unit}}。</p>
+      <p v-if="task.output?.primaryMaterialName">主料 {{task.output.primaryMaterialName}}（{{task.output.primaryMaterialUnit}}）：净发 {{task.output.netIssuedQuantity?.toLocaleString() ?? '—'}}。按 1:1 预计成品内装单件数量。</p>
       <p v-if="task.output?.boxesPerCarton">成品规格：{{task.output.boxesPerCarton}} 盒/箱 × {{task.output.unitsPerBox}} 内装数量/盒{{task.output.cartonsPerPallet ? `；${task.output.cartonsPerPallet} 箱/托盘` : ''}}。{{task.output.quantityBasis==='BOX'?'回库数量按盒登记。':'回库数量按成品基础单位登记。'}}</p>
-      <p>预计产量 = 主料净发量 × 产出配比；净发量扣除退料。此为理论产量，未计损耗或其他物料瓶颈。已回库仅累计本任务关联、有效、非退回且产品身份匹配的成品入库。</p>
-      <p>箱数和托盘为按任务成品规格折合的数量，并非流转单中尾箱的实占箱数。余盒、余件和配比产生的分数均保留，不四舍五入；回库百分比保留两位小数，超额不封顶。</p>
+      <p>预计产量按主料净发量 1:1 折算；净发量扣除退料。按盒登记时，再按每盒内装数折成盒。此为理论产量，未计损耗或其他物料瓶颈。已回库仅累计本任务关联、有效、非退回且产品身份匹配的成品入库。</p>
+      <p>箱数和托盘为按任务成品规格折合的数量，并非流转单中尾箱的实占箱数。余盒、余件和不足一盒的分数均保留，不四舍五入；回库百分比保留两位小数，超额不封顶。</p>
       <p v-if="forecast && !forecast.received">已知关联回库：{{formatExactCount(forecast.knownReceivedQuantity)}} {{unit}}，补充成品箱规后可折算。</p>
       <p v-for="note in forecast?.messages" :key="note" class="receipt-warning">{{note}}</p>
     </div>

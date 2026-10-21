@@ -67,7 +67,7 @@ public class ProductionTaskService {
                                  Integer boxesPerCarton,Integer unitsPerBox,ProductionTask.OutputQuantityBasis quantityBasis,
                                  Long primaryMaterialProductId,String primaryMaterialName,String primaryMaterialUnit,Long netIssuedQuantity,
                                  BigDecimal producedQuantity,BigDecimal receivedBoxes,BigDecimal productionPercent,BigDecimal lossPercent,boolean provisional,
-                                 Integer cartonsPerPallet,Long yieldMaterialQuantity,Long yieldOutputQuantity) {}
+                                 Integer cartonsPerPallet) {}
     public record LinkOption(Long id,String productName,String batchNo,ProductionTask.Status status,String name) {}
 
     @Transactional(readOnly=true) public List<Response> list(ProductionTask.Status status){return tasks.search(status).stream().map(this::response).toList();}
@@ -168,9 +168,6 @@ public class ProductionTaskService {
         if(configured&&(r.outputProductId()==null||r.outputBoxesPerCarton()==null||r.outputBoxesPerCarton()<=0||r.outputUnitsPerBox()==null||r.outputUnitsPerBox()<=0||r.outputQuantityBasis()==null||r.primaryMaterialProductId()==null))
             throw BusinessException.badRequest("TASK_PACKAGING_REQUIRED","请填写成品、每箱盒数、每盒数量、入库计量口径及主料。");
         Product primary=configured?products.getAny(r.primaryMaterialProductId()).canonical():null;
-        boolean yieldConfigured=r.yieldMaterialQuantity()!=null||r.yieldOutputQuantity()!=null;
-        if(yieldConfigured&&(!configured||r.yieldMaterialQuantity()==null||r.yieldOutputQuantity()==null||r.yieldMaterialQuantity()<=0||r.yieldOutputQuantity()<=0))
-            throw BusinessException.badRequest("TASK_YIELD_INVALID","预计回库需要完整的成品箱规、主料及大于零的投入和产出配比。");
         if(r.outputCartonsPerPallet()!=null&&(!configured||r.outputCartonsPerPallet()<=0))
             throw BusinessException.badRequest("TASK_PALLET_INVALID","请先配置成品箱规，每托盘箱数必须为正整数。");
         if(primary!=null&&(primary.isQuantityUnknown()||updated.stream().noneMatch(x->x.getProduct().canonicalId().equals(primary.getId()))))
@@ -198,7 +195,7 @@ public class ProductionTaskService {
         t.setOutputBoxesPerCarton(r.outputBoxesPerCarton());t.setOutputUnitsPerBox(r.outputUnitsPerBox());
         t.setOutputQuantityBasis(r.outputQuantityBasis());t.setPrimaryMaterial(primary);
         t.setOutputCartonsPerPallet(r.outputCartonsPerPallet());
-        t.setYieldMaterialQuantity(r.yieldMaterialQuantity());t.setYieldOutputQuantity(r.yieldOutputQuantity());
+        // Legacy ratio columns remain in V21 for data compatibility but are no longer used.
         t.getTargets().clear();t.getTargets().addAll(updated);
         // Keep the original columns aligned with the first target for compatibility.
         t.setProduct(updated.getFirst().getProduct());t.setTargetQuantity(updated.getFirst().getTargetQuantity());
@@ -253,7 +250,7 @@ public class ProductionTaskService {
                 (int)Math.min(100,received*100.0/t.getTargetOutputQuantity()),unknownOutput,null,
                 t.getOutputBoxesPerCarton(),t.getOutputUnitsPerBox(),t.getOutputQuantityBasis(),primary==null?null:primary.productId(),primary==null?null:primary.productName(),primary==null?null:primary.baseUnit(),primary==null?null:primary.completedQuantity(),
                 produced,boxes,productionPercent,lossPercent,t.getStatus()!=ProductionTask.Status.COMPLETED,
-                t.getOutputCartonsPerPallet(),t.getYieldMaterialQuantity(),t.getYieldOutputQuantity());
+                t.getOutputCartonsPerPallet());
         // Material readiness is independent of finished-goods receipts and production status.
         int progress=(int)targets.stream().mapToDouble(target->target.materialTarget()?Math.max(0,Math.min(100,target.completedQuantity()*100.0/target.targetQuantity())):0).average().orElse(0);
         long completed=targets.isEmpty()?0:targets.getFirst().completedQuantity();

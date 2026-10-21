@@ -19,7 +19,7 @@ import static org.assertj.core.api.Assertions.*;
 class ForecastMySqlStartupTest {
     @Autowired ProductService products;
     @Autowired ProductionTaskService tasks;
-    @Test void springBootStartsWithV21AndPersistsOptionalForecastConfiguration(){
+    @Test void springBootStartsWithV21AndDefaultsForecastToOneToOne(){
         var raw=products.create(new ProductDtos.Request("QA material","RAW",null,ProductUsage.WAREHOUSE_TO_PRODUCTION,400,"个"));
         var output=products.create(new ProductDtos.Request("QA finished","FIN",null,ProductUsage.PRODUCTION_TO_WAREHOUSE,null,"个",false,List.of(),List.of(),List.of(new BoxPacking(22,30,40))));
         assertThat(products.search("FIN",false,ProductUsage.PRODUCTION_TO_WAREHOUSE).getFirst().boxPackings().getFirst().getCartonsPerPallet()).isEqualTo(40);
@@ -27,9 +27,8 @@ class ForecastMySqlStartupTest {
                 List.of(new ProductionTaskService.TargetRequest(raw.id(),132000)),output.id(),null,"QA forecast",null,
                 22,30,ProductionTask.OutputQuantityBasis.UNIT,raw.id(),40,2L,1L));
         var saved=tasks.detail(task.id());
-        assertThat(saved.output().yieldMaterialQuantity()).isEqualTo(2);
-        assertThat(saved.output().yieldOutputQuantity()).isEqualTo(1);
         assertThat(saved.output().cartonsPerPallet()).isEqualTo(40);
         assertThat(saved.forecast().status()).isEqualTo("READY");
+        assertThat(saved.forecast().expected().cartons()).isEqualTo("0");
     }
 }

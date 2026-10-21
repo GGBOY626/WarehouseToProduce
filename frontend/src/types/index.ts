@@ -142,8 +142,6 @@ export interface TaskBatchQuantity {
 }
 export interface ProductionTaskOutput {
   cartonsPerPallet?: number | null;
-  yieldMaterialQuantity?: number | null;
-  yieldOutputQuantity?: number | null;
   boxesPerCarton?: number | null; unitsPerBox?: number | null; quantityBasis?: 'BOX' | 'UNIT' | null;
   primaryMaterialProductId?: number | null; primaryMaterialName?: string; primaryMaterialUnit?: string; netIssuedQuantity?: number | null;
   producedQuantity?: number | null; receivedBoxes?: number | null; productionPercent?: number | null; lossPercent?: number | null; provisional: boolean;
