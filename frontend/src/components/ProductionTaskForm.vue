@@ -2,7 +2,7 @@
 import { computed, ref } from "vue";
 import { productionTasksApi, productsApi } from "../api";
 import { errorMessage } from "../api/http";
-import type { Product, ProductionTask } from "../types";
+import type { Product, ProductionTask, BoxPacking } from "../types";
 import { initialBoxPacking } from "../utils/boxPacking";
 import { today } from "../utils/time";
 import SearchPicker from "./SearchPicker.vue";
@@ -24,6 +24,12 @@ const boxesPerCarton = ref<number | undefined>(props.task?.output?.boxesPerCarto
 const unitsPerBox = ref<number | undefined>(props.task?.output?.unitsPerBox ?? undefined);
 const quantityBasis = ref<'BOX' | 'UNIT'>(props.task?.output?.quantityBasis || 'UNIT');
 const primaryId = ref<number | undefined>(props.task?.output?.primaryMaterialProductId ?? undefined);
+const cartonsPerPallet = ref<number | undefined>(props.task?.output?.cartonsPerPallet ?? undefined);
+const yieldEnabled = ref(!!props.task?.output?.yieldMaterialQuantity);
+const yieldMaterial = ref<number | undefined>(props.task?.output?.yieldMaterialQuantity ?? undefined);
+const yieldOutput = ref<number | undefined>(props.task?.output?.yieldOutputQuantity ?? undefined);
+const outputPackings = ref<BoxPacking[]>([]), packingChoice = ref('');
+function choosePacking(){const p=outputPackings.value[Number(packingChoice.value)];if(p){boxesPerCarton.value=p.boxesPerCarton;unitsPerBox.value=p.unitsPerBox;cartonsPerPallet.value=p.cartonsPerPallet??undefined;}}
 const primary = computed(() => form.value.targets.find(t => t.productId === primaryId.value));
 const hasReceipts = computed(() => !!props.task?.movements.some(m => m.direction === 'PRODUCTION_TO_WAREHOUSE' && !m.returnMovement));
 const packagingLocked = computed(() => hasReceipts.value && !!props.task?.output?.boxesPerCarton);
@@ -36,6 +42,8 @@ function selectOutput(p?: Product) {
   quantityBasis.value = p?.baseUnit === '盒' ? 'BOX' : 'UNIT';
   const packing=initialBoxPacking(p);
   boxesPerCarton.value=packing?.boxesPerCarton;unitsPerBox.value=packing?.unitsPerBox;
+  cartonsPerPallet.value=packing?.cartonsPerPallet??undefined;outputPackings.value=p?.boxPackings||[];packingChoice.value='';
+  yieldMaterial.value=undefined;yieldOutput.value=undefined;
 }
 async function loadOutputs(q: string): Promise<Product[]> {
   return (await productsApi.search(q, !!props.task, 'PRODUCTION_TO_WAREHOUSE')).filter(p => !p.quantityUnknown && (p.active || p.id === props.task?.output?.productId));
@@ -56,6 +64,10 @@ async function save() {
     message.value = "请选择主料，并填写有效的每箱盒数和每盒数量。"; return;
   }
   if (outputEnabled.value && !packagingEnabled.value && (!Number.isSafeInteger(outputQuantity.value) || outputQuantity.value <= 0)) { message.value = "请填写原计划产量。"; return; }
+  if(outputEnabled.value&&packagingEnabled.value){
+    if(typeof cartonsPerPallet.value==='number' && (!Number.isInteger(cartonsPerPallet.value)||cartonsPerPallet.value<=0||cartonsPerPallet.value>2147483647)){message.value='每托盘箱数必须为正整数。';return;}
+    if(yieldEnabled.value&&(!Number.isSafeInteger(yieldMaterial.value)||Number(yieldMaterial.value)<=0||!Number.isSafeInteger(yieldOutput.value)||Number(yieldOutput.value)<=0)){message.value='请填写有效的主料投入数量和成品产出数量，不会自动假定 1:1。';return;}
+  }
   saving.value = true; message.value = "";
   try {
     const packed = outputEnabled.value && packagingEnabled.value;
@@ -63,6 +75,9 @@ async function save() {
       targetOutputQuantity: outputEnabled.value && !packed ? outputQuantity.value : null,
       outputBoxesPerCarton: packed ? boxesPerCarton.value : null, outputUnitsPerBox: packed ? unitsPerBox.value : null,
       outputQuantityBasis: packed ? quantityBasis.value : null, primaryMaterialProductId: packed ? primaryId.value : null,
+      outputCartonsPerPallet: packed && cartonsPerPallet.value ? cartonsPerPallet.value : null,
+      yieldMaterialQuantity: packed && yieldEnabled.value ? yieldMaterial.value : null,
+      yieldOutputQuantity: packed && yieldEnabled.value ? yieldOutput.value : null,
       targets: targets.map(t => ({ productId: t.productId, targetQuantity: t.targetQuantity })) };
     emit("saved", props.task ? await productionTasksApi.update(props.task.id, payload) : await productionTasksApi.create(payload));
   } catch (e) { message.value = errorMessage(e); } finally { saving.value = false; }
@@ -87,15 +102,25 @@ async function save() {
         </fieldset>
         <label v-if="task?.output && !task.output.boxesPerCarton" class="output-choice"><input type="checkbox" v-model="packagingEnabled" /> 补充包装换算和生产完成度</label>
         <fieldset v-if="packagingEnabled" :disabled="packagingLocked">
-          <label class="field"><span>计算完成度的主料 *</span><select class="select" v-model="primaryId" required><option :value="undefined">请选择，例如轻体粉</option><option v-for="target in form.targets.filter(t => t.productId)" :key="target.key" :value="target.productId">{{ target.productName }}（{{ target.baseUnit }}）</option></select></label>
+          <label v-if="outputPackings.length>1" class="field"><span>使用成品包装规格</span><select class="select" v-model="packingChoice" @change="choosePacking"><option value="" disabled>选择规格或在下方手动填写</option><option v-for="(p,index) in outputPackings" :key="index" :value="String(index)">{{p.boxesPerCarton}} 盒/箱 × {{p.unitsPerBox}} {{outputUnit}}/盒{{p.cartonsPerPallet ? ` · ${p.cartonsPerPallet} 箱/托盘` : ''}}</option></select></label>
+          <label class="field"><span>计算完成度的主料 *</span><select class="select" v-model="primaryId" required @change="yieldMaterial=undefined;yieldOutput=undefined"><option :value="undefined">请选择，例如轻体粉</option><option v-for="target in form.targets.filter(t => t.productId)" :key="target.key" :value="target.productId">{{ target.productName }}（{{ target.baseUnit }}）</option></select></label>
           <div class="grid-2">
             <label class="field"><span>每箱装几盒 *</span><input class="input" type="number" min="1" step="1" required v-model.number="boxesPerCarton" placeholder="例如 28" /></label>
-            <label class="field"><span>每盒装几个 * {{ primary?.baseUnit ? `（${primary.baseUnit}）` : '' }}</span><input class="input" type="number" min="1" step="1" required v-model.number="unitsPerBox" placeholder="例如 30" /></label>
+            <label class="field"><span>每盒成品数量 *（按盒登记时填写实际内装数）</span><input class="input" type="number" min="1" step="1" required v-model.number="unitsPerBox" placeholder="例如 30" /></label>
           </div>
-          <label class="field"><span>成品入库数量的计量口径 *</span><select class="select" v-model="quantityBasis"><option value="BOX">按盒登记（数量代表成品盒数）</option><option value="UNIT">按单件登记（数量代表条 / 个数）</option></select></label>
+          <label class="field"><span>成品入库数量的计量口径 *</span><select class="select" v-model="quantityBasis" @change="yieldMaterial=undefined;yieldOutput=undefined"><option value="BOX">按盒登记（数量代表成品盒数）</option><option value="UNIT">按单件登记（数量代表条 / 个数）</option></select></label>
           <p class="hint">成品产品的基础单位为“{{ outputUnit || '待选择' }}”，请选择与它实际登记方式一致的口径。完成度按成品折算的{{ primary?.baseUnit || '主料数量' }} ÷ 实际净发主料计算；内外盒分别列出预计耗用，不与主料混加。</p>
         </fieldset>
         <label v-else class="field"><span>原计划产量（{{ outputUnit }}）</span><input class="input" type="number" min="1" v-model.number="outputQuantity" /></label>
+        <section v-if="packagingEnabled" class="forecast-config">
+          <label class="field"><span>每托盘多少箱（可选）</span><input class="input" type="number" min="1" max="2147483647" step="1" v-model.number="cartonsPerPallet" placeholder="不填写则只显示箱数" /></label>
+          <label class="output-choice"><input type="checkbox" v-model="yieldEnabled" /> 配置预计成品回库配比</label>
+          <div v-if="yieldEnabled" class="grid-2">
+            <label class="field"><span>投入主料（{{primary?.baseUnit||'先选择主料'}}）</span><input class="input" type="number" min="1" step="1" required v-model.number="yieldMaterial" placeholder="例如 100" /></label>
+            <label class="field"><span>对应产出成品（{{quantityBasis==='BOX'?'盒':outputUnit||'成品基础单位'}}）</span><input class="input" type="number" min="1" step="1" required v-model.number="yieldOutput" placeholder="填写真实配比" /></label>
+          </div>
+          <p class="hint">预计产量 = 主料实际净发量 × 产出数量 ÷ 投入数量，是按主料折算的理论产量，未计损耗或其他物料瓶颈。未配置配比显示“待配置”；此配置不改变原生产完成度。修改配比会重新计算本任务的预计回库。</p>
+        </section>
         <p class="hint">最后一箱不足整箱时，在回仓记录中填写尾箱实际盒数，例如 1 尾箱 × 3 盒；未装箱的数量仍登记为散装。</p>
         <p v-if="packagingLocked" class="hint">已有回仓记录，成品、主料和包装换算保留原设置；新包装请另建任务。</p>
       </div>
@@ -110,5 +135,6 @@ async function save() {
   </form>
 </template>
 <style scoped>
+.forecast-config{display:grid;gap:12px;border-top:1px solid var(--line);padding-top:14px}
 .output-choice{display:flex;align-items:center;gap:8px}.output-choice input{width:18px;height:18px}.output-plan{display:grid;gap:12px;padding:14px;background:#f3f7f8;border-radius:8px}.task-form,fieldset{display:grid;gap:16px}.task-form{margin-top:16px}fieldset{padding:0;border:0;min-width:0}.target-row{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr) auto;gap:12px;align-items:end;border-bottom:1px solid #e5ecee;padding-bottom:16px}.target-row>*{min-width:0}fieldset>.btn{justify-self:start}.form-actions{display:flex;gap:10px}.form-alert{color:#8f1d25}.hint{margin:0}@media(max-width:600px){.target-row{grid-template-columns:minmax(0,1fr)}.target-row>.btn{justify-self:start}}
 </style>

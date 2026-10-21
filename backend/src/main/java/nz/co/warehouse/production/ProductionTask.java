@@ -22,6 +22,9 @@ public class ProductionTask extends PersistentEntity {
     @ManyToOne(fetch=FetchType.LAZY) @JoinColumn(name="output_product_id") private Product outputProduct;
     @Column(name="output_boxes_per_carton") private Integer outputBoxesPerCarton;
     @Column(name="output_units_per_box") private Integer outputUnitsPerBox;
+    @Column(name="output_cartons_per_pallet") private Integer outputCartonsPerPallet;
+    @Column(name="yield_material_quantity") private Long yieldMaterialQuantity;
+    @Column(name="yield_output_quantity") private Long yieldOutputQuantity;
     @Enumerated(EnumType.STRING) @Column(name="output_quantity_basis",length=10) private OutputQuantityBasis outputQuantityBasis;
     @ManyToOne(fetch=FetchType.LAZY) @JoinColumn(name="primary_material_product_id") private Product primaryMaterial;
     public enum OutputQuantityBasis { BOX, UNIT }

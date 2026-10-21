@@ -80,7 +80,12 @@ async function save() {
       message.value = "常用规格最多 50 项，请输入正整数，用逗号或空格分隔。"; return;
     }
     if(boxPackings.value.length>50){message.value='包装规格最多 50 项。';return;}
-    for(const packing of boxPackings.value){const error=packingError(packing,form.value.baseUnit);if(error){message.value=error;return;}}
+    for(const packing of boxPackings.value){
+      // Vue's numeric model emits an empty string when an optional input is cleared.
+      if((packing.cartonsPerPallet as unknown) === '')packing.cartonsPerPallet=null;
+      const error=packingError(packing,form.value.baseUnit);if(error){message.value=error;return;}
+    }
+    if(new Set(boxPackings.value.map(p=>`${p.boxesPerCarton}:${p.unitsPerBox}`)).size!==boxPackings.value.length){message.value='同一箱规请只填写一次。';return;}
     saving.value=true;
     const payload = { ...form.value, boxPackings:boxPackings.value, materialBatches: batchesText.value.split(/\r?\n/).map(s => s.trim()).filter(Boolean), defaultUnitsPerCarton: !form.value.quantityUnknown && new Set(cartonSpecs).size === 1 ? cartonSpecs[0] : null, cartonSpecs: [...new Set(cartonSpecs)] };
     if (editing.value) await productsApi.update(editing.value.id, payload);
@@ -173,6 +178,7 @@ onMounted(load);
         <strong>默认包装规格</strong>
         <div v-for="(packing,index) in boxPackings" :key="index" class="packing-preset">
           <div class="grid-2"><div class="field"><label :for="`boxes-${index}`">每箱装几盒</label><input :id="`boxes-${index}`" class="input" type="number" min="1" step="1" inputmode="numeric" v-model.number="packing.boxesPerCarton" placeholder="例如 28" /></div><div class="field"><label :for="`units-${index}`">每盒装几{{form.baseUnit||'个'}}</label><input :id="`units-${index}`" class="input" type="number" min="1" step="1" inputmode="numeric" v-model.number="packing.unitsPerBox" placeholder="例如 30" /></div></div>
+          <label class="field"><span>每托盘多少箱（可选）</span><input class="input" type="number" min="1" max="2147483647" step="1" v-model.number="packing.cartonsPerPallet" placeholder="留空则不折算托盘" /></label>
           <div class="row"><span class="hint">{{packingError(packing,form.baseUnit)||`${packing.boxesPerCarton} 盒 × ${packing.unitsPerBox} ${form.baseUnit}/盒 = ${(packing.boxesPerCarton*packing.unitsPerBox).toLocaleString()} ${form.baseUnit}/箱`}}</span><button class="btn btn-ghost" @click="boxPackings.splice(index,1)">移除规格</button></div>
         </div>
         <button class="btn btn-secondary" @click="boxPackings.push({boxesPerCarton:0,unitsPerBox:0})">＋ 添加包装规格</button>
@@ -202,7 +208,7 @@ onMounted(load);
         <component :is="authenticated ? 'button' : 'div'" class="product-main" :type="authenticated ? 'button' : undefined" :aria-label="authenticated ? `编辑 ${p.name}` : undefined" @click="authenticated && open(p)">
           <div class="product-title"><strong>{{p.name}}</strong><span class="status neutral">{{p.active ? '启用' : '停用'}}</span></div>
           <span class="material-code">编码 {{p.materialCode}}</span>
-          <span v-if="p.boxPackings?.length" class="product-spec">{{p.boxPackings.map(x=>`${x.boxesPerCarton} 盒/箱 × ${x.unitsPerBox} ${p.baseUnit}/盒`).join('；')}}</span>
+          <span v-if="p.boxPackings?.length" class="product-spec">{{p.boxPackings.map(x=>`${x.boxesPerCarton} 盒/箱 × ${x.unitsPerBox} ${p.baseUnit}/盒${x.cartonsPerPallet ? ` · ${x.cartonsPerPallet} 箱/托盘` : ''}`).join('；')}}</span>
           <span class="product-spec">{{ availableCartonSpecs(p).length ? `${availableCartonSpecs(p).join(' / ')} ${p.baseUnit || '个'}/箱` : '未设置箱规' }}<template v-if="p.quantityUnknown"> · 数量不确定</template></span>
           <span v-if="p.duplicateName" class="duplicate-warning">同名产品，请核对编码</span><span v-if="!p.movementDirection" class="duplicate-warning">未分类，请编辑</span>
         </component>

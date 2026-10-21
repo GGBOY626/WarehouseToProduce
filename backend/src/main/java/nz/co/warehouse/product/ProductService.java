@@ -76,10 +76,15 @@ public class ProductService {
             p.getCartonSpecs().clear();p.getCartonSpecs().addAll(r.cartonSpecs());
         }
         if(r.boxPackings()!=null){
+            var packingKeys = new java.util.HashSet<String>();
             if(r.boxPackings().size()>50)throw BusinessException.badRequest("BOX_PACKING_INVALID","包装规格最多 50 项。");
             for(var packing:r.boxPackings()){
                 if(packing==null||packing.getBoxesPerCarton()==null||packing.getUnitsPerBox()==null||packing.getBoxesPerCarton()<=0||packing.getUnitsPerBox()<=0)
                     throw BusinessException.badRequest("BOX_PACKING_INVALID","请填写有效的每箱盒数和每盒数量。");
+                if(packing.getCartonsPerPallet()!=null&&packing.getCartonsPerPallet()<=0)
+                    throw BusinessException.badRequest("BOX_PACKING_INVALID","每托盘箱数必须为正整数。");
+                if(!packingKeys.add(packing.getBoxesPerCarton()+":"+packing.getUnitsPerBox()))
+                    throw BusinessException.badRequest("BOX_PACKING_INVALID","同一箱规请只填写一次，并设置对应的托盘箱数。");
                 try{packing.cartonUnits();}catch(ArithmeticException ex){throw BusinessException.badRequest("BOX_PACKING_INVALID","每箱数量超出可保存范围。");}
                 if("盒".equals(r.baseUnit())&&packing.getUnitsPerBox()!=1)throw BusinessException.badRequest("BOX_PACKING_INVALID","按盒计量时，每盒基础数量应为 1；按条计量请将基础单位设为条。");
             }

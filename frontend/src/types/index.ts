@@ -9,7 +9,7 @@ export type IssueType =
   | "QUANTITY_MISMATCH"
   | "PACKAGING_ISSUE"
   | "OTHER";
-export interface BoxPacking { boxesPerCarton: number; unitsPerBox: number }
+export interface BoxPacking { boxesPerCarton: number; unitsPerBox: number; cartonsPerPallet?: number | null }
 export interface Product {
   boxPackings?: BoxPacking[];
   id: number;
@@ -141,6 +141,9 @@ export interface TaskBatchQuantity {
   materialBatch?: string | null; subBatch?: string | null; issuedQuantity: number; returnedQuantity: number; netQuantity: number; unknownQuantityCount: number;
 }
 export interface ProductionTaskOutput {
+  cartonsPerPallet?: number | null;
+  yieldMaterialQuantity?: number | null;
+  yieldOutputQuantity?: number | null;
   boxesPerCarton?: number | null; unitsPerBox?: number | null; quantityBasis?: 'BOX' | 'UNIT' | null;
   primaryMaterialProductId?: number | null; primaryMaterialName?: string; primaryMaterialUnit?: string; netIssuedQuantity?: number | null;
   producedQuantity?: number | null; receivedBoxes?: number | null; productionPercent?: number | null; lossPercent?: number | null; provisional: boolean;
@@ -150,6 +153,7 @@ export interface ProductionTaskOutput {
 }
 export interface ProductionTaskOption { name: string; id: number; productName: string; batchNo: string; status: ProductionTaskStatus }
 export interface ProductionTask {
+  forecast?: FinishedReceiptForecast;
   name: string;
   id: number; productId: number; productName: string; baseUnit?: string; targetQuantity: number;
   plannedDate: string; batchNo: string; status: ProductionTaskStatus; remarks?: string;
@@ -157,6 +161,12 @@ export interface ProductionTask {
   movements: ProductionTaskMovement[]; createdAt: string; updatedAt: string;
   targets: ProductionTaskTarget[];
   output?: ProductionTaskOutput;
+}
+export interface PackedQuantity { cartons: string; boxes: string; units: string; fraction: string | null; pallets: string | null; palletCartons: string | null }
+export interface FinishedReceiptForecast {
+  status: 'READY' | 'NEEDS_CONFIGURATION' | 'NEEDS_REVIEW'; messages: string[];
+  knownReceivedQuantity: string; expected: PackedQuantity | null; received: PackedQuantity | null;
+  remaining: PackedQuantity | null; excess: PackedQuantity | null; progressPercent: number | null; receivedIncomplete: boolean;
 }
 export interface ProductionTaskTarget {
   batches?: TaskBatchQuantity[];

@@ -2,6 +2,7 @@
 import { computed } from 'vue';
 import type { ProductionTask, ProductionTaskStatus } from '../types';
 import { taskWarnings } from '../utils/taskAttention';
+import FinishedReceiptSummary from './FinishedReceiptSummary.vue';
 
 const props = defineProps<{ task: ProductionTask; expanded: boolean }>();
 const emit = defineEmits<{ toggle: [] }>();
@@ -42,6 +43,7 @@ const productionPercent = computed(() => props.task.output?.quantityBasis ? prop
       </div>
     </div>
 
+    <FinishedReceiptSummary :task="task" />
     <section v-if="shortages.length" class="shortage-panel" :aria-labelledby="`shortage-title-${task.id}`">
       <div class="shortage-heading">
         <h4 :id="`shortage-title-${task.id}`"><svg aria-hidden="true" viewBox="0 0 20 20" width="16" height="16"><path d="M10 2 1.5 17h17L10 2Z" /><path d="M10 7v4m0 2.5v.5" /></svg>待备料物料 <span>{{ shortages.length }} 项</span></h4>

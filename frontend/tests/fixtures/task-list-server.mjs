@@ -18,11 +18,22 @@ const tasks=[
   {...task(6,'关节饮 · 九月完成任务',[material('主料',0)],100),status:'COMPLETED',progressPercent:100},
   {...task(7,'已取消测试任务',[]),status:'CANCELLED'},
 ];
+const packed=(cartons,boxes='0',units='0',fraction=null,pallets=null,palletCartons=null)=>({cartons,boxes,units,fraction,pallets,palletCartons});
+const forecast=(expected,received,remaining,progressPercent,excess=null)=>({status:'READY',messages:[],knownReceivedQuantity:'55440',expected,received,remaining,excess,progressPercent,receivedIncomplete:false});
+tasks[0].output={...tasks[0].output,baseUnit:'个',quantityBasis:'UNIT',boxesPerCarton:22,unitsPerBox:30,cartonsPerPallet:40,yieldMaterialQuantity:2,yieldOutputQuantity:1,primaryMaterialProductId:1,primaryMaterialName:'小绿芯铁',primaryMaterialUnit:'个',netIssuedQuantity:132000};
+tasks[0].forecast=forecast(packed('100','0','0',null,'2','20'),packed('84','0','0',null,'2','4'),packed('16','0','0',null,'0','16'),84);
+tasks[1].forecast=forecast(packed('2','0','13','1/3','1','0'),packed('2','2','20',null,'1','0'),packed('0','0','0',null,'0','0'),105,packed('0','2','6','2/3','0','0'));
+tasks[1].output={...tasks[0].output,productName:'小绿芯',cartonsPerPallet:2};
+tasks[2].forecast=forecast(packed('10'),packed('0'),packed('10'),0);
+tasks[3].forecast={...forecast(packed('100'),packed('84'),null,null),status:'NEEDS_REVIEW',receivedIncomplete:true};
+tasks[5].forecast=forecast(packed('100'),packed('100'),packed('0'),100);
+const products=[{id:10,name:'关节饮',materialCode:'QA-F',baseUnit:'个',movementDirection:'PRODUCTION_TO_WAREHOUSE',active:true,boxPackings:[{boxesPerCarton:22,unitsPerBox:30,cartonsPerPallet:40}],cartonSpecs:[],materialBatches:[]},...tasks[0].targets.map(t=>({id:t.productId,name:t.productName,materialCode:t.materialCode,baseUnit:'个',movementDirection:'WAREHOUSE_TO_PRODUCTION',active:true,cartonSpecs:[],materialBatches:[],boxPackings:[]}))];
 const types={'.js':'text/javascript','.css':'text/css','.html':'text/html','.svg':'image/svg+xml'};
 createServer(async(req,res)=>{
   const pathname=new URL(req.url,'http://localhost').pathname;
   const json=value=>{res.setHeader('Content-Type','application/json; charset=utf-8');res.end(JSON.stringify(value));};
-  if(pathname==='/api/auth/status')return json({authenticated:false,username:''});
+  if(pathname==='/api/auth/status')return json({authenticated:true,username:'UI QA'});
+  if(pathname==='/api/products')return json(products.filter(p=>!new URL(req.url,'http://localhost').searchParams.get('direction')||p.movementDirection===new URL(req.url,'http://localhost').searchParams.get('direction')));
   if(pathname==='/api/production-tasks')return json(tasks);
   if(/^\/api\/production-tasks\/\d+$/.test(pathname))return json(tasks.find(t=>t.id===Number(pathname.split('/').at(-1))));
   if(pathname.startsWith('/api/'))return json([]);

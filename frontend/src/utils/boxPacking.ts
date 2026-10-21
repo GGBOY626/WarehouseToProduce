@@ -1,6 +1,7 @@
 import type { BoxPacking, ItemInput, Product } from '../types';
 
 export function packingError(packing: Partial<BoxPacking>, baseUnit?: string): string {
+  if (packing.cartonsPerPallet != null && (packing.cartonsPerPallet as unknown) !== '' && (!Number.isInteger(packing.cartonsPerPallet) || packing.cartonsPerPallet <= 0 || packing.cartonsPerPallet > 2147483647)) return '每托盘箱数必须为有效正整数，也可留空。';
   if (!Number.isInteger(packing.boxesPerCarton) || !Number.isInteger(packing.unitsPerBox) || Number(packing.boxesPerCarton)<=0 || Number(packing.unitsPerBox)<=0)
     return '请填写有效的每箱盒数和每盒数量。';
   if (Number(packing.boxesPerCarton)*Number(packing.unitsPerBox)>2147483647) return '每箱数量超出可保存范围。';
