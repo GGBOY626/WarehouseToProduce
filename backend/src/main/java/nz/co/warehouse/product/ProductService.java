@@ -14,7 +14,8 @@ public class ProductService {
     @Transactional(readOnly = true)
     public List<ProductDtos.Response> search(String q, boolean includeInactive, ProductUsage direction) {
         return repository.search(q == null ? "" : q.trim(), includeInactive, direction).stream()
-                .map(p->ProductDtos.Response.from(p,repository.countByNameIgnoreCaseAndActiveTrue(p.getName())>1)).toList();
+                .map(p->ProductDtos.Response.from(p, repository.countConflictingNames(
+                        p.getId(), p.getName(), p.getMaterialCode(), p.getMovementDirection()) > 0)).toList();
     }
 
     @Transactional

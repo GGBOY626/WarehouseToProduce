@@ -159,7 +159,7 @@ const directionLabel = (value: Direction) => value === "WAREHOUSE_TO_PRODUCTION"
 const formatNumber = (value: number) => value.toLocaleString("zh-CN");
 </script>
 <template>
-  <div class="page">
+  <div class="page movement-page" :class="{ inbound: direction === 'PRODUCTION_TO_WAREHOUSE' }">
     <div class="section-head page-heading">
       <h1 class="page-title">流转记录</h1>
       <div v-if="authenticated" class="create-actions">
@@ -178,8 +178,8 @@ const formatNumber = (value: number) => value.toLocaleString("zh-CN");
       <div class="field">
         <span class="sr-only">方向</span>
         <div class="direction-choice" role="group" aria-label="流转方向筛选">
-          <button type="button" :class="{active:direction==='WAREHOUSE_TO_PRODUCTION'}" :aria-pressed="direction==='WAREHOUSE_TO_PRODUCTION'" @click="selectDirection('WAREHOUSE_TO_PRODUCTION')">仓库 → 生产车间</button>
-          <button type="button" class="return" :class="{active:direction==='PRODUCTION_TO_WAREHOUSE'}" :aria-pressed="direction==='PRODUCTION_TO_WAREHOUSE'" @click="selectDirection('PRODUCTION_TO_WAREHOUSE')">车间 → 仓库</button>
+          <button type="button" :class="{active:direction==='WAREHOUSE_TO_PRODUCTION'}" :aria-pressed="direction==='WAREHOUSE_TO_PRODUCTION'" @click="selectDirection('WAREHOUSE_TO_PRODUCTION')"><span class="flow-icon" aria-hidden="true">↗</span><span>仓库 → 生产车间<small>出库</small></span></button>
+          <button type="button" class="return" :class="{active:direction==='PRODUCTION_TO_WAREHOUSE'}" :aria-pressed="direction==='PRODUCTION_TO_WAREHOUSE'" @click="selectDirection('PRODUCTION_TO_WAREHOUSE')"><span class="flow-icon" aria-hidden="true">↙</span><span>生产车间 → 仓库<small>入库 / 退回</small></span></button>
         </div>
       </div>
       <div class="field">
@@ -256,6 +256,8 @@ const formatNumber = (value: number) => value.toLocaleString("zh-CN");
     </dialog>
 </template>
 <style scoped>
+.movement-page{--flow-color:var(--blue);--flow-soft:var(--soft-blue)}
+.movement-page.inbound{--flow-color:var(--green);--flow-soft:var(--soft-green)}
 #movement-filters{scroll-margin-top:68px}.filters.card-pad{padding:12px}.stats-heading{cursor:pointer;min-height:44px}.query-stats[open] .stats-heading{border-bottom:1px solid var(--line)}.create-actions .btn{min-height:42px;padding:8px 12px;font-size:13px}.page-heading{align-items:center}.filters .input{min-height:42px}.filters .more-toggle{min-height:36px;padding:5px 2px 0;font-size:12px}
 .page-heading { flex-wrap: wrap; gap: 12px; }
 .page-heading .page-title { margin: 0; }
@@ -289,10 +291,15 @@ const formatNumber = (value: number) => value.toLocaleString("zh-CN");
 }
 .quick-date.active { background: #fff; color: #174a68; box-shadow: 0 2px 8px rgba(32,53,64,.14); }
 .quick-date:focus-visible,.more-toggle:focus-visible,.direction-choice button:focus-visible { outline: 3px solid rgba(31,107,138,.3); outline-offset: 2px; }
-.direction-choice { display: grid; grid-template-columns: repeat(2,1fr); gap: 4px; padding: 4px; border-radius: 11px; background: #e7edef; }
-.direction-choice button { min-height: 36px; border: 0; border-radius: 8px; padding: 8px 4px; background: transparent; color: #60737d; font: inherit; font-size: 13px; font-weight: 760; cursor: pointer; }
-.direction-choice button.active { background: #fff; color: #174a68; box-shadow: 0 2px 8px rgba(32,53,64,.14); }
-.direction-choice button.return.active { color: #267566; }
+.direction-choice { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 6px; padding: 4px; border-radius: 10px; background: #edf0f2; }
+.direction-choice button { --choice-color:var(--blue);--choice-soft:var(--soft-blue);display:flex;align-items:center;justify-content:center;gap:9px;min-height:52px;border:1px solid transparent;border-radius:7px;padding:8px;background:transparent;color:var(--choice-color);font:inherit;font-size:13px;font-weight:650;cursor:pointer; }
+.direction-choice button.return{--choice-color:var(--green);--choice-soft:var(--soft-green)}
+.direction-choice button.active { background:var(--panel);border-color:var(--choice-color);box-shadow:0 1px 3px rgba(20,39,50,.07) }
+.direction-choice button:hover{background:var(--choice-soft)}
+.direction-choice button:active{border-color:var(--choice-color)}
+.direction-choice button:focus-visible{outline:2px solid var(--choice-color);outline-offset:2px}
+.direction-choice small{display:block;margin-top:2px;font-size:11px;font-weight:400}
+.flow-icon{display:grid;place-items:center;width:28px;height:28px;flex-shrink:0;border-radius:6px;background:var(--choice-soft);font-size:20px}
 .more-toggle {
   min-height: 42px;
   display: flex;
@@ -311,18 +318,20 @@ const formatNumber = (value: number) => value.toLocaleString("zh-CN");
 .more-toggle span:last-child { color: #6c7d85; font-size: 12px; font-weight: 600; }
 .advanced-filters { display: grid; gap: 13px; padding: 13px; border-radius: 10px; background: #f4f7f8; }
 .query-stats { margin-bottom: 14px; overflow: hidden; }
-.stats-heading { display: flex; justify-content: space-between; gap: 12px; padding: 14px 16px; background: #f3f7f8; color: #174a68; }
+.stats-heading { display: flex; justify-content: space-between; gap: 12px; padding: 12px 16px; background:var(--flow-soft);color:var(--flow-color);border-left:3px solid var(--flow-color) }
+.stats-heading:focus-visible{outline:2px solid var(--flow-color);outline-offset:-3px}
 .stats-heading span { color: #687982; font-size: 13px; }
 .stats-empty { padding: 24px 16px; text-align: center; color: #66747c; }
 .direction-stat { padding: 15px 16px; border-top: 1px solid #e2e8ea; }
 .direction-stat:first-child { border-top: 0; }
-.direction-stat h3 { margin: 0 0 8px; font-size: 15px; color: #243e4b; }
+.direction-stat h3 { margin: 0 0 8px; font-size: 15px; color:var(--flow-color); }
 .stats-total { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; margin-bottom: 7px; color: #52626b; }
-.stats-total strong { color: #174a68; font-size: 17px; }
+.stats-total strong { color:var(--flow-color);font-size:17px;font-variant-numeric:tabular-nums }
+.direction-stat :deep(.material-identifiers b),.direction-stat :deep(.quantity-total b){color:var(--flow-color)}
 .product-stat { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 16px; padding: 12px 4px; border: 0; border-top: 1px solid #edf0f1; font: inherit; font-size: 14px; width: 100%; text-align: left; background: transparent; color: inherit; cursor: pointer; align-items: center; }
-.product-stat:hover,.source-record:hover { background: #edf5f7; }
+.product-stat:hover { background:var(--flow-soft); }.source-record:hover { background:#edf5f7; }
 .product-stat:focus-visible,.source-record:focus-visible { outline: 3px solid #267566; outline-offset: -3px; }
-.product-stat .record-arrow { color: #174a68; font-size: 22px; }
+.product-stat .record-arrow { color:var(--flow-color);font-size:22px; }
 .record-dialog { width: min(620px, calc(100% - 24px)); max-height: 85dvh; box-sizing: border-box; padding: 20px; border: 1px solid #b9c7ce; border-radius: 14px; color: #243e4b; }
 .record-dialog::backdrop { background: rgba(20, 40, 50, .5); }
 .dialog-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }

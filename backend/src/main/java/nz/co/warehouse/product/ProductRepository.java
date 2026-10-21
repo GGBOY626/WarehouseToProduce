@@ -16,7 +16,11 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
 
     boolean existsByNameIgnoreCaseAndMaterialCodeIgnoreCaseAndMovementDirectionAndActiveTrueAndIdNot(String name, String materialCode, ProductUsage direction, Long id);
 
-    long countByNameIgnoreCaseAndActiveTrue(String name);
+    @Query("select count(p) from Product p where p.active = true and p.mergedInto is null and p.id <> :id " +
+           "and lower(p.name) = lower(:name) and lower(p.materialCode) <> lower(:code) " +
+           "and (p.movementDirection = :usage or (p.movementDirection is null and :usage is null))")
+    long countConflictingNames(@Param("id") Long id, @Param("name") String name,
+                               @Param("code") String code, @Param("usage") ProductUsage usage);
 
     long countByMergedIntoId(long id);
 

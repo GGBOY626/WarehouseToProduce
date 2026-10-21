@@ -497,7 +497,13 @@ onBeforeUnmount(() => {
             placeholder="输入产品名、物料编码或物料批次"
             :load="(q) => productsApi.search(q, false, productUsage)"
             @select="(p) => selectProduct(item, p)"
-          />
+          >
+            <template #default="{ item: product }">
+              <span class="product-option-name">{{ product.name }}</span>
+              <span class="product-option-meta">{{ product.materialCode }} · {{ product.movementDirection === 'WAREHOUSE_TO_PRODUCTION' ? '物料' : product.movementDirection === 'PRODUCTION_TO_WAREHOUSE' ? '成品' : '未分类' }}</span>
+              <span v-if="product.duplicateName" class="product-option-warning">同名产品，请核对编码</span>
+            </template>
+          </SearchPicker>
           <div class="field">
             <label class="required">物料编码</label
             ><input
@@ -673,6 +679,9 @@ onBeforeUnmount(() => {
   </div>
 </template>
 <style scoped>
+.product-option-name{display:block;font-weight:650;overflow-wrap:anywhere}
+.product-option-meta{display:block;margin-top:3px;font-size:12px;color:var(--muted);overflow-wrap:anywhere}
+.product-option-warning{display:block;margin-top:3px;font-size:12px;color:var(--orange)}
 .packing-fields > .grid-2 { align-items: start; }
 .task-preview{display:grid;gap:14px;margin-top:10px;padding-top:16px;border-top:1px solid #e5ecee;min-width:0}.preview-heading{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}.preview-heading strong{overflow-wrap:anywhere}.preview-heading b{color:#267566;font-size:14px}
 
