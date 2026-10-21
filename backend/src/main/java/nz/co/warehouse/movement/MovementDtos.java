@@ -13,7 +13,10 @@ public final class MovementDtos {
                               @PositiveOrZero int fullCartons,@PositiveOrZero long looseUnits,
                               @PositiveOrZero Long totalUnits,boolean quantityUnknown,@Size(max=1000) String remarks,
                               @Valid List<IssueRequest> issues, @Positive Integer unitsPerCarton,
-                              @PositiveOrZero int tailCartons,@Positive Long tailUnitsPerCarton,Long id,@Size(max=100) String subBatch,@Size(max=100) String materialBatch,@Positive Integer boxesPerCarton,@Positive Integer unitsPerBox,@Positive Integer tailBoxesPerCarton) {
+                              @PositiveOrZero int tailCartons,@Positive Long tailUnitsPerCarton,Long id,@Size(max=100) String subBatch,@Size(max=100) String materialBatch,@Positive Integer boxesPerCarton,@Positive Integer unitsPerBox,@Positive Integer tailBoxesPerCarton,@Size(max=100) String productionNumber) {
+        public ItemRequest(Long productId,String batchNo,int fullCartons,long looseUnits,Long totalUnits,boolean quantityUnknown,String remarks,List<IssueRequest> issues,Integer unitsPerCarton,int tailCartons,Long tailUnitsPerCarton,Long id,String subBatch,String materialBatch,Integer boxesPerCarton,Integer unitsPerBox,Integer tailBoxesPerCarton){
+            this(productId,batchNo,fullCartons,looseUnits,totalUnits,quantityUnknown,remarks,issues,unitsPerCarton,tailCartons,tailUnitsPerCarton,id,subBatch,materialBatch,boxesPerCarton,unitsPerBox,tailBoxesPerCarton,null);
+        }
         public ItemRequest(Long productId,String batchNo,int fullCartons,long looseUnits,Long totalUnits,boolean quantityUnknown,String remarks,List<IssueRequest> issues,Integer unitsPerCarton,int tailCartons,Long tailUnitsPerCarton,Long id,String subBatch,String materialBatch){
             this(productId,batchNo,fullCartons,looseUnits,totalUnits,quantityUnknown,remarks,issues,unitsPerCarton,tailCartons,tailUnitsPerCarton,id,subBatch,materialBatch,null,null,null);
         }
@@ -46,7 +49,7 @@ public final class MovementDtos {
     public record IssueResponse(Long id,MovementEnums.IssueType type,String description) {}
     public record ItemResponse(Long id,Long productId,String productName,String sku,Integer unitsPerCarton,String baseUnit,
                                String batchNo,int fullCartons,long looseUnits,Long calculatedTotalUnits,Long totalUnits,
-                               boolean totalUnitsOverridden,boolean quantityUnknown,String remarks,List<IssueResponse> issues,int tailCartons,Long tailUnitsPerCarton,int totalCartons,String subBatch,String materialBatch,Integer boxesPerCarton,Integer unitsPerBox) {}
+                               boolean totalUnitsOverridden,boolean quantityUnknown,String remarks,List<IssueResponse> issues,int tailCartons,Long tailUnitsPerCarton,int totalCartons,String subBatch,String materialBatch,Integer boxesPerCarton,Integer unitsPerBox,String productionNumber) {}
     public record PhotoResponse(Long id,String url,String originalName,String mimeType,long fileSize,int width,int height,Instant createdAt) {}
     public record DetailResponse(Long id,String recordNo,MovementEnums.Direction direction,Instant movementTime,
                                  Long senderPersonId,String senderName,Long receiverPersonId,String receiverName,
@@ -70,7 +73,7 @@ public final class MovementDtos {
     public record QueryStatsResponse(List<DirectionStatResponse> directions) {}
 
     static DetailResponse detail(Movement m) {
-        List<ItemResponse> items=m.getItems().stream().map(i->new ItemResponse(i.getId(),i.getProduct().canonicalId(),i.getProductNameSnapshot(),i.getSkuSnapshot(),i.getUnitsPerCartonSnapshot(),i.getBaseUnitSnapshot(),i.getBatchNo(),i.getFullCartons(),i.getLooseUnits(),i.getCalculatedTotalUnits(),i.getTotalUnits(),i.isTotalUnitsOverridden(),i.isQuantityUnknown(),i.getRemarks(),i.getIssues().stream().map(x->new IssueResponse(x.getId(),x.getIssueType(),x.getDescription())).toList(),i.getTailCartons(),i.getTailUnitsPerCarton(),i.getTotalCartons(),i.getSubBatch(),i.effectiveMaterialBatch(),i.getBoxesPerCartonSnapshot(),i.getUnitsPerBoxSnapshot())).toList();
+        List<ItemResponse> items=m.getItems().stream().map(i->new ItemResponse(i.getId(),i.getProduct().canonicalId(),i.getProductNameSnapshot(),i.getSkuSnapshot(),i.getUnitsPerCartonSnapshot(),i.getBaseUnitSnapshot(),i.getBatchNo(),i.getFullCartons(),i.getLooseUnits(),i.getCalculatedTotalUnits(),i.getTotalUnits(),i.isTotalUnitsOverridden(),i.isQuantityUnknown(),i.getRemarks(),i.getIssues().stream().map(x->new IssueResponse(x.getId(),x.getIssueType(),x.getDescription())).toList(),i.getTailCartons(),i.getTailUnitsPerCarton(),i.getTotalCartons(),i.getSubBatch(),i.effectiveMaterialBatch(),i.getBoxesPerCartonSnapshot(),i.getUnitsPerBoxSnapshot(),i.getProductionNumber())).toList();
         List<PhotoResponse> photos=m.getPhotos().stream().map(p->new PhotoResponse(p.getId(),"/api/movements/"+m.getId()+"/photos/"+p.getId()+"/content",p.getOriginalName(),p.getMimeType(),p.getFileSize(),p.getWidth(),p.getHeight(),p.getCreatedAt())).toList();
         boolean issues=items.stream().anyMatch(i->!i.issues().isEmpty());
         return new DetailResponse(m.getId(),m.getRecordNo(),m.getDirection(),m.getMovementTime(),m.getSenderPerson().getId(),m.getSenderNameSnapshot(),m.getReceiverPerson().getId(),m.getReceiverNameSnapshot(),m.getManufactureLot(),m.isReturnMovement(),m.isFinished(),m.getProductionTask()==null?null:m.getProductionTask().getId(),m.getProductionTask()==null?null:m.getProductionTask().displayName(),m.getTotalCartons(),m.getRemarks(),m.getStatus(),m.getVoidReason(),m.getVoidedAt(),items,photos,issues,photos.isEmpty(),m.getCreatedAt(),m.getUpdatedAt(),materialSummaries(m));

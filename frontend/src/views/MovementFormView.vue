@@ -4,6 +4,7 @@ import { onBeforeRouteLeave, useRoute, useRouter } from "vue-router";
 import ProductionTaskTargets from "../components/ProductionTaskTargets.vue";
 import ProductionTaskOutput from "../components/ProductionTaskOutput.vue";
 import MaterialBatchPicker from "../components/MaterialBatchPicker.vue";
+import ProductionNumberPicker from "../components/ProductionNumberPicker.vue";
 import SearchPicker from "../components/SearchPicker.vue";
 import { errorMessage } from "../api/http";
 import { movementsApi, personsApi, productsApi, productionTasksApi } from "../api";
@@ -35,6 +36,7 @@ const direction = ref<Direction>(
 const blankItem = (): ItemInput => ({
   batchNo: "",
   materialBatch: "",
+  productionNumber: "",
   subBatch: "",
   fullCartons: 0,
   tailCartons: 0,
@@ -169,6 +171,8 @@ function selectProduct(item: ItemInput, p?: Product) {
   item.batchNo = p?.materialCode || "";
   const batches = p?.materialBatches || (p?.materialBatch ? [p.materialBatch] : []);
   item.materialBatch = batches.length === 1 ? batches[0] : "";
+  const numbers = p?.productionNumbers || [];
+  item.productionNumber = numbers.length === 1 ? numbers[0] : "";
   item.manualTotal = false;
   item.quantityUnknown = !!p?.quantityUnknown;
 
@@ -223,6 +227,7 @@ function validate() {
     if (invalidQuantity) return `产品明细 ${i + 1}：${invalidQuantity}`;
     if (!x.productId) return `请选择产品明细 ${i + 1} 的产品。`;
     if ((needsMaterialBatch.value || (x.product?.materialBatches?.length || 0) > 1) && !x.materialBatch?.trim()) return `请选择产品明细 ${i + 1} 的具体物料批次。`;
+    if ((x.product?.productionNumbers?.length || 0) > 1 && !x.productionNumber?.trim() && !x.id) return `请选择产品明细 ${i + 1} 的具体生产编号。`;
     if (!x.batchNo.trim()) return `请填写产品明细 ${i + 1} 的物料编码。`;
     if (
       !x.quantityUnknown &&
@@ -257,6 +262,7 @@ function payload() {
       tailUnitsPerCarton: x.tailCartons > 0 ? Number(x.tailUnitsPerCarton) : null,
       batchNo: x.batchNo,
       materialBatch: x.materialBatch || "",
+      productionNumber: x.productionNumber || "",
       subBatch: x.subBatch || "",
       fullCartons: Number(x.fullCartons) || 0,
       looseUnits: Number(x.looseUnits) || 0,
@@ -366,6 +372,7 @@ onMounted(async () => {
           materialCode: x.batchNo,
           defaultUnitsPerCarton: x.unitsPerCarton,
           materialBatches: catalog.find(p => p.id === x.productId)?.materialBatches,
+          productionNumbers: catalog.find(p => p.id === x.productId)?.productionNumbers,
           boxPackings: catalog.find(p=>p.id===x.productId)?.boxPackings,
           cartonSpecs: catalog.find(p => p.id === x.productId)?.cartonSpecs,
           baseUnit: x.baseUnit,
@@ -375,6 +382,7 @@ onMounted(async () => {
         },
         batchNo: x.batchNo,
         materialBatch: x.materialBatch ?? m.manufactureLot ?? "",
+        productionNumber: x.productionNumber ?? "",
         subBatch: x.subBatch || "",
         fullCartons: x.fullCartons,
         looseUnits: x.looseUnits,
@@ -407,6 +415,7 @@ onMounted(async () => {
       const current = catalog.find(p => p.id === item.productId);
       if (current && item.product) {
         item.product.materialBatches = current.materialBatches;
+        item.product.productionNumbers = current.productionNumbers;
         item.product.cartonSpecs = current.cartonSpecs;
         item.product.boxPackings = current.boxPackings;
         item.product.defaultUnitsPerCarton = current.defaultUnitsPerCarton;
@@ -513,6 +522,7 @@ onBeforeUnmount(() => {
             />
           </div>
           <MaterialBatchPicker v-model="item.materialBatch" :batches="item.product?.materialBatches" :required="needsMaterialBatch" />
+          <ProductionNumberPicker v-model="item.productionNumber" :numbers="item.product?.productionNumbers" :allow-unspecified="!!item.id && !item.productionNumber" />
           <div class="field">
             <label :for="`sub-batch-${index}`">区分批次（可选）</label>
             <input :id="`sub-batch-${index}`" class="input mono" maxlength="100" v-model.trim="item.subBatch" placeholder="外盒同编码、同批次仍需区分时填写" />
@@ -656,7 +666,7 @@ onBeforeUnmount(() => {
           <p v-else-if="previewError" class="form-alert" role="alert">{{ previewError }} <button type="button" class="btn btn-ghost" @click="loadTaskPreview">重试</button></p>
           <template v-else-if="selectedTask">
             <div class="preview-heading"><strong>{{ selectedTask.name }}</strong><b>备料进度 {{ selectedTask.progressPercent }}%</b></div>
-            <small class="hint">{{ selectedTask.batchNo }} · {{ selectedTask.status === 'PREPARING' ? '进行中' : selectedTask.status === 'COMPLETED' ? '已完成' : selectedTask.status === 'CANCELLED' ? '已取消' : '进行中' }}</small>
+            <small class="hint">{{ selectedTask.batchNo ? `${selectedTask.batchNo} · ` : '' }}{{ selectedTask.status === 'PREPARING' ? '进行中' : selectedTask.status === 'COMPLETED' ? '已完成' : selectedTask.status === 'CANCELLED' ? '已取消' : '进行中' }}</small>
             <ProductionTaskOutput v-if="selectedTask.output" :output="selectedTask.output" />
             <ProductionTaskTargets :targets="selectedTask.targets" />
             <small class="hint">{{ editId ? '按已保存记录统计，包含本单原数量；本次修改保存后更新。' : '按已保存记录统计，不含本次尚未保存的数量。' }}</small>

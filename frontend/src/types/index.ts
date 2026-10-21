@@ -17,6 +17,7 @@ export interface Product {
   materialCode: string;
   materialBatch?: string;
   materialBatches?: string[];
+  productionNumbers?: string[];
   defaultUnitsPerCarton?: number;
   cartonSpecs?: number[];
   baseUnit?: string;
@@ -47,6 +48,7 @@ export interface ItemInput {
   product?: Product;
   batchNo: string;
   materialBatch?: string | null;
+  productionNumber?: string | null;
   subBatch?: string | null;
   fullCartons: number;
   looseUnits: number;
@@ -92,6 +94,7 @@ export interface MovementItem {
   baseUnit: string;
   batchNo: string;
   materialBatch?: string | null;
+  productionNumber?: string | null;
   subBatch?: string | null;
   fullCartons: number;
   looseUnits: number;
@@ -149,12 +152,13 @@ export interface ProductionTaskOutput {
   productId: number; productName: string; materialCode: string; baseUnit: string;
   targetQuantity: number; receivedQuantity: number; progressPercent: number; unknownQuantityCount: number;
 }
-export interface ProductionTaskOption { name: string; id: number; productName: string; batchNo: string; status: ProductionTaskStatus }
+export interface ProductionTaskOption { name: string; id: number; productName: string; batchNo?: string | null; status: ProductionTaskStatus }
 export interface ProductionTask {
   forecast?: FinishedReceiptForecast;
   name: string;
   id: number; productId: number; productName: string; baseUnit?: string; targetQuantity: number;
-  plannedDate: string; batchNo: string; status: ProductionTaskStatus; remarks?: string;
+  plannedDate: string; batchNo?: string | null; status: ProductionTaskStatus; remarks?: string;
+  orderNo?: string | null; feishuNo?: string | null; plannedQuantity?: number | null; productBatch?: string | null;
   completedQuantity: number; progressPercent: number; issueMovementCount: number; returnMovementCount: number;
   movements: ProductionTaskMovement[]; createdAt: string; updatedAt: string;
   targets: ProductionTaskTarget[];

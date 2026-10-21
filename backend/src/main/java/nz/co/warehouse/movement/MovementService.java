@@ -175,6 +175,10 @@ public class MovementService {
             boolean unchangedLegacy=original!=null&&Objects.equals(blank(requestedBatch),oldBatches.get(original.getId()));
             String batch=unchangedLegacy?blank(requestedBatch):products.resolveBatch(item.getProduct(),requestedBatch,expectedUsage==ProductUsage.WAREHOUSE_TO_PRODUCTION);
             item.setMaterialBatch(batch==null?"":batch);
+            String number=original!=null&&input.productionNumber()==null?original.getProductionNumber()
+                    :original!=null&&original.getProductionNumber()==null&&blank(input.productionNumber())==null?null
+                    :products.resolveProductionNumber(item.getProduct(),input.productionNumber());
+            item.setProductionNumber(number);
             m.addItem(item);
             try{cartons=Math.addExact(cartons,item.getTotalCartons());knownQuantity=Math.addExact(knownQuantity,item.getTotalUnits()==null?0:item.getTotalUnits());}
             catch(ArithmeticException ex){throw BusinessException.badRequest("QUANTITY_OVERFLOW","箱数或数量超出可保存范围。");}
@@ -188,6 +192,7 @@ public class MovementService {
                 throw BusinessException.badRequest("TASK_CARTON_SPEC_MISMATCH","满箱规格与任务包装设置不一致，请核对每箱盒数和每盒数量。");
         }
         m.getItems().forEach(i->products.rememberBatch(i.getProduct(),i.effectiveMaterialBatch()));
+        m.getItems().forEach(i->products.rememberProductionNumber(i.getProduct(),i.getProductionNumber()));
         var batches=m.getItems().stream().map(MovementItem::effectiveMaterialBatch).distinct().toList();
         m.setManufactureLot(batches.size()==1?batches.getFirst():null);
         m.setTotalCartons(cartons);

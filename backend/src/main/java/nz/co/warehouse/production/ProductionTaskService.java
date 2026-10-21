@@ -27,11 +27,15 @@ public class ProductionTaskService {
     }
     public record LinkRequest(@NotEmpty List<@Valid BatchSelection> items,@NotNull MovementEnums.Direction direction,boolean returnMovement) {}
     public record SaveRequest(Long productId,Long targetQuantity,@NotNull LocalDate plannedDate,
-                              @NotBlank @Size(max=100) String batchNo,@Size(max=1000) String remarks,
+                              @Size(max=100) String batchNo,@Size(max=1000) String remarks,
                               List<@NotNull @Valid TargetRequest> targets, Long outputProductId, @Positive Long targetOutputQuantity, @Size(max=100) String name,@Size(max=100) String outputMaterialBatch,
                               @Positive Integer outputBoxesPerCarton,@Positive Integer outputUnitsPerBox,
                               ProductionTask.OutputQuantityBasis outputQuantityBasis,Long primaryMaterialProductId,
-                              @Positive Integer outputCartonsPerPallet,@Positive Long yieldMaterialQuantity,@Positive Long yieldOutputQuantity) {
+                              @Positive Integer outputCartonsPerPallet,@Positive Long yieldMaterialQuantity,@Positive Long yieldOutputQuantity,
+                              @Size(max=100) String orderNo,@Size(max=100) String feishuNo,@Positive Long plannedQuantity,@Size(max=100) String productBatch) {
+        public SaveRequest(Long productId,Long targetQuantity,LocalDate plannedDate,String batchNo,String remarks,List<TargetRequest> targets,Long outputProductId,Long targetOutputQuantity,String name,String outputMaterialBatch,Integer outputBoxesPerCarton,Integer outputUnitsPerBox,ProductionTask.OutputQuantityBasis outputQuantityBasis,Long primaryMaterialProductId,Integer outputCartonsPerPallet,Long yieldMaterialQuantity,Long yieldOutputQuantity){
+            this(productId,targetQuantity,plannedDate,batchNo,remarks,targets,outputProductId,targetOutputQuantity,name,outputMaterialBatch,outputBoxesPerCarton,outputUnitsPerBox,outputQuantityBasis,primaryMaterialProductId,outputCartonsPerPallet,yieldMaterialQuantity,yieldOutputQuantity,null,null,null,null);
+        }
         public SaveRequest(Long productId,Long targetQuantity,LocalDate plannedDate,String batchNo,String remarks,List<TargetRequest> targets,Long outputProductId,Long targetOutputQuantity,String name,String outputMaterialBatch,Integer outputBoxesPerCarton,Integer outputUnitsPerBox,ProductionTask.OutputQuantityBasis outputQuantityBasis,Long primaryMaterialProductId){
             this(productId,targetQuantity,plannedDate,batchNo,remarks,targets,outputProductId,targetOutputQuantity,name,outputMaterialBatch,outputBoxesPerCarton,outputUnitsPerBox,outputQuantityBasis,primaryMaterialProductId,null,null,null);
         }
@@ -61,7 +65,8 @@ public class ProductionTaskService {
     public record Response(Long id,Long productId,String productName,String baseUnit,long targetQuantity,LocalDate plannedDate,
                            String batchNo,ProductionTask.Status status,String remarks,long completedQuantity,int progressPercent,
                            int issueMovementCount,int returnMovementCount,List<MovementResponse> movements,Instant createdAt,Instant updatedAt,
-                           List<TargetResponse> targets,OutputResponse output,String name,FinishedReceiptForecast forecast) {}
+                           List<TargetResponse> targets,OutputResponse output,String name,FinishedReceiptForecast forecast,
+                           String orderNo,String feishuNo,Long plannedQuantity,String productBatch) {}
     public record OutputResponse(Long productId,String productName,String materialCode,String baseUnit,long targetQuantity,
                                  long receivedQuantity,int progressPercent,int unknownQuantityCount,String materialBatch,
                                  Integer boxesPerCarton,Integer unitsPerBox,ProductionTask.OutputQuantityBasis quantityBasis,
@@ -199,7 +204,10 @@ public class ProductionTaskService {
         t.getTargets().clear();t.getTargets().addAll(updated);
         // Keep the original columns aligned with the first target for compatibility.
         t.setProduct(updated.getFirst().getProduct());t.setTargetQuantity(updated.getFirst().getTargetQuantity());
-        t.setPlannedDate(r.plannedDate());t.setBatchNo(r.batchNo().trim());t.setRemarks(blank(r.remarks()));
+        t.setPlannedDate(r.plannedDate());
+        if(!editing || r.batchNo()!=null)t.setBatchNo(blank(r.batchNo()));
+        t.setRemarks(blank(r.remarks()));
+        t.setOrderNo(blank(r.orderNo()));t.setFeishuNo(blank(r.feishuNo()));t.setPlannedQuantity(r.plannedQuantity());t.setProductBatch(blank(r.productBatch()));
     }
     private Response response(ProductionTask t){
         List<Movement> rows=movements.findByProductionTaskIdOrderByMovementTimeAsc(t.getId());
@@ -257,7 +265,7 @@ public class ProductionTaskService {
         int issues=(int)rows.stream().filter(m->m.getItems().stream().anyMatch(i->!i.getIssues().isEmpty())).count();
         int returns=(int)rows.stream().filter(Movement::isReturnMovement).count();
         List<MovementResponse> linked=rows.stream().map(m->new MovementResponse(m.getId(),m.getRecordNo(),m.getDirection(),m.isReturnMovement(),m.getMovementTime(),m.getTotalCartons(),m.getItems().stream().map(MovementItem::getTotalUnits).filter(Objects::nonNull).mapToLong(Long::longValue).sum(),m.getItems().stream().map(MovementItem::getProductNameSnapshot).distinct().toList(),m.getStatus(),(int)m.getItems().stream().filter(i->i.isQuantityUnknown()||i.getTotalUnits()==null).count(),m.getItems().stream().map(MovementItem::getBaseUnitSnapshot).distinct().count()==1?m.getItems().getFirst().getBaseUnitSnapshot():null,movementMaterials(m))).toList();
-        return new Response(t.getId(),t.getProduct().canonicalId(),t.displayName(),t.getProduct().getBaseUnit(),t.getTargetQuantity(),t.getPlannedDate(),t.getBatchNo(),t.getStatus(),t.getRemarks(),completed,progress,issues,returns,linked,t.getCreatedAt(),t.getUpdatedAt(),targets,output,t.displayName(),FinishedReceiptForecast.calculate(t,primary,received,unknownOutput));
+        return new Response(t.getId(),t.getProduct().canonicalId(),t.displayName(),t.getProduct().getBaseUnit(),t.getTargetQuantity(),t.getPlannedDate(),t.getBatchNo(),t.getStatus(),t.getRemarks(),completed,progress,issues,returns,linked,t.getCreatedAt(),t.getUpdatedAt(),targets,output,t.displayName(),FinishedReceiptForecast.calculate(t,primary,received,unknownOutput),t.getOrderNo(),t.getFeishuNo(),t.getPlannedQuantity(),t.getProductBatch());
     }
     private List<MovementMaterialResponse> movementMaterials(Movement movement){
         return movement.getItems().stream().collect(java.util.stream.Collectors.groupingBy(i->i.getProduct().canonicalId(),LinkedHashMap::new,java.util.stream.Collectors.toList()))

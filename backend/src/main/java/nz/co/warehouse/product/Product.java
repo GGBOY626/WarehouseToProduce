@@ -17,6 +17,11 @@ public class Product extends PersistentEntity {
     @Column(name="batch_no",nullable=false,length=100)
     @org.hibernate.annotations.BatchSize(size=100)
     private java.util.Set<String> materialBatches = new java.util.TreeSet<>();
+    @ElementCollection
+    @CollectionTable(name="product_production_number",joinColumns=@JoinColumn(name="product_id"))
+    @Column(name="production_number",nullable=false,length=100)
+    @org.hibernate.annotations.BatchSize(size=100)
+    private java.util.Set<String> productionNumbers = new java.util.TreeSet<>();
     @ManyToOne(fetch=FetchType.LAZY) @JoinColumn(name="merged_into_id") private Product mergedInto;
     public Product canonical() { return mergedInto == null ? this : mergedInto.canonical(); }
     public Long canonicalId() { return canonical().getId(); }

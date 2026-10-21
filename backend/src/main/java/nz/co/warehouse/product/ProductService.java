@@ -92,6 +92,10 @@ public class ProductService {
         }
         if(r.materialBatches()!=null) for(String batch:r.materialBatches()) rememberBatch(p,batch);
         rememberBatch(p,r.materialBatch());
+        if(r.productionNumbers()!=null){
+            if(r.productionNumbers().size()>100)throw BusinessException.badRequest("PRODUCTION_NUMBERS_INVALID","生产编号最多 100 项。");
+            for(String number:r.productionNumbers())rememberProductionNumber(p,number);
+        }
         p.setName(name);p.setMaterialCode(materialCode);p.setMaterialBatch(blankToNull(r.materialBatch()));p.setMovementDirection(r.movementDirection());p.setQuantityUnknown(r.quantityUnknown());p.setDefaultUnitsPerCarton(r.quantityUnknown()?null:r.defaultUnitsPerCarton());p.setBaseUnit(r.quantityUnknown()?null:r.baseUnit().trim());
     }
     public String resolveBatch(Product product,String value,boolean required) {
@@ -106,6 +110,20 @@ public class ProductService {
         if(batch!=null){
             if(batch.length()>100)throw BusinessException.badRequest("MATERIAL_BATCH_INVALID","物料批次最多 100 个字符。");
             product.canonical().getMaterialBatches().add(batch);
+        }
+    }
+    public String resolveProductionNumber(Product product,String value) {
+        String number=blankToNull(value);
+        if(number!=null&&number.length()>100)throw BusinessException.badRequest("PRODUCTION_NUMBER_INVALID","生产编号最多 100 个字符。");
+        if(number==null&&product.canonical().getProductionNumbers().size()>1)
+            throw BusinessException.badRequest("PRODUCTION_NUMBER_REQUIRED","该产品有多个生产编号，请选择本次实际使用的编号。");
+        return number;
+    }
+    public void rememberProductionNumber(Product product,String value) {
+        String number=blankToNull(value);
+        if(number!=null){
+            if(number.length()>100)throw BusinessException.badRequest("PRODUCTION_NUMBER_INVALID","生产编号最多 100 个字符。");
+            product.canonical().getProductionNumbers().add(number);
         }
     }
     private String blankToNull(String s) { return s == null || s.isBlank() ? null : s.trim(); }

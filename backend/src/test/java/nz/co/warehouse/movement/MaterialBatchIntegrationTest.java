@@ -99,4 +99,15 @@ class MaterialBatchIntegrationTest {
         assertThat(old.totalCartons()).isZero();
         assertThat(old.items().getFirst().tailCartons()).isZero();
     }
+    @Test void productionNumbersRequireChoiceWhenMultipleAndRemainOnHistoricalItems(){
+        var numbered=products.create(new ProductDtos.Request(code+"-numbered",code+"-N",null,ProductUsage.WAREHOUSE_TO_PRODUCTION,1000,"个",false,List.of(),List.of("A001"),List.of(),List.of("P001","P002")));
+        var missing=new MovementDtos.ItemRequest(numbered.id(),code+"-N",0,3,null,false,null,List.of(),1000,0,null,null,null,"A001",null,null,null,null);
+        assertThatThrownBy(()->movements.create(request(MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,null,missing))).hasMessageContaining("生产编号");
+        var selected=new MovementDtos.ItemRequest(numbered.id(),code+"-N",0,3,null,false,null,List.of(),1000,0,null,null,null,"A001",null,null,null,"P002");
+        var saved=movements.create(request(MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,null,selected));
+        assertThat(saved.items().getFirst().productionNumber()).isEqualTo("P002");
+        assertThat(products.search("P002",false,ProductUsage.WAREHOUSE_TO_PRODUCTION)).extracting(ProductDtos.Response::id).contains(numbered.id());
+        var edited=new MovementDtos.ItemRequest(numbered.id(),code+"-N",0,4,null,false,null,List.of(),1000,0,null,saved.items().getFirst().id(),null,"A001",null,null,null,null);
+        assertThat(movements.update(saved.id(),request(MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,null,edited)).items().getFirst().productionNumber()).isEqualTo("P002");
+    }
 }

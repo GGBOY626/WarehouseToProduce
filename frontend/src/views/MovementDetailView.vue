@@ -88,6 +88,7 @@ async function duplicate() {
           boxPackings: catalog.find(p=>p.id===x.productId)?.boxPackings,
           cartonSpecs: catalog.find(p => p.id === x.productId)?.cartonSpecs,
           materialBatches: catalog.find(p => p.id === x.productId)?.materialBatches,
+          productionNumbers: catalog.find(p => p.id === x.productId)?.productionNumbers,
           baseUnit: x.baseUnit,
           quantityUnknown: false,
           active: true,
@@ -162,6 +163,7 @@ onMounted(()=>void load());
             <strong>{{ item.productName }}</strong>
           </div>
           <div class="batch mono"><span>物料编码：{{ item.batchNo }}</span><CopyButton :value="item.batchNo" label="物料编码" /></div>
+          <div v-if="item.productionNumber" class="batch mono"><span>生产编号：{{ item.productionNumber }}</span><CopyButton :value="item.productionNumber" label="生产编号" /></div>
           <div v-if="item.subBatch" class="batch mono"><span>区分批次：{{ item.subBatch }}</span></div>
           <div
             v-if="item.materialBatch"

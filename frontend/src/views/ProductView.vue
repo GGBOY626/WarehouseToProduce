@@ -25,6 +25,7 @@ let requestId=0;
 const cartonSpecsText = ref("");
 const boxPackings=ref<BoxPacking[]>([]);
 const batchesText = ref("");
+const productionNumbersText = ref("");
 const selectedDirection = ref<ProductUsage | "">("WAREHOUSE_TO_PRODUCTION");
 const visibleRows = computed(() => rows.value.filter(p => (p.movementDirection || "") === selectedDirection.value));
 const editorSection = ref<HTMLElement>();
@@ -41,6 +42,7 @@ function open(p?: Product) {
   showEditor.value = true;
   editing.value = p;
   batchesText.value = (p?.materialBatches || (p?.materialBatch ? [p.materialBatch] : [])).join("\n");
+  productionNumbersText.value = (p?.productionNumbers || []).join("\n");
   boxPackings.value=(p?.boxPackings||[]).map(x=>({...x}));
   cartonSpecsText.value = [p?.defaultUnitsPerCarton,...(p?.cartonSpecs||[])].filter((n):n is number=>n!=null).filter(n=>!boxPackings.value.some(x=>x.boxesPerCarton*x.unitsPerBox===n)).filter((n,i,a)=>a.indexOf(n)===i).join("、");
   form.value = p
@@ -86,8 +88,10 @@ async function save() {
       const error=packingError(packing,form.value.baseUnit);if(error){message.value=error;return;}
     }
     if(new Set(boxPackings.value.map(p=>`${p.boxesPerCarton}:${p.unitsPerBox}`)).size!==boxPackings.value.length){message.value='同一箱规请只填写一次。';return;}
+    const productionNumbers=productionNumbersText.value.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+    if(productionNumbers.length>100||productionNumbers.some(s=>s.length>100)){message.value='生产编号最多 100 项，每项最多 100 个字符。';return;}
     saving.value=true;
-    const payload = { ...form.value, boxPackings:boxPackings.value, materialBatches: batchesText.value.split(/\r?\n/).map(s => s.trim()).filter(Boolean), defaultUnitsPerCarton: !form.value.quantityUnknown && new Set(cartonSpecs).size === 1 ? cartonSpecs[0] : null, cartonSpecs: [...new Set(cartonSpecs)] };
+    const payload = { ...form.value, boxPackings:boxPackings.value, materialBatches: batchesText.value.split(/\r?\n/).map(s => s.trim()).filter(Boolean), productionNumbers, defaultUnitsPerCarton: !form.value.quantityUnknown && new Set(cartonSpecs).size === 1 ? cartonSpecs[0] : null, cartonSpecs: [...new Set(cartonSpecs)] };
     if (editing.value) await productsApi.update(editing.value.id, payload);
     else await productsApi.create(payload);
     showEditor.value = false;
@@ -126,9 +130,9 @@ onMounted(load);
     <div class="row">
       <input
         class="input grow"
-        aria-label="搜索产品、物料编码或物料批次"
+        aria-label="搜索产品、物料编码、生产编号或物料批次"
         v-model="q"
-        placeholder="搜索产品、物料编码或物料批次"
+        placeholder="搜索产品、物料编码、生产编号或物料批次"
         @keyup.enter="load"
       /><button class="btn btn-secondary" @click="load">搜索</button>
     </div>
@@ -144,6 +148,11 @@ onMounted(load);
           v-model.trim="form.materialCode"
           placeholder="每个产品必须填写"
         />
+      </div>
+      <div class="field">
+        <label for="product-production-numbers">生产编号（可选，每行一个）</label>
+        <textarea id="product-production-numbers" class="textarea mono" v-model="productionNumbersText" placeholder="P001&#10;P002" />
+        <small class="hint">保存时添加新编号，已有编号保留；多个编号在流转登记时选择实际使用的编号。</small>
       </div>
       <div class="field">
         <label for="product-batches">物料批次（可选，每行一个）</label>
@@ -214,6 +223,7 @@ onMounted(load);
         </component>
         <details v-if="authenticated" class="product-menu" @toggle="productMenu" @keydown.esc="($event.currentTarget as HTMLDetailsElement).removeAttribute('open')"><summary :aria-label="`${p.name}的更多操作`">⋯</summary><div class="product-menu-actions"><button :disabled="busyId!=null" @click="toggle(p)">{{p.active ? '停用产品' : '启用产品'}}</button><button class="danger-action" :disabled="busyId!=null" @click="remove(p)">删除产品</button></div></details>
         <details v-if="p.materialBatches?.length || p.materialBatch" class="product-batches"><summary>物料批次 · {{p.materialBatches?.length || 1}} 项</summary><p>{{p.materialBatches?.length ? p.materialBatches.join(' / ') : p.materialBatch}}</p></details>
+        <details v-if="p.productionNumbers?.length" class="product-batches"><summary>生产编号 · {{p.productionNumbers.length}} 项</summary><p>{{p.productionNumbers.join(' / ')}}</p></details>
       </article>
     </div>
   </div>

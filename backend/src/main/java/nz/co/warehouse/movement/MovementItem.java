@@ -11,6 +11,7 @@ import java.util.*;
 @Entity @Table(name="movement_item")
 public class MovementItem extends PersistentEntity {
     @Column(name="material_batch",length=100) private String materialBatch;
+    @Column(name="production_number",length=100) private String productionNumber;
     public String effectiveMaterialBatch() {
         return materialBatch == null ? (movement == null ? null : movement.getManufactureLot()) : materialBatch.isBlank() ? null : materialBatch;
     }

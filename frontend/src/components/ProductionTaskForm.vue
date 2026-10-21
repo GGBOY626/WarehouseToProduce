@@ -13,7 +13,10 @@ const newTarget = () => ({ key: nextKey++, productId: undefined as number | unde
 const form = ref({
   name: props.task?.name || "",
   targets: props.task?.targets.map(t => ({ key: nextKey++, productId: t.productId as number | undefined, productName: t.productName, targetQuantity: t.targetQuantity, baseUnit: t.baseUnit || "" })) || [newTarget()],
-  plannedDate: props.task?.plannedDate || today(), batchNo: props.task?.batchNo || "", remarks: props.task?.remarks || ""
+  plannedDate: props.task?.plannedDate || today(),
+  orderNo: props.task?.orderNo || "", feishuNo: props.task?.feishuNo || "",
+  plannedQuantity: (props.task?.plannedQuantity ?? '') as number | '', productBatch: props.task?.productBatch || "",
+  remarks: props.task?.remarks || ""
 });
 const outputEnabled = ref(!!props.task?.output);
 const outputProductId = ref<number | undefined>(props.task?.output?.productId);
@@ -51,9 +54,10 @@ async function save() {
   if (saving.value) return;
   if (!form.value.name.trim()) { message.value = "请填写任务名称。"; return; }
   const targets = form.value.targets;
-  if (!form.value.plannedDate || !form.value.batchNo.trim() || targets.some(t => !t.productId || !Number.isSafeInteger(t.targetQuantity) || t.targetQuantity <= 0)) {
-    message.value = "请填写每种物料的需求总数、计划日期和生产批次。"; return;
+  if (!form.value.plannedDate || targets.some(t => !t.productId || !Number.isSafeInteger(t.targetQuantity) || t.targetQuantity <= 0)) {
+    message.value = "请填写每种物料的需求总数和计划日期。"; return;
   }
+  if(form.value.plannedQuantity !== '' && (!Number.isSafeInteger(form.value.plannedQuantity) || form.value.plannedQuantity <= 0)){message.value='计划数量须为正整数，或留空。';return;}
   if (new Set(targets.map(t => t.productId)).size !== targets.length) { message.value = "同一种物料只填写一行需求总数，不需要按批次拆分。"; return; }
   if (outputEnabled.value && !outputProductId.value) { message.value = "请选择车间到仓库的成品物料。"; return; }
   if (outputEnabled.value && packagingEnabled.value && (!primary.value || !Number.isInteger(boxesPerCarton.value) || !Number.isInteger(unitsPerBox.value) || Number(boxesPerCarton.value) <= 0 || Number(unitsPerBox.value) <= 0 || Number(boxesPerCarton.value) * Number(unitsPerBox.value) > 2147483647)) {
@@ -66,7 +70,7 @@ async function save() {
   saving.value = true; message.value = "";
   try {
     const packed = outputEnabled.value && packagingEnabled.value;
-    const payload = { ...form.value, outputProductId: outputEnabled.value ? outputProductId.value : null,
+    const payload = { ...form.value, plannedQuantity: form.value.plannedQuantity === '' ? null : form.value.plannedQuantity, outputProductId: outputEnabled.value ? outputProductId.value : null,
       targetOutputQuantity: outputEnabled.value && !packed ? outputQuantity.value : null,
       outputBoxesPerCarton: packed ? boxesPerCarton.value : null, outputUnitsPerBox: packed ? unitsPerBox.value : null,
       outputQuantityBasis: packed ? quantityBasis.value : null, primaryMaterialProductId: packed ? primaryId.value : null,
@@ -114,7 +118,10 @@ async function save() {
       </div>
       <div class="grid-2">
         <label class="field"><span>计划日期 *</span><input class="input" type="date" required v-model="form.plannedDate" /></label>
-        <label class="field"><span>生产批次 *</span><input class="input mono" maxlength="100" required v-model.trim="form.batchNo" /></label>
+        <label class="field"><span>订单号（可选）</span><input class="input mono" maxlength="100" v-model.trim="form.orderNo" /></label>
+        <label class="field"><span>飞书号（可选）</span><input class="input mono" maxlength="100" v-model.trim="form.feishuNo" /></label>
+        <label class="field"><span>计划数量（可选）</span><input class="input mono" type="number" min="1" step="1" v-model.number="form.plannedQuantity" /></label>
+        <label class="field"><span>产品批次（可选）</span><input class="input mono" maxlength="100" v-model.trim="form.productBatch" /></label>
       </div>
       <label class="field"><span>备注</span><textarea class="textarea" maxlength="1000" v-model.trim="form.remarks" /></label>
     </fieldset>

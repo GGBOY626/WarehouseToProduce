@@ -15,7 +15,11 @@ public class ProductionTask extends PersistentEntity {
     @ManyToOne(fetch=FetchType.LAZY,optional=false) @JoinColumn(name="product_id") private Product product;
     @Column(name="target_quantity",nullable=false) private long targetQuantity;
     @Column(name="planned_date",nullable=false) private LocalDate plannedDate;
-    @Column(name="batch_no",nullable=false,length=100) private String batchNo;
+    @Column(name="batch_no",length=100) private String batchNo;
+    @Column(name="order_no",length=100) private String orderNo;
+    @Column(name="feishu_no",length=100) private String feishuNo;
+    @Column(name="planned_quantity") private Long plannedQuantity;
+    @Column(name="product_batch",length=100) private String productBatch;
     @Enumerated(EnumType.STRING) @Column(nullable=false,length=20) private Status status=Status.IN_PROGRESS;
     @Column(length=100) private String name;
     @Column(length=1000) private String remarks;
@@ -38,7 +42,8 @@ public class ProductionTask extends PersistentEntity {
     private List<ProductionTaskTarget> targets=new ArrayList<>();
     public String displayName(){
         if(name!=null&&!name.isBlank())return name;
-        return (outputProduct!=null?outputProduct.getName():product.getName())+" · "+batchNo;
+        String productName=outputProduct!=null?outputProduct.getName():product.getName();
+        return batchNo==null||batchNo.isBlank()?productName:productName+" · "+batchNo;
     }
     public enum Status { PREPARING, IN_PROGRESS, COMPLETED, CANCELLED }
 }

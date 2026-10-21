@@ -298,6 +298,29 @@ class MaterialRequirementsIntegrationTest {
         }
     }
 
+    @Test void optionalTaskMetadataCanBeAddedLaterWithoutErasingLegacyBatch(){
+        var empty=new ProductionTaskService.SaveRequest(null,null,LocalDate.now(),null,null,
+                List.of(target(inner,500)),null,null,"可选字段任务",null,null,null,null,null,null,null,null,
+                null,null,null,null);
+        var created=tasks.create(empty);
+        assertThat(created.batchNo()).isNull();
+        assertThat(created.orderNo()).isNull();
+        assertThat(created.feishuNo()).isNull();
+        assertThat(created.plannedQuantity()).isNull();
+        assertThat(created.productBatch()).isNull();
+        var filled=new ProductionTaskService.SaveRequest(null,null,LocalDate.now(),null,null,
+                List.of(target(inner,500)),null,null,"可选字段任务",null,null,null,null,null,null,null,null,
+                "ORD-1","FS-2",1000L,"PB-3");
+        var updated=tasks.update(created.id(),filled);
+        assertThat(updated.orderNo()).isEqualTo("ORD-1");
+        assertThat(updated.feishuNo()).isEqualTo("FS-2");
+        assertThat(updated.plannedQuantity()).isEqualTo(1000L);
+        assertThat(updated.productBatch()).isEqualTo("PB-3");
+        var legacy=tasks.create(request(target(inner,500)));
+        tasks.update(legacy.id(),filled);
+        assertThat(tasks.detail(legacy.id()).batchNo()).isNotNull();
+    }
+
     private Long product(String name,ProductUsage usage){
         String suffix=UUID.randomUUID().toString();
         return products.create(new ProductDtos.Request(name+suffix,suffix,null,usage,10,"个")).id();

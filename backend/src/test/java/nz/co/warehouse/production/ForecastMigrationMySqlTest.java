@@ -32,7 +32,12 @@ class ForecastMigrationMySqlTest {
             try(var rows=sql.executeQuery("SELECT boxes_per_carton,units_per_box,cartons_per_pallet FROM product_box_packing")){
                 assertThat(rows.next()).isTrue();assertThat(rows.getInt(1)).isEqualTo(22);assertThat(rows.getInt(2)).isEqualTo(30);assertThat(rows.getObject(3)).isNull();
             }
-            assertThat(Flyway.configure().dataSource(url,"root","").load().info().current().getVersion().getVersion()).isEqualTo("21");
+            try(var rows=sql.executeQuery("SELECT batch_no,order_no,feishu_no,planned_quantity,product_batch FROM production_task")){
+                assertThat(rows.next()).isTrue();assertThat(rows.getString(1)).isEqualTo("QA");
+                assertThat(rows.getObject(2)).isNull();assertThat(rows.getObject(3)).isNull();
+                assertThat(rows.getObject(4)).isNull();assertThat(rows.getObject(5)).isNull();
+            }
+            assertThat(Flyway.configure().dataSource(url,"root","").load().info().current().getVersion().getVersion()).isEqualTo("22");
         }
     }
 }
