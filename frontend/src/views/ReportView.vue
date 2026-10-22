@@ -5,6 +5,7 @@ import { movementsApi } from "../api";
 import { errorMessage } from "../api/http";
 import { dailyMovementRows, formatDailyMovementCopy } from "../utils/dailyMovementCopy";
 import type { DailyMovementRow } from "../utils/dailyMovementCopy";
+import { previousMonday, shiftDate } from "../utils/reportDates";
 import type { Direction } from "../types";
 
 type ExportDirection = "" | Direction;
@@ -99,13 +100,6 @@ async function copyToday() {
   } finally { copying.value = false; }
 }
 
-function shiftDate(date: string, days: number) {
-  const [year, month, day] = date.split("-").map(Number);
-  const value = new Date(Date.UTC(year, month - 1, day));
-  value.setUTCDate(value.getUTCDate() + days);
-  return value.toISOString().slice(0, 10);
-}
-
 function downloadRange(start: string, end: string) {
   const params = new URLSearchParams({ from: start, to: end });
   if (direction.value) params.set("direction", direction.value);
@@ -114,7 +108,7 @@ function downloadRange(start: string, end: string) {
 
 function downloadProductionTasks() {
   const end=today();
-  window.location.href=`/api/reports/pdf/production-tasks?${new URLSearchParams({from:shiftDate(end,-13),to:end})}`;
+  window.location.href=`/api/reports/pdf/production-tasks?${new URLSearchParams({from:previousMonday(end),to:end})}`;
 }
 
 function downloadPreset(kind: "today" | "yesterday" | "week" | "twoWeeks") {
@@ -126,7 +120,7 @@ function downloadPreset(kind: "today" | "yesterday" | "week" | "twoWeeks") {
   }
   const currentDate = new Date(`${current}T00:00:00Z`);
   const daysSinceMonday = (currentDate.getUTCDay() + 6) % 7;
-  const start = shiftDate(current, kind === "week" ? -daysSinceMonday : -(daysSinceMonday + 7));
+  const start = kind === "week" ? shiftDate(current, -daysSinceMonday) : previousMonday(current);
   downloadRange(start, current);
 }
 
@@ -187,7 +181,7 @@ function downloadCustom() {
         <button class="btn btn-secondary" @click="downloadPreset('week')">导出本周</button>
         <button class="btn btn-secondary" @click="downloadPreset('twoWeeks')">导出近两周</button>
       </div>
-      <button class="btn btn-secondary" @click="downloadProductionTasks">导出近两周生产任务记录</button>
+      <button class="btn btn-secondary" @click="downloadProductionTasks">导出近两周生产任务记录（上周一至今天）</button>
       <hr class="divider" />
       <div class="field-label">自选导出日期</div>
       <div class="grid-2">

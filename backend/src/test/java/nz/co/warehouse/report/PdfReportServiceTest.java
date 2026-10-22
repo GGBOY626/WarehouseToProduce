@@ -27,25 +27,33 @@ class PdfReportServiceTest {
         MovementRepository repository=mock(MovementRepository.class);
         ProductionTaskService tasks=mock(ProductionTaskService.class);
         ProductionTaskService.Response task=mock(ProductionTaskService.Response.class);
+        ProductionTaskService.Response historical=mock(ProductionTaskService.Response.class);
         ProductionTaskService.OutputResponse output=mock(ProductionTaskService.OutputResponse.class);
         LocalDate date=LocalDate.of(2026,10,21);
-        when(tasks.list(null)).thenReturn(List.of(task));
+        when(tasks.list(null)).thenReturn(List.of(task,historical));
         when(task.status()).thenReturn(ProductionTask.Status.COMPLETED);
         when(task.plannedDate()).thenReturn(date);
         when(task.startDate()).thenReturn(date.minusDays(2));
         when(task.endDate()).thenReturn(date);
         when(task.name()).thenReturn("清肺饮生产");
         when(task.orderNo()).thenReturn("ORD-42");
+        when(task.feishuNo()).thenReturn("FS-88");
+        when(task.productBatch()).thenReturn("BATCH-21");
         when(task.output()).thenReturn(output);
         when(task.movements()).thenReturn(List.of());
+        when(historical.status()).thenReturn(ProductionTask.Status.COMPLETED);
+        when(historical.plannedDate()).thenReturn(date);
+        when(historical.name()).thenReturn("历史任务");
+        when(historical.movements()).thenReturn(List.of());
         when(output.productName()).thenReturn("清肺饮");
         when(output.baseUnit()).thenReturn("个");
         when(output.targetQuantity()).thenReturn(3000L);
         when(output.receivedQuantity()).thenReturn(2700L);
         PdfReportService service=new PdfReportService(repository,tasks);
         ReflectionTestUtils.setField(service,"zone","Pacific/Auckland");
-        String text=pdfText(service.generateProductionTasks(date.minusDays(13),date));
-        assertThat(text).contains("清肺饮生产","ORD-42","已完成","3000","2700");
+        String text=pdfText(service.generateProductionTasks(LocalDate.of(2026,10,12),date));
+        assertThat(text).contains("订单号","飞书号","产品批次","清肺饮生产","ORD-42","FS-88","BATCH-21","历史任务","已完成","3000","2700")
+                .doesNotContain("null");
     }
     @Test void exportsPerItemMaterialBatchesInsteadOfTheSharedLegacyHeader() throws Exception {
         Movement row=movement(MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,"2026-09-01T01:00:00Z","外盒","BATCH-CODE",1,0,10);

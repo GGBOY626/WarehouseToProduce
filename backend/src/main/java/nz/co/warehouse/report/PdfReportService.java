@@ -75,17 +75,17 @@ public class PdfReportService {
         StringBuilder html=new StringBuilder("""
                 <!DOCTYPE html><html><head><meta charset="UTF-8"/><style>
                 @page{size:A4 landscape;margin:10mm;@bottom-center{content:"第 " counter(page) " 页";font-family:WarehouseCN;font-size:8px}}
-                body{font-family:WarehouseCN;color:#172126;font-size:9px}h1{font-size:18px;margin:0 0 5px}.range{color:#52626b;margin-bottom:12px}
+                body{font-family:WarehouseCN;color:#172126;font-size:8.5px}h1{font-size:18px;margin:0 0 5px}.range{color:#52626b;margin-bottom:12px}
                 table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{border:1px solid #bcc8cd;padding:5px;word-wrap:break-word;vertical-align:top}
                 th{background:#e9f2f6;text-align:left}tr{page-break-inside:avoid}.number{text-align:right}.empty{text-align:center;color:#66777f;padding:14px}
                 </style></head><body><h1>生产任务记录</h1><div class='range'>日期范围：
                 """).append(REPORT_DATE.format(from)).append(" 至 ").append(REPORT_DATE.format(to)).append("</div>")
-                .append("<table><thead><tr><th style='width:18%'>任务 / 订单</th><th style='width:8%'>状态</th><th style='width:10%'>开始日期</th><th style='width:10%'>结束日期</th><th style='width:12%'>成品</th><th style='width:12%'>计划产量</th><th style='width:12%'>已回仓</th><th style='width:9%'>生产完成度</th><th style='width:9%'>关联记录</th></tr></thead><tbody>");
+                .append("<table><thead><tr><th style='width:11%'>任务</th><th style='width:9%'>订单号</th><th style='width:8%'>飞书号</th><th style='width:8%'>产品批次</th><th style='width:7%'>状态</th><th style='width:9%'>开始日期</th><th style='width:9%'>结束日期</th><th style='width:10%'>成品</th><th style='width:8%'>计划产量</th><th style='width:8%'>已回仓</th><th style='width:7%'>完成度</th><th style='width:6%'>关联记录</th></tr></thead><tbody>");
         for(var task:rows){
             var output=task.output();
-            html.append("<tr><td>").append(e(task.name()));
-            if(task.orderNo()!=null)html.append("<br/>订单：").append(e(task.orderNo()));
-            html.append("</td><td>").append(task.status()==nz.co.warehouse.production.ProductionTask.Status.COMPLETED?"已完成":task.status()==nz.co.warehouse.production.ProductionTask.Status.CANCELLED?"已取消":"进行中")
+            html.append("<tr><td>").append(e(task.name())).append("</td><td>").append(e(task.orderNo()))
+                    .append("</td><td>").append(e(task.feishuNo())).append("</td><td>").append(e(task.productBatch()))
+                    .append("</td><td>").append(task.status()==nz.co.warehouse.production.ProductionTask.Status.COMPLETED?"已完成":task.status()==nz.co.warehouse.production.ProductionTask.Status.CANCELLED?"已取消":"进行中")
                     .append("</td><td>").append(task.startDate()==null?"—":task.startDate()).append("</td><td>").append(task.endDate()==null?"—":task.endDate())
                     .append("</td><td>").append(output==null?"—":e(output.productName())).append("</td><td class='number'>")
                     .append(output==null?"—":output.targetQuantity()+" "+e(output.baseUnit())).append("</td><td class='number'>")
@@ -93,7 +93,7 @@ public class PdfReportService {
                     .append(output==null||output.productionPercent()==null?"—":output.productionPercent()+"%")
                     .append("</td><td class='number'>").append(task.movements().size()).append(" 单</td></tr>");
         }
-        if(rows.isEmpty())html.append("<tr><td colspan='9' class='empty'>日期范围内暂无生产任务</td></tr>");
+        if(rows.isEmpty())html.append("<tr><td colspan='12' class='empty'>日期范围内暂无生产任务</td></tr>");
         html.append("</tbody></table></body></html>");
         try(ByteArrayOutputStream output=new ByteArrayOutputStream()){
             PdfRendererBuilder builder=new PdfRendererBuilder();builder.useFastMode();builder.useFont(this::openFont,"WarehouseCN");builder.withHtmlContent(html.toString(),null);builder.toStream(output);builder.run();return output.toByteArray();
