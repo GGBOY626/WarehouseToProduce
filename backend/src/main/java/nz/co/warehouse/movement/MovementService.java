@@ -53,10 +53,20 @@ public class MovementService {
 
     @Transactional
     public MovementDtos.DetailResponse linkTask(long id,long taskId) {
+        return linkTask(id,taskId,false);
+    }
+
+    @Transactional
+    public MovementDtos.DetailResponse linkCompletedTask(long taskId,String recordNo) {
+        Movement movement=repository.findByRecordNo(recordNo.trim()).orElseThrow(()->BusinessException.notFound("MOVEMENT_NOT_FOUND","找不到该流转记录。"));
+        return linkTask(movement.getId(),taskId,true);
+    }
+
+    private MovementDtos.DetailResponse linkTask(long id,long taskId,boolean completedTaskCorrection) {
         Movement m=getActiveDetail(id);
         if(m.getProductionTask()!=null)throw BusinessException.badRequest("TASK_ALREADY_LINKED","记录已关联任务，请刷新后查看。");
         var selection=m.getItems().stream().map(i->new ProductionTaskService.BatchSelection(i.getProduct().canonicalId(),i.effectiveMaterialBatch())).toList();
-        var task=productionTasks.getLinkableBatches(taskId,selection,m.getDirection(),m.isReturnMovement());
+        var task=productionTasks.getLinkableBatches(taskId,selection,m.getDirection(),m.isReturnMovement(),completedTaskCorrection);
         if(m.getDirection()==MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE&&!m.isReturnMovement()&&task.outputCartonUnits()!=null&&m.getItems().stream().anyMatch(i->i.getFullCartons()>0&&!Objects.equals(task.outputCartonUnits(),i.getUnitsPerCartonSnapshot())))
             throw BusinessException.badRequest("TASK_CARTON_SPEC_MISMATCH","满箱规格与任务包装设置不一致，请核对每箱盒数和每盒数量。");
         m.setProductionTask(task);

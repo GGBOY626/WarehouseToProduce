@@ -37,6 +37,7 @@ class BoxPackingIntegrationTest {
         assertThat(i.totalUnits()).isEqualTo(2040);assertThat(saved.totalCartons()).isEqualTo(3);
         assertThat(i.boxesPerCarton()).isEqualTo(28);assertThat(i.unitsPerBox()).isEqualTo(30);
         assertThat(saved.materials().getFirst().totalQuantity()).isEqualTo(2040);
+        assertThat(saved.materials().getFirst().totalBoxes()).isEqualTo(68);
         products.update(p.id(),productRequest(p.name(),new BoxPacking(24,20)));
         var edited=movements.update(saved.id(),request(item(p,i.id(),28,30,12,840,360L)));
         assertThat(edited.items().getFirst().totalUnits()).isEqualTo(2040);
@@ -47,6 +48,7 @@ class BoxPackingIntegrationTest {
     }
     @Test void legacyRecordsKeepTheirTotalsAndDoNotInventFactors(){
         var p=product();var saved=movements.create(request(item(p,null,null,null,null,840,360L)));
+        assertThat(saved.materials().getFirst().totalBoxes()).isNull();
         var old=saved.items().getFirst();assertThat(old.boxesPerCarton()).isNull();assertThat(old.totalUnits()).isEqualTo(2040);
         var edited=movements.update(saved.id(),request(item(p,old.id(),null,null,null,null,360L)));
         assertThat(edited.items().getFirst().unitsPerCarton()).isEqualTo(840);assertThat(edited.items().getFirst().totalUnits()).isEqualTo(2040);

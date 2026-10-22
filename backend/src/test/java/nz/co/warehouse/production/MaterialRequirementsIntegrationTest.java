@@ -98,7 +98,7 @@ class MaterialRequirementsIntegrationTest {
         assertThatCode(()->tasks.update(task.id(),request(target(inner,500)))).doesNotThrowAnyException();
         assertThatThrownBy(()->tasks.create(request(target(inner,400)))).hasMessageContaining("停用");
         tasks.status(task.id(),ProductionTask.Status.COMPLETED);
-        assertThatThrownBy(()->move(task.id(),outer,20L,false,false)).hasMessageContaining("已结束");
+        assertThatThrownBy(()->move(task.id(),outer,20L,false,false)).hasMessageContaining("已完成");
     }
 
     @Test void legacyFinishedGoodsTargetsStayReadableAndMustBeCorrectedWhenEditing(){
@@ -169,15 +169,17 @@ class MaterialRequirementsIntegrationTest {
         assertThat(tasks.detail(task.id()).targets().getFirst().estimatedUsedQuantity()).isEqualByComparingTo("100");
     }
 
-    @Test void completedTasksAcceptMatchingReceiptsAndReturnsButNeverNewIssues(){
+    @Test void completedTasksOnlyAcceptCorrectionsFromTheirOwnDetails(){
         var task=tasks.create(request(target(inner,400)));
         assertThat(tasks.status(task.id(),ProductionTask.Status.COMPLETED).status()).isEqualTo(ProductionTask.Status.COMPLETED);
         assertThat(tasks.linkable(List.of(inner),MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,false)).isEmpty();
         assertThat(tasks.linkable(List.of(drink),MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE,false))
-                .extracting(ProductionTaskService.LinkOption::id).contains(task.id());
-        assertThatCode(()->move(task.id(),drink,100L,false,false)).doesNotThrowAnyException();
-        assertThatCode(()->move(task.id(),inner,10L,true,false)).doesNotThrowAnyException();
-        assertThatThrownBy(()->move(task.id(),inner,10L,false,false)).hasMessageContaining("已结束");
+                .extracting(ProductionTaskService.LinkOption::id).doesNotContain(task.id());
+        assertThatThrownBy(()->move(task.id(),drink,100L,false,false)).hasMessageContaining("已完成");
+        assertThatThrownBy(()->move(task.id(),inner,10L,true,false)).hasMessageContaining("已完成");
+        var forgotten=move(null,drink,100L,false,false);
+        movements.linkCompletedTask(task.id(),forgotten.recordNo());
+        assertThat(tasks.detail(task.id()).output().receivedQuantity()).isEqualTo(100);
         tasks.status(task.id(),ProductionTask.Status.CANCELLED);
         assertThatThrownBy(()->move(task.id(),drink,100L,false,false)).hasMessageContaining("已结束");
         assertThat(tasks.linkable(List.of(drink),MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE,false))
@@ -246,7 +248,7 @@ class MaterialRequirementsIntegrationTest {
         assertThat(tasks.detail(task.id()).output()).isNull();
         assertThat(tasks.linkable(List.of(drink),MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE,false))
                 .extracting(ProductionTaskService.LinkOption::id).doesNotContain(task.id());
-        assertThatThrownBy(()->move(task.id(),drink,10L,false,false)).hasMessageContaining("不匹配");
+        assertThatThrownBy(()->move(task.id(),drink,10L,false,false)).hasMessageContaining("已完成");
     }
 
     @Test void apiFiltersTasksAndDirectCompletionRequiresAuthentication() throws Exception {

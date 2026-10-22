@@ -141,7 +141,7 @@ class TaskYieldIntegrationTest {
         assertThat(result.output().lossPercent()).isEqualByComparingTo("0");
         assertThat(result.status()).isEqualTo(ProductionTask.Status.IN_PROGRESS);
         assertThat(tasks.status(task.id(),ProductionTask.Status.COMPLETED).output().provisional()).isFalse();
-        assertThatThrownBy(()->move(task.id(),raw,"22677",1,false)).hasMessageContaining("已结束");
+        assertThatThrownBy(()->move(task.id(),raw,"22677",1,false)).hasMessageContaining("已完成");
         tasks.status(task.id(),ProductionTask.Status.IN_PROGRESS);
         assertThatCode(()->move(task.id(),raw,"22677",1,false)).doesNotThrowAnyException();
     }

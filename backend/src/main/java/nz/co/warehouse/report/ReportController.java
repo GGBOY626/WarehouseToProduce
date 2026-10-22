@@ -10,6 +10,12 @@ import java.time.LocalDate;
 @RestController @RequestMapping("/api/reports") @RequiredArgsConstructor
 public class ReportController {
     private final PdfReportService service;
+    @GetMapping(value="/pdf/production-tasks",produces=MediaType.APPLICATION_PDF_VALUE)
+    public ResponseEntity<byte[]> productionTasksPdf(@RequestParam @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate from,
+                                                      @RequestParam @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate to){
+        return ResponseEntity.ok().header(HttpHeaders.CONTENT_DISPOSITION,"attachment; filename=production-tasks-"+from+"-"+to+".pdf")
+                .body(service.generateProductionTasks(from,to));
+    }
     @GetMapping(value="/pdf",produces=MediaType.APPLICATION_PDF_VALUE)
     public ResponseEntity<byte[]> pdf(@RequestParam @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate from,
                                       @RequestParam @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate to,

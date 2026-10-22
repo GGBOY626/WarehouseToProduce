@@ -25,7 +25,7 @@ export function formatDailyMovementCopy(date: string, direction: Direction, stat
     const quantity = product.unknown && product.quantity === 0
       ? `待确认（${product.unknown} 项）`
       : `${product.quantity}${product.unit}${product.unknown ? `（另有 ${product.unknown} 项数量待确认）` : ''}`;
-    lines.push('', `Code：${product.code}`, `产品：${product.name}`, `数量：${quantity}`);
+    lines.push('', `Code：${product.code}`, `产品：${product.name}`, `数量：${quantity}`, '库位：TT');
   }
   return lines.join('\n');
 }

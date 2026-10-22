@@ -28,6 +28,7 @@ const productionPercent = computed(() => props.task.output?.quantityBasis ? prop
         <svg class="task-arrow" aria-hidden="true" viewBox="0 0 24 24" width="18" height="18"><path d="m9 5 7 7-7 7" /></svg>
       </div>
     </header>
+    <p class="task-dates">开始日期 {{ task.startDate || '暂无发料记录' }}<template v-if="task.status==='COMPLETED'"> · 结束日期 {{ task.endDate || '暂无成品回仓记录' }}</template></p>
 
     <div class="task-progress-pair">
       <div class="task-progress">
@@ -76,6 +77,7 @@ const productionPercent = computed(() => props.task.output?.quantityBasis ? prop
 .task-card:hover{border-color:#b9c5ca;box-shadow:0 4px 12px rgba(20,39,50,.07)}
 .task-card:active{border-color:var(--blue2)}
 .task-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+.task-dates{margin:8px 0 14px;color:var(--muted);font-size:12px}
 .task-heading h3{margin:0;min-width:0;font-family:"Microsoft YaHei UI","PingFang SC",sans-serif;font-size:18px;font-weight:700;line-height:1.5;overflow-wrap:anywhere;text-wrap:pretty}
 .task-card-link{position:absolute;inset:0;z-index:1;border-radius:var(--radius);touch-action:manipulation}
 .task-card-link:focus-visible{outline:3px solid var(--blue2);outline-offset:3px}

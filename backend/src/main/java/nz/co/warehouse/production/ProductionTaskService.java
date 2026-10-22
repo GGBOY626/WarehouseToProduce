@@ -7,6 +7,7 @@ import nz.co.warehouse.common.BusinessException;
 import nz.co.warehouse.movement.*;
 import nz.co.warehouse.product.*;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.transaction.annotation.Transactional;
 import java.time.*;
 import java.math.BigDecimal;
@@ -18,6 +19,7 @@ public class ProductionTaskService {
     private final ProductionTaskRepository tasks;
     private final MovementRepository movements;
     private final ProductService products;
+    @Value("${app.business-zone:Pacific/Auckland}") private String zone;
 
     public record TargetRequest(@NotNull Long productId,@Positive long targetQuantity,@Size(max=100) String materialBatch) {
         public TargetRequest(Long productId,long targetQuantity){this(productId,targetQuantity,null);}
@@ -61,12 +63,12 @@ public class ProductionTaskService {
     public record BatchResponse(String materialBatch,String subBatch,long issuedQuantity,long returnedQuantity,long netQuantity,int unknownQuantityCount) {}
     public record MovementResponse(Long id,String recordNo,MovementEnums.Direction direction,boolean returnMovement,
                                    Instant movementTime,int totalCartons,long totalQuantity,List<String> productNames,MovementEnums.Status status,int unknownQuantityCount,String quantityUnit,List<MovementMaterialResponse> items) {}
-    public record MovementMaterialResponse(Long productId,String productName,String materialCode,String materialBatch,String subBatch,String baseUnit,long totalCartons,long totalQuantity,long unknownQuantityCount,long looseUnits,List<MaterialQuantity.Packaging> packaging) {}
+    public record MovementMaterialResponse(Long productId,String productName,String materialCode,String materialBatch,String subBatch,String baseUnit,long totalCartons,long totalQuantity,long unknownQuantityCount,long looseUnits,List<MaterialQuantity.Packaging> packaging,Long totalBoxes) {}
     public record Response(Long id,Long productId,String productName,String baseUnit,long targetQuantity,LocalDate plannedDate,
                            String batchNo,ProductionTask.Status status,String remarks,long completedQuantity,int progressPercent,
                            int issueMovementCount,int returnMovementCount,List<MovementResponse> movements,Instant createdAt,Instant updatedAt,
                            List<TargetResponse> targets,OutputResponse output,String name,FinishedReceiptForecast forecast,
-                           String orderNo,String feishuNo,Long plannedQuantity,String productBatch) {}
+                           String orderNo,String feishuNo,Long plannedQuantity,String productBatch,LocalDate startDate,LocalDate endDate) {}
     public record OutputResponse(Long productId,String productName,String materialCode,String baseUnit,long targetQuantity,
                                  long receivedQuantity,int progressPercent,int unknownQuantityCount,String materialBatch,
                                  Integer boxesPerCarton,Integer unitsPerBox,ProductionTask.OutputQuantityBasis quantityBasis,
@@ -111,8 +113,12 @@ public class ProductionTaskService {
                 .map(t->new LinkOption(t.getId(),t.displayName(),t.getBatchNo(),t.getStatus(),t.displayName())).toList();
     }
     public ProductionTask getLinkableBatches(long id,List<BatchSelection> items,MovementEnums.Direction direction,boolean returned){
+        return getLinkableBatches(id,items,direction,returned,false);
+    }
+    public ProductionTask getLinkableBatches(long id,List<BatchSelection> items,MovementEnums.Direction direction,boolean returned,boolean completedTaskCorrection){
         ProductionTask t=get(id);
-        if(!linkStatusAllowed(t,direction))throw BusinessException.badRequest("PRODUCTION_TASK_CLOSED","该生产任务已结束，不能新增发料。");
+        if(!linkStatusAllowed(t,direction)&&!(completedTaskCorrection&&t.getStatus()==ProductionTask.Status.COMPLETED))throw BusinessException.badRequest("PRODUCTION_TASK_CLOSED",
+                t.getStatus()==ProductionTask.Status.COMPLETED?"该生产任务已完成，不能直接关联流转记录。请从任务详情补关联。":"该生产任务已结束，不能关联流转记录。");
         if(!matchesBatches(t,items,direction,returned))throw BusinessException.badRequest("PRODUCTION_TASK_PRODUCT_MISMATCH","所选产品或物料批次与任务不匹配。");
         return t;
     }
@@ -128,8 +134,7 @@ public class ProductionTaskService {
     }
 
     private boolean linkStatusAllowed(ProductionTask t,MovementEnums.Direction direction){
-        if(t.getStatus()==ProductionTask.Status.CANCELLED)return false;
-        return direction!=MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION||t.getStatus()==ProductionTask.Status.PREPARING||t.getStatus()==ProductionTask.Status.IN_PROGRESS;
+        return t.getStatus()==ProductionTask.Status.PREPARING||t.getStatus()==ProductionTask.Status.IN_PROGRESS;
     }
     private boolean matches(ProductionTask t,Set<Long> selected,MovementEnums.Direction direction,boolean returned){
         if(selected.isEmpty())return false;
@@ -265,14 +270,19 @@ public class ProductionTaskService {
         int issues=(int)rows.stream().filter(m->m.getItems().stream().anyMatch(i->!i.getIssues().isEmpty())).count();
         int returns=(int)rows.stream().filter(Movement::isReturnMovement).count();
         List<MovementResponse> linked=rows.stream().map(m->new MovementResponse(m.getId(),m.getRecordNo(),m.getDirection(),m.isReturnMovement(),m.getMovementTime(),m.getTotalCartons(),m.getItems().stream().map(MovementItem::getTotalUnits).filter(Objects::nonNull).mapToLong(Long::longValue).sum(),m.getItems().stream().map(MovementItem::getProductNameSnapshot).distinct().toList(),m.getStatus(),(int)m.getItems().stream().filter(i->i.isQuantityUnknown()||i.getTotalUnits()==null).count(),m.getItems().stream().map(MovementItem::getBaseUnitSnapshot).distinct().count()==1?m.getItems().getFirst().getBaseUnitSnapshot():null,movementMaterials(m))).toList();
-        return new Response(t.getId(),t.getProduct().canonicalId(),t.displayName(),t.getProduct().getBaseUnit(),t.getTargetQuantity(),t.getPlannedDate(),t.getBatchNo(),t.getStatus(),t.getRemarks(),completed,progress,issues,returns,linked,t.getCreatedAt(),t.getUpdatedAt(),targets,output,t.displayName(),FinishedReceiptForecast.calculate(t,primary,received,unknownOutput),t.getOrderNo(),t.getFeishuNo(),t.getPlannedQuantity(),t.getProductBatch());
+        ZoneId businessZone=ZoneId.of(zone);
+        LocalDate start=rows.stream().filter(m->m.getStatus()==MovementEnums.Status.ACTIVE&&m.getDirection()==MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION)
+                .map(m->m.getMovementTime().atZone(businessZone).toLocalDate()).min(LocalDate::compareTo).orElse(null);
+        LocalDate end=t.getStatus()==ProductionTask.Status.COMPLETED?rows.stream().filter(m->m.getStatus()==MovementEnums.Status.ACTIVE&&m.getDirection()==MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE&&!m.isReturnMovement())
+                .map(m->m.getMovementTime().atZone(businessZone).toLocalDate()).max(LocalDate::compareTo).orElse(null):null;
+        return new Response(t.getId(),t.getProduct().canonicalId(),t.displayName(),t.getProduct().getBaseUnit(),t.getTargetQuantity(),t.getPlannedDate(),t.getBatchNo(),t.getStatus(),t.getRemarks(),completed,progress,issues,returns,linked,t.getCreatedAt(),t.getUpdatedAt(),targets,output,t.displayName(),FinishedReceiptForecast.calculate(t,primary,received,unknownOutput),t.getOrderNo(),t.getFeishuNo(),t.getPlannedQuantity(),t.getProductBatch(),start,end);
     }
     private List<MovementMaterialResponse> movementMaterials(Movement movement){
         return movement.getItems().stream().collect(java.util.stream.Collectors.groupingBy(i->i.getProduct().canonicalId(),LinkedHashMap::new,java.util.stream.Collectors.toList()))
             .values().stream().flatMap(productItems->MaterialQuantity.group(productItems).values().stream()).map(items->{
                 MovementItem first=items.getFirst();
                 MaterialQuantity totals=MaterialQuantity.of(items);
-                return new MovementMaterialResponse(first.getProduct().canonicalId(),first.getProductNameSnapshot(),first.getBatchNo(),first.effectiveMaterialBatch(),first.getSubBatch(),first.getBaseUnitSnapshot(),totals.totalCartons(),totals.totalQuantity(),totals.unknownItemCount(),totals.looseUnits(),totals.packaging());
+                return new MovementMaterialResponse(first.getProduct().canonicalId(),first.getProductNameSnapshot(),first.getBatchNo(),first.effectiveMaterialBatch(),first.getSubBatch(),first.getBaseUnitSnapshot(),totals.totalCartons(),totals.totalQuantity(),totals.unknownItemCount(),totals.looseUnits(),totals.packaging(),movement.getDirection()==MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE&&!movement.isReturnMovement()?totals.totalBoxes():null);
             }).toList();
     }
     private record BatchSelectionKey(String batch,String subBatch) {}

@@ -133,7 +133,7 @@ export interface MovementDetail {
 }
 export interface TaskMovementMaterial {
   productId: number; productName: string; materialCode: string; materialBatch?: string; subBatch?: string;
-  baseUnit: string; totalCartons: number; totalQuantity: number; unknownQuantityCount: number; looseUnits: number; packaging: Packaging[];
+  baseUnit: string; totalCartons: number; totalQuantity: number; unknownQuantityCount: number; looseUnits: number; packaging: Packaging[]; totalBoxes?: number | null;
 }
 export interface ProductionTaskMovement {
   items: TaskMovementMaterial[];
@@ -161,6 +161,7 @@ export interface ProductionTask {
   orderNo?: string | null; feishuNo?: string | null; plannedQuantity?: number | null; productBatch?: string | null;
   completedQuantity: number; progressPercent: number; issueMovementCount: number; returnMovementCount: number;
   movements: ProductionTaskMovement[]; createdAt: string; updatedAt: string;
+  startDate?: string | null; endDate?: string | null;
   targets: ProductionTaskTarget[];
   output?: ProductionTaskOutput;
 }
@@ -180,6 +181,7 @@ export interface ProductionTaskTarget {
 }
 export interface Packaging { type: 'FULL' | 'TAIL'; unitsPerCarton: number | null; cartons: number }
 export interface MaterialSummary {
+  totalBoxes?: number | null;
   tailCartons: number;
   totalCartons: number;
   packaging: Packaging[];

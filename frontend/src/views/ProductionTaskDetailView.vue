@@ -4,7 +4,7 @@ import { useRoute, useRouter } from "vue-router";
 import { productionTasksApi } from "../api";
 import { errorMessage } from "../api/http";
 import { useAuth } from "../auth";
-import type { ProductionTask, ProductionTaskStatus } from "../types";
+import type { ProductionTask, ProductionTaskMovement, ProductionTaskStatus } from "../types";
 import ProductionTaskForm from "../components/ProductionTaskForm.vue";
 import ProductionTaskOutput from "../components/ProductionTaskOutput.vue";
 import ProductionTaskTargets from "../components/ProductionTaskTargets.vue";
@@ -15,6 +15,7 @@ import FinishedReceiptSummary from '../components/FinishedReceiptSummary.vue';
 const id=Number(useRoute().params.id), router=useRouter(), task=ref<ProductionTask>(), message=ref("");
 const { authenticated }=useAuth();
 const editing=ref(false), changingStatus=ref(false), deleting=ref(false);
+const linkDialog=ref<HTMLDialogElement>(), linkRecordNo=ref(''), linking=ref(false), linkError=ref('');
 const dialog=ref<HTMLDialogElement>(), selected=ref<{productId:number;productName:string;finished:boolean}>();
 const labels:Record<ProductionTaskStatus,string>={PREPARING:'进行中',IN_PROGRESS:'进行中',COMPLETED:'已完成',CANCELLED:'已取消'};
 const productionPercent=computed(()=>task.value?.output?.quantityBasis ? task.value.output.productionPercent : null);
@@ -24,9 +25,19 @@ const movementGroups=computed(()=>[
   { direction:'PRODUCTION_TO_WAREHOUSE', title:'车间 → 仓库', subtitle:'成品回仓 / 退料', rows:task.value?.movements.filter(m=>m.direction==='PRODUCTION_TO_WAREHOUSE') || [] }
 ]);
 const visibleMovementGroups=computed(()=>movementGroups.value.filter(group=>group.direction===movementDirection.value));
+function movementBoxTotal(m:ProductionTaskMovement){
+  return m.direction==='PRODUCTION_TO_WAREHOUSE'&&!m.returnMovement&&m.items.length&&m.items.every(item=>item.totalBoxes!=null)
+    ? m.items.reduce((sum,item)=>sum+item.totalBoxes!,0):null;
+}
 function saved(value:ProductionTask){task.value=value;editing.value=false}
 async function load(){try{task.value=await productionTasksApi.detail(id)}catch(e){message.value=errorMessage(e)}}
 async function setStatus(status:ProductionTaskStatus){if(changingStatus.value)return;changingStatus.value=true;message.value="";try{task.value=await productionTasksApi.status(id,status)}catch(e){message.value=errorMessage(e)}finally{changingStatus.value=false}}
+async function linkCompletedRecord(){
+  if(linking.value||!linkRecordNo.value.trim())return;
+  linking.value=true;linkError.value='';
+  try{task.value=await productionTasksApi.linkCompletedMovement(id,linkRecordNo.value.trim());linkDialog.value?.close();linkRecordNo.value=''}
+  catch(e){linkError.value=errorMessage(e)}finally{linking.value=false}
+}
 async function deleteTask(){
   if(deleting.value || !window.confirm('确定删除这个生产任务？删除后无法恢复。关联流转单及照片会保留，只解除与任务的关联。'))return;
   deleting.value=true;message.value="";
@@ -44,7 +55,7 @@ onBeforeUnmount(()=>{clearInterval(refreshTimer);window.removeEventListener('foc
     <p v-if="message" class="form-alert" role="alert">{{ message }}</p>
     <div v-if="!task" class="card empty">正在读取生产任务…</div>
     <template v-else>
-      <div class="task-head"><span class="status" :class="task.status==='COMPLETED'?'ok':'neutral'">{{ labels[task.status] }}</span><h1 class="page-title">{{ task.name }}</h1><p class="page-lead">计划日期 {{ task.plannedDate }}</p>
+      <div class="task-head"><span class="status" :class="task.status==='COMPLETED'?'ok':'neutral'">{{ labels[task.status] }}</span><h1 class="page-title">{{ task.name }}</h1><p class="page-lead">计划日期 {{ task.plannedDate }}</p><p class="page-lead">开始日期 {{ task.startDate || '暂无发料记录' }}<template v-if="task.status==='COMPLETED'"> · 结束日期 {{ task.endDate || '暂无成品回仓记录' }}</template></p>
         <p v-if="task.orderNo || task.feishuNo || task.plannedQuantity || task.productBatch" class="page-lead task-meta">
           <span v-if="task.orderNo">订单号 {{ task.orderNo }}</span><span v-if="task.feishuNo">飞书号 {{ task.feishuNo }}</span><span v-if="task.plannedQuantity">计划数量 {{ task.plannedQuantity.toLocaleString() }}</span><span v-if="task.productBatch">产品批次 {{ task.productBatch }}</span>
         </p>
@@ -77,11 +88,12 @@ onBeforeUnmount(()=>{clearInterval(refreshTimer);window.removeEventListener('foc
           <p v-if="!group.rows.length" class="group-empty">暂无此方向的流转记录</p>
           <RouterLink v-for="m in group.rows" :key="m.id" :to="`/movements/${m.id}`" class="movement-row">
             <div><strong>{{ m.productNames.map(name=>m.direction==='PRODUCTION_TO_WAREHOUSE'&&!m.returnMovement?`${name}（成品）`:name).join('、') }}</strong><span>{{ showDateTime(m.movementTime) }}<b v-if="m.returnMovement" class="return-tag">退料</b></span><small>{{ m.recordNo }}<template v-if="m.status!=='ACTIVE'"> · 已作废，不计入进度</template></small></div>
-            <b>{{ m.totalCartons }} 箱 · <template v-if="m.quantityUnit">{{ m.unknownQuantityCount ? '已知 ' : '' }}{{ m.totalQuantity.toLocaleString() }} {{ m.quantityUnit }}</template><template v-else>查看数量明细</template></b><span class="arrow" aria-hidden="true">›</span>
+            <b>{{ m.totalCartons }} 箱 · <template v-if="movementBoxTotal(m)!=null">{{ movementBoxTotal(m)!.toLocaleString() }} 盒 · </template><template v-if="m.quantityUnit">{{ m.unknownQuantityCount ? '已知 ' : '' }}{{ m.totalQuantity.toLocaleString() }} {{ m.quantityUnit }}</template><template v-else>查看数量明细</template></b><span class="arrow" aria-hidden="true">›</span>
           </RouterLink>
         </section></div>
       </section>
-      <section v-if="authenticated && !editing" class="section actions" :aria-busy="changingStatus || deleting"><button class="btn btn-secondary" :disabled="changingStatus || deleting" @click="editing=true">编辑任务</button><button v-if="task.status==='PREPARING'||task.status==='IN_PROGRESS'" class="btn btn-primary" :disabled="changingStatus || deleting" @click="setStatus('COMPLETED')">标记已完成</button><button v-else class="btn btn-secondary" :disabled="changingStatus || deleting" @click="setStatus('IN_PROGRESS')">重新开启任务</button><button class="btn btn-danger delete-button" :disabled="changingStatus || deleting" @click="deleteTask">{{ deleting ? '正在删除…' : '删除任务' }}</button></section>
+      <section v-if="authenticated && !editing" class="section actions" :aria-busy="changingStatus || deleting"><button class="btn btn-secondary" :disabled="changingStatus || deleting" @click="editing=true">编辑任务</button><button v-if="task.status==='PREPARING'||task.status==='IN_PROGRESS'" class="btn btn-primary" :disabled="changingStatus || deleting" @click="setStatus('COMPLETED')">标记已完成</button><button v-if="task.status==='COMPLETED'" class="btn btn-secondary" :disabled="changingStatus || deleting" @click="linkError='';linkDialog?.showModal()">补关联流转记录</button><button class="btn btn-danger delete-button" :disabled="changingStatus || deleting" @click="deleteTask">{{ deleting ? '正在删除…' : '删除任务' }}</button></section>
+      <dialog ref="linkDialog" class="history-dialog" aria-label="补关联流转记录"><form @submit.prevent="linkCompletedRecord"><h2>补关联流转记录</h2><p class="hint">输入忘记关联的有效流转记录编号。记录的产品必须与此任务匹配。</p><label for="completed-record-no">流转记录编号</label><input id="completed-record-no" v-model.trim="linkRecordNo" class="input" required /><p v-if="linkError" class="form-alert" role="alert">{{ linkError }}</p><div class="actions"><button type="button" class="btn btn-secondary" :disabled="linking" @click="linkDialog?.close()">取消</button><button class="btn btn-primary" :disabled="linking||!linkRecordNo.trim()">{{ linking?'关联中…':'确认关联' }}</button></div></form></dialog>
       <dialog ref="dialog" class="history-dialog" aria-labelledby="history-title" @click="($event.target===dialog)&&dialog?.close()"><template v-if="selected"><header><div><span class="hint">任务流转明细</span><h2 id="history-title">{{ selected.productName }}{{ selected.finished ? '（成品）' : '' }}</h2></div><button class="btn btn-secondary" autofocus @click="dialog?.close()">关闭</button></header><TaskMaterialHistory :movements="task.movements" :product-id="selected.productId" :product-name="selected.productName" :finished="selected.finished" /></template></dialog>
     </template>
   </div>

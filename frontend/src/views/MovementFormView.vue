@@ -254,9 +254,9 @@ function payload() {
     items: draft.value.items.map((x) => ({
       id: x.id,
       productId: x.productId,
-      boxesPerCarton: taskPacking(x)?null:x.boxesPerCarton,
-      unitsPerBox: taskPacking(x)?null:x.unitsPerBox,
-      tailBoxesPerCarton: !taskPacking(x)&&boxed(x)&&x.tailCartons>0?x.tailBoxesPerCarton:null,
+      boxesPerCarton: taskPacking(x)?.boxesPerCarton ?? x.boxesPerCarton,
+      unitsPerBox: taskPacking(x) ? (taskPacking(x)!.quantityBasis === 'BOX' ? 1 : taskPacking(x)!.unitsPerBox) : x.unitsPerBox,
+      tailBoxesPerCarton: taskPacking(x)&&x.tailCartons>0?tailBoxes(x):!taskPacking(x)&&boxed(x)&&x.tailCartons>0?x.tailBoxesPerCarton:null,
       unitsPerCarton: x.unitsPerCarton || null,
       tailCartons: Number(x.tailCartons) || 0,
       tailUnitsPerCarton: x.tailCartons > 0 ? Number(x.tailUnitsPerCarton) : null,
@@ -559,6 +559,7 @@ onBeforeUnmount(() => {
           </label>
           <div class="total-box">
             <span>总箱数：{{ cartonCount(item) }} 箱（{{ item.fullCartons || 0 }} 满箱 + {{ item.tailCartons || 0 }} 尾箱）</span>
+            <span v-if="direction==='PRODUCTION_TO_WAREHOUSE'&&!draft.returnMovement&&(taskPacking(item)||item.boxesPerCarton&&item.unitsPerBox)">总盒数：{{ ((item.fullCartons || 0) * (taskPacking(item)?.boxesPerCarton || item.boxesPerCarton || 0) + (item.tailCartons || 0) * (tailBoxes(item) || 0)).toLocaleString() }} 盒</span>
             <span>总数量</span
             ><strong class="mono"
               >{{ displayedTotal(item) ?? "未知"
@@ -659,7 +660,7 @@ onBeforeUnmount(() => {
         <small v-if="taskLoading" class="hint">正在查找匹配任务…</small>
         <small v-else-if="draft.items.some(i => !i.productId)" class="hint">先选择产品，再显示匹配的生产任务。</small>
         <small v-else-if="!productionTasks.length && !keepOriginalTask" class="hint">没有匹配任务。{{ direction === 'WAREHOUSE_TO_PRODUCTION' ? '仅显示需要本单全部物料且进行中的任务。' : draft.returnMovement ? '仅显示需要本单物料且未取消的任务。' : '请先在任务中设置对应成品；进行中即可分批回仓。' }}</small>
-        <small v-else class="hint">{{ direction === 'WAREHOUSE_TO_PRODUCTION' ? '只显示需要本单全部物料且进行中的任务。' : draft.returnMovement ? '退料计入任务的净发料，不计入成品产量。' : '按任务对应成品累计回仓产量；进行中和已完成任务均可补登记。' }}</small>
+        <small v-else class="hint">{{ direction === 'WAREHOUSE_TO_PRODUCTION' ? '只显示需要本单全部物料且进行中的任务。' : draft.returnMovement ? '退料计入任务的净发料，不计入成品产量。' : '按任务对应成品累计回仓产量；已完成任务请从任务详情补关联已有记录。' }}</small>
         <p v-if="taskError" class="form-alert" role="alert">{{ taskError }} <button type="button" class="btn btn-ghost" @click="refreshTasks">重试</button></p>
         <div v-if="draft.productionTaskId" class="task-preview" aria-live="polite" :aria-busy="previewLoading">
           <p v-if="previewLoading" class="hint">正在读取任务进度和缺料情况…</p>

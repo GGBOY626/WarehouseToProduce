@@ -17,7 +17,7 @@ const activeCount = computed(() => rows.value.filter(m => m.status === 'ACTIVE' 
     <RouterLink v-for="m in rows" :key="m.id" :to="`/movements/${m.id}`" class="history-record" :class="{ voided: m.status !== 'ACTIVE' }">
       <div class="record-head"><strong>{{ showDateTime(m.movementTime) }}</strong><span>{{ m.direction === 'WAREHOUSE_TO_PRODUCTION' ? '仓库 → 车间' : '车间 → 仓库' }}{{ m.returnMovement ? ' · 退料' : finished ? ' · 成品回仓' : '' }}</span></div>
       <div v-for="(item,index) in m.items" :key="index" class="record-item">
-        <div class="quantity"><b>{{ item.totalCartons.toLocaleString() }} 箱</b><b>{{ item.unknownQuantityCount ? '已知 ' : '' }}{{ item.totalQuantity.toLocaleString() }} {{ item.baseUnit || '个' }}</b></div>
+        <div class="quantity"><b>{{ item.totalCartons.toLocaleString() }} 箱</b><b v-if="finished && item.totalBoxes != null">{{ item.totalBoxes.toLocaleString() }} 盒</b><b>{{ item.unknownQuantityCount ? '已知 ' : '' }}{{ item.totalQuantity.toLocaleString() }} {{ item.baseUnit || '个' }}</b></div>
         <PackagingBreakdown :packaging="item.packaging" :base-unit="item.baseUnit || '个'" />
         <small v-if="item.looseUnits">另有散装 {{ item.looseUnits.toLocaleString() }} {{ item.baseUnit }}</small>
         <small v-if="item.materialBatch || item.subBatch">批次 {{ item.materialBatch || '未记录' }}<template v-if="item.subBatch"> · 子批次 {{ item.subBatch }}</template></small>

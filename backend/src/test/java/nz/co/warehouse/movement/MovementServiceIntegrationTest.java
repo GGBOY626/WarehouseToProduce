@@ -101,6 +101,28 @@ class MovementServiceIntegrationTest {
         assertThat(inbound.productionTaskId()).isEqualTo(task.id());
     }
 
+    @Test void taskDatesFollowEffectiveMovementsAndCompletedCorrectionsUseTaskEntry(){
+        var task=productionTasks.create(new ProductionTaskService.SaveRequest(product,1000L,LocalDate.of(2026,10,19),"DATES",null,null,inboundProduct,1000L));
+        var issue=movements.create(new MovementDtos.SaveRequest(UUID.randomUUID().toString(),MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,
+                Instant.parse("2026-10-19T01:00:00Z"),sender,receiver,"DATES",false,task.id(),null,
+                List.of(new MovementDtos.ItemRequest(product,"MAT-DATES",1,0,null,null,List.of()))));
+        var receipt=movements.create(new MovementDtos.SaveRequest(UUID.randomUUID().toString(),MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE,
+                Instant.parse("2026-10-21T01:00:00Z"),sender,receiver,null,false,task.id(),null,
+                List.of(new MovementDtos.ItemRequest(inboundProduct,"OUT-DATES",1,0,null,null,List.of()))));
+        assertThat(productionTasks.detail(task.id()).startDate()).isEqualTo(LocalDate.of(2026,10,19));
+        assertThat(productionTasks.detail(task.id()).endDate()).isNull();
+        productionTasks.status(task.id(),ProductionTask.Status.COMPLETED);
+        assertThat(productionTasks.detail(task.id()).endDate()).isEqualTo(LocalDate.of(2026,10,21));
+        var forgotten=movements.create(new MovementDtos.SaveRequest(UUID.randomUUID().toString(),MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE,
+                Instant.parse("2026-10-22T01:00:00Z"),sender,receiver,null,false,null,null,
+                List.of(new MovementDtos.ItemRequest(inboundProduct,"OUT-DATES",1,0,null,null,List.of()))));
+        assertThatThrownBy(()->movements.linkTask(forgotten.id(),task.id())).hasMessageContaining("已完成");
+        assertThat(movements.linkCompletedTask(task.id(),forgotten.recordNo()).productionTaskId()).isEqualTo(task.id());
+        assertThat(productionTasks.detail(task.id()).endDate()).isEqualTo(LocalDate.of(2026,10,22));
+        assertThat(productionTasks.detail(task.id()).movements()).extracting(ProductionTaskService.MovementResponse::id)
+                .contains(issue.id(),receipt.id(),forgotten.id());
+    }
+
     @Test void productSearchFiltersByRequiredMovementDirection(){
         assertThat(products.search("",false,ProductUsage.WAREHOUSE_TO_PRODUCTION)).extracting(ProductDtos.Response::id).contains(product).doesNotContain(inboundProduct);
         assertThat(products.search("",false,ProductUsage.PRODUCTION_TO_WAREHOUSE)).extracting(ProductDtos.Response::id).contains(inboundProduct).doesNotContain(product);

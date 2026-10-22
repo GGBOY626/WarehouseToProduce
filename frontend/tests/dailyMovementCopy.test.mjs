@@ -15,7 +15,7 @@ test('copies the selected day and direction in the requested plain-text format',
     { direction: 'PRODUCTION_TO_WAREHOUSE', products: [product('成品', 'FIN', 99, '箱')] },
   ] };
   assert.equal(formatDailyMovementCopy('2026-10-21', 'WAREHOUSE_TO_PRODUCTION', stats),
-    '日期：2026年10月21日\n方向：仓库 → 生产车间\n\nCode：3B03700203H5\n产品：清肺饮\n数量：5600条\n\nCode：3B03700403H101\n产品：清肺饮包装盒\n数量：3600个');
+    '日期：2026年10月21日\n方向：仓库 → 生产车间\n\nCode：3B03700203H5\n产品：清肺饮\n数量：5600条\n库位：TT\n\nCode：3B03700403H101\n产品：清肺饮包装盒\n数量：3600个\n库位：TT');
 });
 
 test('combines batches of one product but keeps codes and units separate', () => {
@@ -24,8 +24,8 @@ test('combines batches of one product but keeps codes and units separate', () =>
     product('清肺饮', 'B', 30, '盒'), product('清肺饮', 'A', 2, '条', 1),
   ] }] };
   const text = formatDailyMovementCopy('2026-10-21', 'WAREHOUSE_TO_PRODUCTION', stats);
-  assert.match(text, /Code：A\n产品：清肺饮\n数量：1602条（另有 1 项数量待确认）/);
-  assert.match(text, /Code：B\n产品：清肺饮\n数量：30盒/);
+  assert.match(text, /Code：A\n产品：清肺饮\n数量：1602条（另有 1 项数量待确认）\n库位：TT/);
+  assert.match(text, /Code：B\n产品：清肺饮\n数量：30盒\n库位：TT/);
 });
 
 test('does not copy a false zero when all quantities are unknown or the day is empty', () => {

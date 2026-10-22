@@ -9,6 +9,9 @@ import java.util.List;
 
 public interface MovementRepository extends JpaRepository<Movement,Long> {
     Optional<Movement> findByIdempotencyKey(String key);
+    @EntityGraph(attributePaths={"items","items.product"})
+    @Query("select distinct m from Movement m where m.recordNo=:recordNo")
+    Optional<Movement> findByRecordNo(@Param("recordNo") String recordNo);
     @EntityGraph(attributePaths={"items","items.product"}) List<Movement> findByProductionTaskIdOrderByMovementTimeAsc(Long taskId);
 
     @EntityGraph(attributePaths={"senderPerson","receiverPerson","productionTask","items","items.product"})

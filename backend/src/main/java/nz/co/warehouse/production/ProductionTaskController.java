@@ -8,6 +8,7 @@ import java.util.List;
 @RestController @RequestMapping("/api/production-tasks") @RequiredArgsConstructor
 public class ProductionTaskController {
     private final ProductionTaskService service;
+    private final nz.co.warehouse.movement.MovementService movementService;
     @PostMapping("/linkable") public java.util.List<ProductionTaskService.LinkOption> linkableBatches(@jakarta.validation.Valid @RequestBody ProductionTaskService.LinkRequest r){return service.linkableBatches(r);}
     @GetMapping public List<ProductionTaskService.Response> list(@RequestParam(required=false) ProductionTask.Status status){return service.list(status);}
     @GetMapping("/linkable") public List<ProductionTaskService.LinkOption> linkable(
@@ -18,4 +19,8 @@ public class ProductionTaskController {
     @PutMapping("/{id}") public ProductionTaskService.Response update(@PathVariable long id,@Valid @RequestBody ProductionTaskService.SaveRequest r){return service.update(id,r);}
     @DeleteMapping("/{id}") @ResponseStatus(org.springframework.http.HttpStatus.NO_CONTENT) public void delete(@PathVariable long id){service.delete(id);}
     @PatchMapping("/{id}/status") public ProductionTaskService.Response status(@PathVariable long id,@RequestParam ProductionTask.Status status){return service.status(id,status);}
+    @PatchMapping("/{id}/movements") public ProductionTaskService.Response linkCompletedMovement(@PathVariable long id,@RequestParam String recordNo){
+        movementService.linkCompletedTask(id,recordNo);
+        return service.detail(id);
+    }
 }
