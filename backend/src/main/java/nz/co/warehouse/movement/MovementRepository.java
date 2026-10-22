@@ -28,6 +28,7 @@ public interface MovementRepository extends JpaRepository<Movement,Long> {
           and (:direction is null or m.direction = :direction)
           and (:status is null or m.status = :status)
           and (:finished is null or m.finished = :finished)
+          and (:returnMovement is null or m.returnMovement = :returnMovement)
           and (:missingPhoto is null or (:missingPhoto=true and not exists(select p.id from MovementPhoto p where p.movement=m)) or (:missingPhoto=false and exists(select p.id from MovementPhoto p where p.movement=m)))
           and (:hasIssue is null or (:hasIssue=true and exists(select iss.id from MovementItemIssue iss where iss.movementItem.movement=m)) or (:hasIssue=false and not exists(select iss.id from MovementItemIssue iss where iss.movementItem.movement=m)))
           and (:q='' or lower(m.recordNo) like lower(concat('%',:q,'%')) or lower(coalesce(i.materialBatch,m.manufactureLot,'')) like lower(concat('%',:q,'%')) or lower(i.productNameSnapshot) like lower(concat('%',:q,'%')) or lower(coalesce(i.skuSnapshot,'')) like lower(concat('%',:q,'%')) or lower(i.batchNo) like lower(concat('%',:q,'%')) or lower(coalesce(i.subBatch,'')) like lower(concat('%',:q,'%')))
@@ -36,13 +37,15 @@ public interface MovementRepository extends JpaRepository<Movement,Long> {
         where m.movementTime >= :from and m.movementTime < :to
           and (:direction is null or m.direction = :direction) and (:status is null or m.status = :status)
           and (:finished is null or m.finished = :finished)
+          and (:returnMovement is null or m.returnMovement = :returnMovement)
           and (:missingPhoto is null or (:missingPhoto=true and not exists(select p.id from MovementPhoto p where p.movement=m)) or (:missingPhoto=false and exists(select p.id from MovementPhoto p where p.movement=m)))
           and (:hasIssue is null or (:hasIssue=true and exists(select iss.id from MovementItemIssue iss where iss.movementItem.movement=m)) or (:hasIssue=false and not exists(select iss.id from MovementItemIssue iss where iss.movementItem.movement=m)))
           and (:q='' or lower(m.recordNo) like lower(concat('%',:q,'%')) or lower(coalesce(i.materialBatch,m.manufactureLot,'')) like lower(concat('%',:q,'%')) or lower(i.productNameSnapshot) like lower(concat('%',:q,'%')) or lower(coalesce(i.skuSnapshot,'')) like lower(concat('%',:q,'%')) or lower(i.batchNo) like lower(concat('%',:q,'%')) or lower(coalesce(i.subBatch,'')) like lower(concat('%',:q,'%')))
         """)
     Page<Movement> search(@Param("from") Instant from,@Param("to") Instant to,@Param("direction") MovementEnums.Direction direction,
                           @Param("status") MovementEnums.Status status,@Param("missingPhoto") Boolean missingPhoto,
-                          @Param("hasIssue") Boolean hasIssue,@Param("q") String q,@Param("finished") Boolean finished, Pageable pageable);
+                          @Param("hasIssue") Boolean hasIssue,@Param("q") String q,@Param("finished") Boolean finished,
+                          @Param("returnMovement") Boolean returnMovement, Pageable pageable);
 
     @Query("""
         select i from MovementItem i join fetch i.movement
@@ -50,6 +53,7 @@ public interface MovementRepository extends JpaRepository<Movement,Long> {
           and (:direction is null or i.movement.direction = :direction)
           and (:status is null or i.movement.status = :status)
           and (:finished is null or i.movement.finished = :finished)
+          and (:returnMovement is null or i.movement.returnMovement = :returnMovement)
           and (:missingPhoto is null or (:missingPhoto=true and not exists(select p.id from MovementPhoto p where p.movement=i.movement)) or (:missingPhoto=false and exists(select p.id from MovementPhoto p where p.movement=i.movement)))
           and (:hasIssue is null or (:hasIssue=true and exists(select iss.id from MovementItemIssue iss where iss.movementItem.movement=i.movement)) or (:hasIssue=false and not exists(select iss.id from MovementItemIssue iss where iss.movementItem.movement=i.movement)))
           and (:q='' or lower(i.movement.recordNo) like lower(concat('%',:q,'%')) or lower(coalesce(i.movement.manufactureLot,'')) like lower(concat('%',:q,'%')) or exists(
@@ -62,5 +66,6 @@ public interface MovementRepository extends JpaRepository<Movement,Long> {
                                    @Param("direction") MovementEnums.Direction direction,
                                    @Param("status") MovementEnums.Status status,
                                    @Param("missingPhoto") Boolean missingPhoto,
-                                   @Param("hasIssue") Boolean hasIssue,@Param("q") String q,@Param("finished") Boolean finished);
+                                   @Param("hasIssue") Boolean hasIssue,@Param("q") String q,@Param("finished") Boolean finished,
+                                   @Param("returnMovement") Boolean returnMovement);
 }

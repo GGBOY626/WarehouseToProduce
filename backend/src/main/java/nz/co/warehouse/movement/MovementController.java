@@ -22,11 +22,13 @@ public class MovementController {
             @RequestParam @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate to,
             @RequestParam(required=false) MovementEnums.Direction direction,@RequestParam(required=false) MovementEnums.Status status,
             @RequestParam(required=false) Boolean missingPhoto,@RequestParam(required=false) Boolean hasIssue,
-            @RequestParam(defaultValue="") String q,@RequestParam(required=false) Boolean finished){return service.queryStats(from,to,direction,status,missingPhoto,hasIssue,q,finished);}
+            @RequestParam(defaultValue="") String q,@RequestParam(required=false) Boolean finished,
+            @RequestParam(required=false) Boolean returnMovement){return service.queryStats(from,to,direction,status,missingPhoto,hasIssue,q,finished,returnMovement);}
     @GetMapping public MovementDtos.PageResponse search(
             @RequestParam @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate to,
             @RequestParam(required=false) MovementEnums.Direction direction,@RequestParam(required=false) MovementEnums.Status status,
             @RequestParam(required=false) Boolean missingPhoto,@RequestParam(required=false) Boolean hasIssue,
-            @RequestParam(defaultValue="") String q,@RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size,@RequestParam(required=false) Boolean finished){return service.search(from,to,direction,status,missingPhoto,hasIssue,q,page,size,finished);}
+            @RequestParam(defaultValue="") String q,@RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size,@RequestParam(required=false) Boolean finished,
+            @RequestParam(required=false) Boolean returnMovement){return service.search(from,to,direction,status,missingPhoto,hasIssue,q,page,size,finished,returnMovement);}
 }

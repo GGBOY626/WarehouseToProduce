@@ -6,7 +6,7 @@ export interface HomeFilters {
   to: string;
   direction: Direction;
   q: string;
-  materialKind?: 'all' | 'finished' | 'material';
+  materialKind?: 'all' | 'finished' | 'material' | 'return';
   moreFilters: boolean;
   activePreset: DatePreset;
 }
@@ -38,6 +38,6 @@ export function readHomeFilters(raw: string | null, current: string): HomeFilter
         !['today', 'yesterday', 'week', 'twoWeeks', 'single', 'range'].includes(saved.activePreset)) return defaults;
     if (saved.activePreset === 'single' && saved.from !== saved.to) return defaults;
     return { from: saved.from, to: saved.to, direction: saved.direction,
-      q: typeof saved.q === 'string' ? saved.q : '', materialKind: ['finished','material'].includes(saved.materialKind) ? saved.materialKind : 'all', moreFilters: saved.moreFilters === true, activePreset: saved.activePreset };
+      q: typeof saved.q === 'string' ? saved.q : '', materialKind: ['finished','material','return'].includes(saved.materialKind) && (saved.materialKind !== 'return' || saved.direction === 'PRODUCTION_TO_WAREHOUSE') ? saved.materialKind : 'all', moreFilters: saved.moreFilters === true, activePreset: saved.activePreset };
   } catch { return defaults; }
 }

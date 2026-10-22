@@ -70,6 +70,25 @@ class MovementServiceIntegrationTest {
         mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/movements")
                 .param("from",day.toString()).param("to",day.toString()).param("q",batch).param("finished","true"))
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.totalElements").value(1));
+        var returns=movements.search(day,day,MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE,
+                MovementEnums.Status.ACTIVE,null,null,batch,0,1,null,true);
+        assertThat(returns.totalElements()).isEqualTo(1);
+        assertThat(returns.content()).extracting(MovementDtos.ListResponse::id).containsExactly(returned.id());
+        assertThat(movements.search(day.minusDays(1),day.minusDays(1),MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE,
+                MovementEnums.Status.ACTIVE,null,null,batch,0,10,null,true).totalElements()).isZero();
+        var returnStats=movements.queryStats(day,day,MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE,
+                MovementEnums.Status.ACTIVE,null,null,batch,null,true);
+        assertThat(returnStats.directions()).hasSize(1);
+        assertThat(returnStats.directions().getFirst().totalQuantity()).isEqualTo(30);
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/movements")
+                .param("from",day.toString()).param("to",day.toString()).param("direction","PRODUCTION_TO_WAREHOUSE")
+                .param("returnMovement","true").param("q",batch))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.totalElements").value(1))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.content[0].id").value(returned.id()));
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/movements/stats/query")
+                .param("from",day.toString()).param("to",day.toString()).param("direction","PRODUCTION_TO_WAREHOUSE")
+                .param("returnMovement","true").param("q",batch))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.directions[0].totalQuantity").value(30));
         // Editing the type recomputes the marker instead of retaining stale finished status.
         assertThat(movements.update(receipt.id(),returnRequest).finished()).isFalse();
         assertThat(movements.update(receipt.id(),receiptRequest).finished()).isTrue();

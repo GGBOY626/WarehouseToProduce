@@ -96,15 +96,20 @@ public class MovementService {
 
     @Transactional(readOnly=true)
     public MovementDtos.PageResponse search(LocalDate from,LocalDate to,MovementEnums.Direction direction,MovementEnums.Status status,Boolean missingPhoto,Boolean hasIssue,String q,int page,int size,Boolean finished){
+        return search(from,to,direction,status,missingPhoto,hasIssue,q,page,size,finished,null);
+    }
+
+    @Transactional(readOnly=true)
+    public MovementDtos.PageResponse search(LocalDate from,LocalDate to,MovementEnums.Direction direction,MovementEnums.Status status,Boolean missingPhoto,Boolean hasIssue,String q,int page,int size,Boolean finished,Boolean returnMovement){
         ZoneId z=ZoneId.of(zone);Instant start=from.atStartOfDay(z).toInstant();Instant end=to.plusDays(1).atStartOfDay(z).toInstant();
-        Page<Movement> result=repository.search(start,end,direction,status,missingPhoto,hasIssue,q==null?"":q.trim(),finished,PageRequest.of(page,Math.min(size,100),Sort.by(Sort.Direction.DESC,"movementTime")));
+        Page<Movement> result=repository.search(start,end,direction,status,missingPhoto,hasIssue,q==null?"":q.trim(),finished,returnMovement,PageRequest.of(page,Math.min(size,100),Sort.by(Sort.Direction.DESC,"movementTime")));
         return new MovementDtos.PageResponse(result.getContent().stream().map(MovementDtos::summary).toList(),page,result.getSize(),result.getTotalElements(),result.getTotalPages());
     }
 
     @Transactional(readOnly=true)
     public MovementDtos.TodayStatsResponse todayStats(LocalDate date,MovementEnums.Direction direction){
         ZoneId z=ZoneId.of(zone);Instant start=date.atStartOfDay(z).toInstant();Instant end=date.plusDays(1).atStartOfDay(z).toInstant();
-        List<MovementDtos.ProductStatResponse> productStats=productStats(repository.findStatisticItems(start,end,direction,MovementEnums.Status.ACTIVE,null,null,"",null),false);
+        List<MovementDtos.ProductStatResponse> productStats=productStats(repository.findStatisticItems(start,end,direction,MovementEnums.Status.ACTIVE,null,null,"",null,null),false);
         long cartons=productStats.stream().mapToLong(MovementDtos.ProductStatResponse::totalCartons).sum();
         long quantity=productStats.stream().mapToLong(MovementDtos.ProductStatResponse::totalQuantity).sum();
         long unknown=productStats.stream().mapToLong(MovementDtos.ProductStatResponse::unknownItemCount).sum();
@@ -118,9 +123,14 @@ public class MovementService {
 
     @Transactional(readOnly=true)
     public MovementDtos.QueryStatsResponse queryStats(LocalDate from,LocalDate to,MovementEnums.Direction direction,MovementEnums.Status status,Boolean missingPhoto,Boolean hasIssue,String q,Boolean finished){
+        return queryStats(from,to,direction,status,missingPhoto,hasIssue,q,finished,null);
+    }
+
+    @Transactional(readOnly=true)
+    public MovementDtos.QueryStatsResponse queryStats(LocalDate from,LocalDate to,MovementEnums.Direction direction,MovementEnums.Status status,Boolean missingPhoto,Boolean hasIssue,String q,Boolean finished,Boolean returnMovement){
         ZoneId z=ZoneId.of(zone);Instant start=from.atStartOfDay(z).toInstant();Instant end=to.plusDays(1).atStartOfDay(z).toInstant();
         Map<MovementEnums.Direction,List<MovementItem>> sources=new EnumMap<>(MovementEnums.Direction.class);
-        repository.findStatisticItems(start,end,direction,status,missingPhoto,hasIssue,q==null?"":q.trim(),finished)
+        repository.findStatisticItems(start,end,direction,status,missingPhoto,hasIssue,q==null?"":q.trim(),finished,returnMovement)
                 .forEach(item->sources.computeIfAbsent(item.getMovement().getDirection(),ignored->new ArrayList<>()).add(item));
         Map<MovementEnums.Direction,List<MovementDtos.ProductStatResponse>> grouped=new EnumMap<>(MovementEnums.Direction.class);
         sources.forEach((key,items)->grouped.put(key,productStats(items,true)));

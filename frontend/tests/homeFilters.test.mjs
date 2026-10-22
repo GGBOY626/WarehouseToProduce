@@ -42,3 +42,9 @@ test('material type persists and older filters default to all', () => {
   }
   assert.equal(readHomeFilters(JSON.stringify({...base, materialKind:'invalid'}), today).materialKind, 'all');
 });
+test('return-only filter persists with inbound direction and the selected date range', () => {
+  const saved = { ...readHomeFilters(null, today), ...presetRange('twoWeeks', today),
+    direction: 'PRODUCTION_TO_WAREHOUSE', activePreset: 'twoWeeks', materialKind: 'return' };
+  assert.deepEqual(readHomeFilters(JSON.stringify(saved), today), saved);
+  assert.equal(readHomeFilters(JSON.stringify({ ...saved, direction: 'WAREHOUSE_TO_PRODUCTION' }), today).materialKind, 'all');
+});

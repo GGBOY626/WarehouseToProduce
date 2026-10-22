@@ -87,7 +87,8 @@ async function load() {
       direction: direction.value,
       status: "ACTIVE" as const,
       q: q.value,
-      finished: materialKind.value === 'all' ? undefined : materialKind.value === 'finished',
+      finished: materialKind.value === 'all' || materialKind.value === 'return' ? undefined : materialKind.value === 'finished',
+      returnMovement: materialKind.value === 'return' ? true : undefined,
     };
     const [page, currentStats] = await Promise.all([
       movementsApi.list({ ...params, page: 0, size: 100 }),
@@ -112,6 +113,11 @@ async function load() {
 }
 function selectDirection(value: Direction) {
   direction.value = value;
+  if (value === 'WAREHOUSE_TO_PRODUCTION' && materialKind.value === 'return') materialKind.value = 'all';
+  void load();
+}
+function selectMaterialKind() {
+  if (materialKind.value === 'return') direction.value = 'PRODUCTION_TO_WAREHOUSE';
   void load();
 }
 function preset(kind: 'today' | 'yesterday' | 'week' | 'twoWeeks') {
@@ -154,7 +160,7 @@ let restoreY=0;
 try { restoreY=Number(sessionStorage.getItem('movement-list-scroll') || 0); } catch { /* Optional browser storage. */ }
 onBeforeRouteLeave(()=>{try{sessionStorage.setItem('movement-list-scroll',String(window.scrollY))}catch{}});
 onMounted(async()=>{await load();await nextTick();if(alive && Number.isFinite(restoreY))window.scrollTo({top:restoreY,behavior:'instant'})});
-function showToday(value:Direction){q.value='';direction.value=value;preset('today');void nextTick(()=>document.getElementById('movement-filters')?.scrollIntoView({block:'start'}))}
+function showToday(value:Direction){q.value='';direction.value=value;if(value==='WAREHOUSE_TO_PRODUCTION' && materialKind.value==='return')materialKind.value='all';preset('today');void nextTick(()=>document.getElementById('movement-filters')?.scrollIntoView({block:'start'}))}
 const directionLabel = (value: Direction) => value === "WAREHOUSE_TO_PRODUCTION" ? "仓库 → 生产车间" : "生产车间 → 仓库";
 const formatNumber = (value: number) => value.toLocaleString("zh-CN");
 </script>
@@ -188,8 +194,8 @@ const formatNumber = (value: number) => value.toLocaleString("zh-CN");
       </div>
       <div class="field">
         <label for="movement-material-kind">物料类型</label>
-        <select id="movement-material-kind" class="input" v-model="materialKind" @change="load">
-          <option value="all">全部类型</option><option value="finished">成品</option><option value="material">正常物料（含退回）</option>
+        <select id="movement-material-kind" class="input" v-model="materialKind" @change="selectMaterialKind">
+          <option value="all">全部类型</option><option value="finished">成品</option><option value="material">正常物料（含退回）</option><option value="return">只看车间退回仓库</option>
         </select>
       </div>
       <button class="more-toggle" type="button" :aria-expanded="moreFilters" aria-controls="advanced-filters" @click="moreFilters=!moreFilters">
