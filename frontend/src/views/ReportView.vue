@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { ref, watch } from "vue";
 import { today } from "../utils/time";
 import { movementsApi } from "../api";
 import { errorMessage } from "../api/http";
-import { formatDailyMovementCopy } from "../utils/dailyMovementCopy";
+import { dailyMovementRows, formatDailyMovementCopy } from "../utils/dailyMovementCopy";
+import type { DailyMovementRow } from "../utils/dailyMovementCopy";
 import type { Direction } from "../types";
 
 type ExportDirection = "" | Direction;
@@ -15,6 +16,54 @@ const copyDirection = ref<Direction>("WAREHOUSE_TO_PRODUCTION");
 const copying = ref(false);
 const copyMessage = ref("");
 const copyFailed = ref(false);
+const locationEditorOpen = ref(false);
+const locationLoading = ref(false);
+const locationError = ref("");
+const locationRows = ref<DailyMovementRow[]>([]);
+const locationValues = ref<Record<string, string>>({});
+const editorDate = ref("");
+const editorDirection = ref<Direction>("WAREHOUSE_TO_PRODUCTION");
+
+function locationStorageKey(date: string, selectedDirection: Direction) {
+  return `daily-movement-locations:${date}:${selectedDirection}`;
+}
+function readLocations(date: string, selectedDirection: Direction): Record<string, string> {
+  try {
+    const stored = JSON.parse(localStorage.getItem(locationStorageKey(date, selectedDirection)) || '{}');
+    return stored && typeof stored === 'object' && !Array.isArray(stored) ? stored : {};
+  } catch { return {}; }
+}
+function saveLocations() {
+  const changes: Record<string, string> = {};
+  for (const row of locationRows.value) {
+    const value = locationValues.value[row.key]?.trim();
+    if (value && value !== 'TT') changes[row.key] = value;
+  }
+  try {
+    const key = locationStorageKey(editorDate.value, editorDirection.value);
+    if (Object.keys(changes).length) localStorage.setItem(key, JSON.stringify(changes));
+    else localStorage.removeItem(key);
+    locationError.value = '';
+  } catch { locationError.value = '浏览器无法保存库位；本次复制仍会使用当前填写的内容。'; }
+}
+async function toggleLocationEditor() {
+  if (locationEditorOpen.value) { locationEditorOpen.value = false; return; }
+  locationLoading.value = true;
+  locationError.value = '';
+  try {
+    const date = today();
+    const selectedDirection = copyDirection.value;
+    const stats = await movementsApi.queryStats({ from: date, to: date, direction: selectedDirection, status: 'ACTIVE' });
+    editorDate.value = date;
+    editorDirection.value = selectedDirection;
+    locationRows.value = dailyMovementRows(selectedDirection, stats);
+    const saved = readLocations(date, selectedDirection);
+    locationValues.value = Object.fromEntries(locationRows.value.map(row => [row.key, saved[row.key] || 'TT']));
+    locationEditorOpen.value = true;
+  } catch (cause) { locationError.value = errorMessage(cause); }
+  finally { locationLoading.value = false; }
+}
+watch(copyDirection, () => { locationEditorOpen.value = false; locationError.value = ''; });
 
 async function writeClipboard(value: string) {
   if (navigator.clipboard?.writeText) {
@@ -39,7 +88,9 @@ async function copyToday() {
   try {
     const date = today();
     const stats = await movementsApi.queryStats({ from: date, to: date, direction: copyDirection.value, status: 'ACTIVE' });
-    await writeClipboard(formatDailyMovementCopy(date, copyDirection.value, stats));
+    const locations = locationEditorOpen.value && editorDate.value === date && editorDirection.value === copyDirection.value
+      ? locationValues.value : readLocations(date, copyDirection.value);
+    await writeClipboard(formatDailyMovementCopy(date, copyDirection.value, stats, locations));
     copyMessage.value = '已复制今日流转摘要。';
   } catch (cause) {
     copyFailed.value = true;
@@ -100,13 +151,25 @@ function downloadCustom() {
     <section class="quick-copy" aria-label="复制今日流转摘要">
       <span class="quick-copy-title">复制今日流转</span>
       <label class="sr-only" for="copy-direction">复制方向</label>
-      <select id="copy-direction" class="select" v-model="copyDirection" :disabled="copying">
+      <select id="copy-direction" class="select" v-model="copyDirection" :disabled="copying || locationLoading">
         <option value="WAREHOUSE_TO_PRODUCTION">仓库 → 生产车间</option>
         <option value="PRODUCTION_TO_WAREHOUSE">生产车间 → 仓库</option>
       </select>
+      <button type="button" class="btn btn-secondary" :disabled="copying || locationLoading" :aria-expanded="locationEditorOpen" aria-controls="daily-location-editor" @click="toggleLocationEditor">{{ locationLoading ? '读取中…' : locationEditorOpen ? '收起库位' : '编辑库位' }}</button>
       <button type="button" class="btn btn-secondary" :disabled="copying" @click="copyToday">{{ copying ? '复制中…' : '复制今日摘要' }}</button>
       <span v-if="copyMessage" :class="copyFailed ? 'copy-error' : 'copy-success'" :role="copyFailed ? 'alert' : 'status'">{{ copyMessage }}</span>
     </section>
+    <section v-if="locationEditorOpen" id="daily-location-editor" class="card card-pad location-editor" aria-label="编辑今日库位">
+      <h2>今日库位 · {{ editorDate }}</h2>
+      <p class="hint">逐项修改非 TT 的库位。留空按 TT 复制；修改会保存在当前浏览器中。</p>
+      <p v-if="!locationRows.length" class="hint">今天暂无有效流转记录。</p>
+      <div v-for="row in locationRows" :key="row.key" class="location-row">
+        <div><strong>{{ row.name }}</strong><small>Code：{{ row.code }} · {{ row.quantity.toLocaleString() }}{{ row.unit }}</small></div>
+        <label :for="`location-${locationRows.indexOf(row)}`">库位</label>
+        <input :id="`location-${locationRows.indexOf(row)}`" v-model="locationValues[row.key]" class="input" maxlength="60" placeholder="TT" @input="saveLocations" />
+      </div>
+    </section>
+    <p v-if="locationError" class="copy-error" role="alert">{{ locationError }}</p>
     <section class="card card-pad stack">
       <div class="field">
         <label>导出方向</label>
@@ -141,7 +204,9 @@ function downloadCustom() {
 <style scoped>
 .quick-copy{display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px;margin:16px 0;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--panel)}
 .quick-copy-title{font-size:12px;font-weight:650;color:var(--muted)}.quick-copy .select{width:auto;min-width:190px;max-width:100%;min-height:38px;font-size:12px}.quick-copy .btn{min-height:38px;font-size:12px}.copy-success,.copy-error{font-size:12px}.copy-success{color:var(--green)}.copy-error{color:var(--red)}
+.location-editor{margin:-6px 0 16px}.location-editor h2{font-size:16px;margin:0 0 4px}.location-editor>.hint{margin:0 0 10px}.location-row{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(110px,170px);align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--line)}.location-row>div{display:grid;gap:3px;min-width:0}.location-row strong,.location-row small{overflow-wrap:anywhere}.location-row small{font-size:11px;color:var(--muted)}.location-row label{font-size:12px}.location-row input{min-width:0}
 .preset-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}.divider{margin:3px 0}.error-text{background:#fdeced;border-radius:8px;padding:10px 12px}
 .direction-choice{display:grid;grid-template-columns:.7fr 1.4fr 1.4fr;gap:6px}.direction-choice button{border:1px solid #b9c7ce;background:#fff;border-radius:8px;padding:9px 6px;color:#314650}.direction-choice button.active{background:#174a68;border-color:#174a68;color:#fff}
-@media(max-width:520px){.direction-choice{grid-template-columns:1fr}.preset-grid{grid-template-columns:1fr 1fr}}@media(max-width:380px){.preset-grid{grid-template-columns:1fr}}
+@media(max-width:520px){.direction-choice{grid-template-columns:1fr}.preset-grid{grid-template-columns:1fr 1fr}.location-row{grid-template-columns:minmax(0,1fr) minmax(100px,140px)}.location-row label{grid-column:2;grid-row:1;align-self:start}.location-row input{grid-column:2;grid-row:1;margin-top:16px}}
+@media(max-width:380px){.preset-grid{grid-template-columns:1fr}}
 </style>

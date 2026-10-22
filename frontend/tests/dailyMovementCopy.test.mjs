@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { formatDailyMovementCopy } from '../src/utils/dailyMovementCopy.ts';
+import { dailyMovementRows, formatDailyMovementCopy } from '../src/utils/dailyMovementCopy.ts';
 
 const product = (name, code, quantity, unit, unknown = 0) => ({
   productName: name, materialCode: code, totalQuantity: quantity, baseUnit: unit, unknownItemCount: unknown,
@@ -32,4 +32,17 @@ test('does not copy a false zero when all quantities are unknown or the day is e
   const unknown = { directions: [{ direction: 'PRODUCTION_TO_WAREHOUSE', products: [product('成品', 'F', 0, '个', 2)] }] };
   assert.match(formatDailyMovementCopy('2026-10-21', 'PRODUCTION_TO_WAREHOUSE', unknown), /数量：待确认（2 项）/);
   assert.match(formatDailyMovementCopy('2026-10-21', 'WAREHOUSE_TO_PRODUCTION', unknown), /当天暂无有效流转记录。/);
+});
+
+test('uses edited locations only for the selected product and defaults blank locations to TT', () => {
+  const stats = { directions: [{ direction: 'WAREHOUSE_TO_PRODUCTION', products: [
+    product('清肺饮', 'A', 1200, '条'), product('清肺饮', 'A', 400, '条'),
+    product('包装盒', 'B', 300, '个'),
+  ] }] };
+  const rows = dailyMovementRows('WAREHOUSE_TO_PRODUCTION', stats);
+  assert.equal(rows.length, 2);
+  const text = formatDailyMovementCopy('2026-10-21', 'WAREHOUSE_TO_PRODUCTION', stats,
+    { [rows[0].key]: ' SS07-01 ', [rows[1].key]: '' });
+  assert.match(text, /Code：A\n产品：清肺饮\n数量：1600条\n库位：SS07-01/);
+  assert.match(text, /Code：B\n产品：包装盒\n数量：300个\n库位：TT/);
 });
