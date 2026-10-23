@@ -24,6 +24,7 @@ import { calculateQuantity, quantityError, cartonCount } from "../utils/quantity
 import { availableCartonSpecs, initialCartonSpec } from "../utils/cartonSpecs";
 import { initialBoxPacking, applyBoxPacking, syncBoxQuantity } from "../utils/boxPacking";
 import { taskCartonUnits, unitsForBoxes, boxesForUnits } from "../utils/taskPackaging";
+import { taskProductChoices } from "../utils/taskProductChoices";
 import { preparePhoto } from "../utils/photo";
 const route = useRoute(),
   router = useRouter();
@@ -139,6 +140,15 @@ watch([() => draft.value.productionTaskId, taskSelection], loadTaskPreview);
 const draftKey = computed(() => `movement-draft:${direction.value}`);
 const productUsage = computed<Direction>(() => draft.value.returnMovement ? "WAREHOUSE_TO_PRODUCTION" : direction.value);
 const needsMaterialBatch = computed(() => direction.value === "WAREHOUSE_TO_PRODUCTION" || draft.value.returnMovement);
+async function loadProductChoices(query: string, item: ItemInput): Promise<Product[]> {
+  const search = query.trim();
+  if (search) return productsApi.search(search, false, productUsage.value);
+  const [catalog, tasks] = await Promise.all([
+    productsApi.search('', false, productUsage.value),
+    productionTasksApi.list(),
+  ]);
+  return taskProductChoices(catalog, tasks, productUsage.value === 'WAREHOUSE_TO_PRODUCTION', item.productId);
+}
 function returnChanged() {
   draft.value.items = [blankItem()];
   draft.value.manufactureLot = "";
@@ -504,7 +514,7 @@ onBeforeUnmount(() => {
             v-model="item.productId"
             label="产品"
             placeholder="输入产品名、物料编码或物料批次"
-            :load="(q) => productsApi.search(q, false, productUsage)"
+            :load="(q) => loadProductChoices(q, item)"
             @select="(p) => selectProduct(item, p)"
           >
             <template #default="{ item: product }">
@@ -513,6 +523,7 @@ onBeforeUnmount(() => {
               <span v-if="product.duplicateName" class="product-option-warning">同名产品，请核对编码</span>
             </template>
           </SearchPicker>
+          <small class="hint">未输入时只显示进行中任务的关联{{ productUsage === 'WAREHOUSE_TO_PRODUCTION' ? '物料' : '成品' }}；输入关键词可搜索其他产品。</small>
           <div class="field">
             <label class="required">物料编码</label
             ><input

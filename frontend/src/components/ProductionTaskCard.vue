@@ -3,6 +3,7 @@ import { computed } from 'vue';
 import type { ProductionTask, ProductionTaskStatus } from '../types';
 import { taskWarnings } from '../utils/taskAttention';
 import FinishedReceiptSummary from './FinishedReceiptSummary.vue';
+import { taskIssuedMaterials } from '../utils/taskIssuedMaterials';
 
 const props = defineProps<{ task: ProductionTask; expanded: boolean }>();
 const emit = defineEmits<{ toggle: [] }>();
@@ -14,6 +15,7 @@ const visibleShortages = computed(() => props.expanded ? shortages.value : short
 const warnings = computed(() => taskWarnings(props.task));
 // Keep the list's existing eligibility and precision for production progress.
 const productionPercent = computed(() => props.task.output?.quantityBasis ? props.task.output.productionPercent : null);
+const issued = computed(() => taskIssuedMaterials(props.task));
 </script>
 
 <template>
@@ -46,6 +48,16 @@ const productionPercent = computed(() => props.task.output?.quantityBasis ? prop
     </div>
 
     <FinishedReceiptSummary :task="task" />
+    <section class="issued-panel" :aria-labelledby="`issued-title-${task.id}`">
+      <h4 :id="`issued-title-${task.id}`">已发往车间 <strong>{{ issued.cartons.toLocaleString() }} 箱</strong></h4>
+      <ul v-if="issued.materials.length" class="issued-list">
+        <li v-for="item in issued.materials" :key="item.productId">
+          <span>{{ item.name }}</span>
+          <b>{{ item.cartons.toLocaleString() }} 箱 · {{ item.quantity.toLocaleString() }} {{ item.unit }}<small v-if="item.unknownQuantityCount">（另有数量待确认）</small></b>
+        </li>
+      </ul>
+      <p v-else class="issued-empty">暂无关联物料</p>
+    </section>
     <section v-if="shortages.length" class="shortage-panel" :aria-labelledby="`shortage-title-${task.id}`">
       <div class="shortage-heading">
         <h4 :id="`shortage-title-${task.id}`"><svg aria-hidden="true" viewBox="0 0 20 20" width="16" height="16"><path d="M10 2 1.5 17h17L10 2Z" /><path d="M10 7v4m0 2.5v.5" /></svg>待备料物料 <span>{{ shortages.length }} 项</span></h4>
@@ -95,6 +107,10 @@ svg{fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-l
 .progress-track{height:7px;background:#e5ecee;border-radius:4px;overflow:hidden}
 .progress-track i{display:block;height:100%;background:var(--green);border-radius:inherit}
 .production .progress-track i{background:var(--blue2)}
+.issued-panel{margin-top:18px;padding:12px 14px;background:#f3f7f8;border:1px solid var(--line);border-radius:8px}
+.issued-panel h4{display:flex;justify-content:space-between;gap:10px;margin:0 0 8px;font-size:13px;font-weight:650}
+.issued-panel h4 strong{color:var(--blue);white-space:nowrap;font-variant-numeric:tabular-nums}
+.issued-list{list-style:none;margin:0;padding:0}.issued-list li{display:flex;justify-content:space-between;gap:8px;padding:7px 0;border-top:1px solid var(--line);font-size:12px;line-height:1.5}.issued-list li span{overflow-wrap:anywhere}.issued-list b{text-align:right;font-weight:650;font-variant-numeric:tabular-nums}.issued-list small{font-weight:400;color:var(--orange)}.issued-empty{margin:0;color:var(--muted);font-size:12px}
 .shortage-panel{margin-top:20px;background:#f7f8f9;border:1px solid var(--line);border-radius:8px;padding:12px 14px 0}
 .shortage-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}
 .shortage-heading h4{display:flex;align-items:center;flex-wrap:wrap;gap:7px;font-size:12px;font-weight:650;margin:0;line-height:1.5}
@@ -123,6 +139,7 @@ svg{fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-l
 @media(max-width:700px){
   .task-card{padding:16px}.task-heading{gap:10px}.task-heading h3{font-size:16px}.task-heading-end{gap:8px}.task-arrow{display:none}
   .task-progress-pair{gap:20px;margin-top:16px}.progress-label{font-size:12px}.progress-label strong{font-size:20px}
+  .issued-panel{margin-top:16px;padding:10px 12px}.issued-list li{flex-wrap:wrap}.issued-list b{text-align:left}
   .shortage-panel{margin-top:16px;padding:10px 12px 0}.shortage-caption{display:none}.shortage-list{grid-template-columns:minmax(0,1fr)}
   .shortage-item{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:10px;padding:9px 0}
   .material-name{margin:0}.material-amounts{justify-content:flex-end;text-align:right;gap:1px 10px}.carton-size{font-size:11px}
