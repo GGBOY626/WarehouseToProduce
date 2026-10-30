@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readHomeFilters, presetRange, singleDayRange, validDate } from '../src/utils/homeFilters.ts';
+import { previousRecordedDate, readHomeFilters, presetRange, singleDayRange, validDate } from '../src/utils/homeFilters.ts';
 
 const today = '2026-10-12';
 test('returning from detail restores week, inbound direction, search and expanded filters', () => {
@@ -23,6 +23,11 @@ test('date presets retain their existing inclusive ranges across month boundarie
   assert.deepEqual(presetRange('yesterday', '2026-10-01'), { from: '2026-09-30', to: '2026-09-30' });
   assert.deepEqual(presetRange('week', '2026-10-04'), { from: '2026-09-28', to: '2026-10-04' });
   assert.deepEqual(presetRange('twoWeeks', '2026-10-04'), { from: '2026-09-21', to: '2026-10-04' });
+});
+test('previous recorded date skips calendar days without matching records', () => {
+  assert.equal(previousRecordedDate('2026-10-12', ['2026-10-10', '2026-10-09']), '2026-10-10');
+  assert.equal(previousRecordedDate('2026-10-12', ['2026-10-11', '2026-10-08']), '2026-10-11');
+  assert.equal(previousRecordedDate('2026-10-12', ['2026-10-12', 'invalid']), undefined);
 });
 test('missing, corrupt or impossible saved dates safely fall back to today', () => {
   const fallback = readHomeFilters(null, today);

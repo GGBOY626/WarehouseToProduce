@@ -22,6 +22,9 @@ export function shiftDate(date: string, days: number) {
   value.setUTCDate(value.getUTCDate() + days);
   return value.toISOString().slice(0, 10);
 }
+export function previousRecordedDate(current: string, candidates: readonly string[]): string | undefined {
+  return candidates.filter(date => validDate(date) && date < current).sort().at(-1);
+}
 export function presetRange(kind: 'today' | 'yesterday' | 'week' | 'twoWeeks', current: string) {
   if (kind === 'today') return { from: current, to: current };
   if (kind === 'yesterday') { const date = shiftDate(current, -1); return { from: date, to: date }; }

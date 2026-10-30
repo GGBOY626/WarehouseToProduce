@@ -7,10 +7,11 @@ import MovementCard from "../components/MovementCard.vue";
 import RecordOriginals from "../components/RecordOriginals.vue";
 import { movementsApi } from "../api";
 import type { Direction, MovementSummary, QueryStats, StatMovement } from "../types";
-import { today, showDateTime } from "../utils/time";
 import { useAuth } from "../auth";
 import { errorMessage } from "../api/http";
-import { HOME_FILTERS_KEY, readHomeFilters, presetRange, singleDayRange, validDate } from "../utils/homeFilters";
+import { formatInTimeZone } from "date-fns-tz";
+import { HOME_FILTERS_KEY, previousRecordedDate, readHomeFilters, presetRange, shiftDate, singleDayRange, validDate } from "../utils/homeFilters";
+import { BUSINESS_ZONE, today, showDateTime } from "../utils/time";
 import type { DatePreset } from "../utils/homeFilters";
 let storedFilters: string | null = null;
 try { storedFilters = sessionStorage.getItem(HOME_FILTERS_KEY); } catch { /* Storage can be disabled in the browser. */ }
@@ -67,6 +68,26 @@ watch([from, to, direction, q, materialKind, moreFilters, activePreset], () => {
   } catch { /* Filtering still works without browser storage. */ }
 }, { flush: 'sync' });
 let requestId = 0;
+function queryParams(dateFrom: string, dateTo: string) {
+  return {
+    from: dateFrom,
+    to: dateTo,
+    direction: direction.value,
+    status: "ACTIVE" as const,
+    q: q.value,
+    finished: materialKind.value === 'all' || materialKind.value === 'return' ? undefined : materialKind.value === 'finished',
+    returnMovement: materialKind.value === 'return' ? true : undefined,
+  };
+}
+async function findPreviousRecordedDate(current: string) {
+  try {
+    const result = await movementsApi.list({ ...queryParams('1970-01-01', shiftDate(current, -1)), page: 0, size: 100 });
+    return previousRecordedDate(current, result.content.map(row => formatInTimeZone(row.movementTime, BUSINESS_ZONE, 'yyyy-MM-dd')));
+  } catch {
+    return undefined;
+  }
+}
+let presetRequestId = 0;
 async function load() {
   recordDialog.value?.close();
   const currentRequest = ++requestId;
@@ -81,15 +102,7 @@ async function load() {
   }
   loading.value = true;
   try {
-    const params = {
-      from: from.value,
-      to: to.value,
-      direction: direction.value,
-      status: "ACTIVE" as const,
-      q: q.value,
-      finished: materialKind.value === 'all' || materialKind.value === 'return' ? undefined : materialKind.value === 'finished',
-      returnMovement: materialKind.value === 'return' ? true : undefined,
-    };
+    const params = queryParams(from.value, to.value);
     const [page, currentStats] = await Promise.all([
       movementsApi.list({ ...params, page: 0, size: 100 }),
       movementsApi.queryStats(params),
@@ -112,16 +125,26 @@ async function load() {
   }
 }
 function selectDirection(value: Direction) {
+  ++presetRequestId;
   direction.value = value;
   if (value === 'WAREHOUSE_TO_PRODUCTION' && materialKind.value === 'return') materialKind.value = 'all';
   void load();
 }
 function selectMaterialKind() {
+  ++presetRequestId;
   if (materialKind.value === 'return') direction.value = 'PRODUCTION_TO_WAREHOUSE';
   void load();
 }
-function preset(kind: 'today' | 'yesterday' | 'week' | 'twoWeeks') {
-  const range = presetRange(kind, today());
+async function preset(kind: 'today' | 'yesterday' | 'week' | 'twoWeeks') {
+  const currentRequest = ++presetRequestId;
+  const current = today();
+  let range = presetRange(kind, current);
+  if (kind === 'yesterday') {
+    const recordedDate = await findPreviousRecordedDate(current);
+    if (currentRequest !== presetRequestId) return;
+    const date = recordedDate ?? shiftDate(current, -1);
+    range = { from: date, to: date };
+  }
   from.value = range.from;
   to.value = range.to;
   activePreset.value = kind;
@@ -146,6 +169,7 @@ function customDate() {
   void load();
 }
 watch(q, () => {
+  ++presetRequestId;
   clearTimeout(searchTimer);
   ++requestId;
   rows.value = [];
@@ -155,7 +179,7 @@ watch(q, () => {
   searchTimer = setTimeout(() => void load(), 300);
 });
 let alive=true;
-onBeforeUnmount(() => { alive=false; clearTimeout(searchTimer); ++requestId; });
+onBeforeUnmount(() => { alive=false; clearTimeout(searchTimer); ++requestId; ++presetRequestId; });
 let restoreY=0;
 try { restoreY=Number(sessionStorage.getItem('movement-list-scroll') || 0); } catch { /* Optional browser storage. */ }
 onBeforeRouteLeave(()=>{try{sessionStorage.setItem('movement-list-scroll',String(window.scrollY))}catch{}});
