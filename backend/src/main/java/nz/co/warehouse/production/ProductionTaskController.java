@@ -11,6 +11,7 @@ public class ProductionTaskController {
     private final nz.co.warehouse.movement.MovementService movementService;
     @PostMapping("/linkable") public java.util.List<ProductionTaskService.LinkOption> linkableBatches(@jakarta.validation.Valid @RequestBody ProductionTaskService.LinkRequest r){return service.linkableBatches(r);}
     @GetMapping public List<ProductionTaskService.Response> list(@RequestParam(required=false) ProductionTask.Status status){return service.list(status);}
+    @GetMapping("/product-choices") public List<Long> productChoices(@RequestParam nz.co.warehouse.movement.MovementEnums.Direction direction){return service.productChoices(direction);}
     @GetMapping("/linkable") public List<ProductionTaskService.LinkOption> linkable(
             @RequestParam List<Long> productIds,@RequestParam nz.co.warehouse.movement.MovementEnums.Direction direction,
             @RequestParam(defaultValue="false") boolean returnMovement){return service.linkable(productIds,direction,returnMovement);}

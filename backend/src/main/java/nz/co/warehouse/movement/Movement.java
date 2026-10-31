@@ -24,6 +24,8 @@ public class Movement extends PersistentEntity {
     @Column(name="manufacture_lot",length=100) private String manufactureLot;
     @Column(name="is_return",nullable=false) private boolean returnMovement;
     @ManyToOne(fetch=FetchType.LAZY) @JoinColumn(name="production_task_id") private ProductionTask productionTask;
+    @Column(name="pallet_no") private Integer palletNo;
+    @Column(name="pallet_count") private Integer palletCount;
     @Column(name="total_cartons",nullable=false) private int totalCartons;
     @Column(length=2000) private String remarks;
     @Enumerated(EnumType.STRING) @Column(nullable=false,length=20) private MovementEnums.Status status=MovementEnums.Status.ACTIVE;

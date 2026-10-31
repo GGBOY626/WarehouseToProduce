@@ -51,7 +51,7 @@ export interface ItemInput {
   productionNumber?: string | null;
   subBatch?: string | null;
   fullCartons: number;
-  wholePallet?: boolean;
+  wholePallets?: number;
   tailCountTouched?: boolean;
   tailSectionOpen?: boolean;
   looseUnits: number;
@@ -70,6 +70,8 @@ export interface MovementDraft {
   manufactureLot: string;
   returnMovement: boolean;
   productionTaskId?: number;
+  palletNo?: number;
+  palletCount?: number;
   remarks: string;
   items: ItemInput[];
 }
@@ -123,6 +125,8 @@ export interface MovementDetail {
   finished: boolean;
   productionTaskId?: number;
   productionTaskName?: string;
+  palletNo?: number | null;
+  palletCount?: number | null;
   totalCartons: number;
   remarks?: string;
   status: MovementStatus;
@@ -155,7 +159,12 @@ export interface ProductionTaskOutput {
   productId: number; productName: string; materialCode: string; baseUnit: string;
   targetQuantity: number; receivedQuantity: number; progressPercent: number; unknownQuantityCount: number;
 }
-export interface ProductionTaskOption { name: string; id: number; productName: string; batchNo?: string | null; status: ProductionTaskStatus }
+export interface ProductionTaskOption {
+  name: string; id: number; productName: string; batchNo?: string | null; status: ProductionTaskStatus;
+  outputProductId?: number | null; outputBoxesPerCarton?: number | null; outputUnitsPerBox?: number | null;
+  outputQuantityBasis?: 'BOX' | 'UNIT' | null; outputCartonUnits?: number | null;
+  outputCartonsPerPallet?: number | null; outputPrimaryMaterialUnit?: string | null; nextPalletNo: number;
+}
 export interface ProductionTask {
   forecast?: FinishedReceiptForecast;
   name: string;
@@ -202,6 +211,8 @@ export interface MaterialSummary {
 export interface MovementSummary {
   productionTaskId?: number;
   productionTaskName?: string;
+  palletNo?: number | null;
+  palletCount?: number | null;
   id: number;
   recordNo: string;
   direction: Direction;
@@ -239,6 +250,7 @@ export interface QueryStats {
     totalCartons: number;
     totalQuantity: number;
     unknownItemCount: number;
+    totalPallets: number;
     products: (MaterialSummary & { totalQuantity: number; unknownItemCount: number; movements: StatMovement[] })[];
   }[];
 }
@@ -258,4 +270,6 @@ export interface StatMovement {
   fullCartons: number;
   totalQuantity: number;
   unknownItemCount: number;
+  palletNo?: number | null;
+  palletCount?: number | null;
 }

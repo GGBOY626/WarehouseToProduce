@@ -138,7 +138,11 @@ public class MovementService {
             long cartons=entry.getValue().stream().mapToLong(MovementDtos.ProductStatResponse::totalCartons).sum();
             long quantity=entry.getValue().stream().mapToLong(MovementDtos.ProductStatResponse::totalQuantity).sum();
             long unknown=entry.getValue().stream().mapToLong(MovementDtos.ProductStatResponse::unknownItemCount).sum();
-            return new MovementDtos.DirectionStatResponse(entry.getKey(),cartons,quantity,unknown,entry.getValue());
+            long pallets=entry.getKey()==MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE?entry.getValue().stream()
+                    .flatMap(product->product.movements().stream()).filter(movement->!movement.returnMovement()&&movement.palletNo()!=null)
+                    .collect(java.util.stream.Collectors.toMap(MovementDtos.StatMovementResponse::id,movement->movement.palletCount()==null?1:movement.palletCount(),(left,right)->left,LinkedHashMap::new))
+                    .values().stream().mapToLong(Integer::longValue).sum():0;
+            return new MovementDtos.DirectionStatResponse(entry.getKey(),cartons,quantity,unknown,pallets,entry.getValue());
         }).toList();
         return new MovementDtos.QueryStatsResponse(directions);
     }
@@ -151,7 +155,7 @@ public class MovementService {
             List<MovementDtos.StatMovementResponse> movements=records.values().stream().map(recordItems->{
                 Movement m=recordItems.getFirst().getMovement();var quantity=MaterialQuantity.of(recordItems);
                 return new MovementDtos.StatMovementResponse(m.getId(),m.getRecordNo(),m.getMovementTime(),m.getDirection(),m.getSenderNameSnapshot(),m.getReceiverNameSnapshot(),
-                        quantity.fullCartons(),quantity.totalQuantity(),quantity.unknownItemCount(),quantity.looseUnits(),m.isReturnMovement(),m.getPhotos().size(),quantity.tailCartons(),quantity.totalCartons(),quantity.packaging());
+                        quantity.fullCartons(),quantity.totalQuantity(),quantity.unknownItemCount(),quantity.looseUnits(),m.isReturnMovement(),m.getPhotos().size(),quantity.tailCartons(),quantity.totalCartons(),quantity.packaging(),m.getPalletNo(),m.getPalletCount());
             }).toList();
             return new MovementDtos.ProductStatResponse(entry.getValue().getFirst().getProductNameSnapshot(),key.materialCode(),key.materialBatch(),key.baseUnit(),
                     totals.fullCartons(),totals.looseUnits(),totals.totalQuantity(),totals.unknownItemCount(),movements,totals.tailCartons(),totals.totalCartons(),totals.packaging(),key.subBatch());
@@ -166,6 +170,9 @@ public class MovementService {
 
     private void apply(Movement m,MovementDtos.SaveRequest r){
         validateDirection(r);
+        boolean isNew=m.getId()==null;
+        Long previousTaskId=m.getProductionTask()==null?null:m.getProductionTask().getId();
+        Integer previousPalletNo=m.getPalletNo(),previousPalletCount=m.getPalletCount();
         boolean outbound=r.direction()==MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION;
         Person sender=resolvePerson(r.senderPersonId(),m.getSenderPerson(),outbound?"Ray":"xiao");
         Person receiver=resolvePerson(r.receiverPersonId(),m.getReceiverPerson(),outbound?"xiao":"Ray");
@@ -210,6 +217,19 @@ public class MovementService {
             if(plannedUnits!=null&&m.getItems().stream().anyMatch(i->i.getFullCartons()>0&&!Objects.equals(plannedUnits,i.getUnitsPerCartonSnapshot())&&
                     (r.items().get(i.getSortOrder()).id()==null||!Objects.equals(originals.get(r.items().get(i.getSortOrder()).id()).getUnitsPerCartonSnapshot(),i.getUnitsPerCartonSnapshot()))))
                 throw BusinessException.badRequest("TASK_CARTON_SPEC_MISMATCH","满箱规格与任务包装设置不一致，请核对每箱盒数和每盒数量。");
+        }
+        boolean finishedReceipt=r.direction()==MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE&&!r.returnMovement();
+        if(!finishedReceipt||m.getProductionTask()==null){
+            m.setPalletNo(null);m.setPalletCount(null);
+        }else if(!isNew&&Objects.equals(previousTaskId,m.getProductionTask().getId())&&previousPalletNo!=null){
+            m.setPalletNo(previousPalletNo);m.setPalletCount(previousPalletCount);
+        }else if(isNew){
+            int palletCount=r.palletCount()==null?1:r.palletCount();
+            if(palletCount<1)throw BusinessException.badRequest("PALLET_COUNT_INVALID","托数必须大于零。");
+            m.setPalletNo(productionTasks.allocatePalletRange(m.getProductionTask().getId(),palletCount,r.palletNo()));
+            m.setPalletCount(palletCount);
+        }else{
+            m.setPalletNo(null);m.setPalletCount(null);
         }
         m.getItems().forEach(i->products.rememberBatch(i.getProduct(),i.effectiveMaterialBatch()));
         m.getItems().forEach(i->products.rememberProductionNumber(i.getProduct(),i.getProductionNumber()));

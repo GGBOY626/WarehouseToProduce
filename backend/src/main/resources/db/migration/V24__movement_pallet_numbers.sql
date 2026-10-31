@@ -1,0 +1,6 @@
+ALTER TABLE production_task
+    ADD COLUMN next_pallet_no INT UNSIGNED NOT NULL DEFAULT 1;
+
+ALTER TABLE movement
+    ADD COLUMN pallet_no INT UNSIGNED NULL,
+    ADD COLUMN pallet_count INT UNSIGNED NULL;

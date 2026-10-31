@@ -249,6 +249,7 @@ const formatNumber = (value: number) => value.toLocaleString("zh-CN");
           <section v-for="group in stats.directions" :key="group.direction" class="direction-stat">
             <h3>{{ directionLabel(group.direction) }}</h3>
             <div class="stats-total"><strong>共 {{ formatNumber(group.products.length) }} 组物料 / 批次</strong><span>·</span><strong>{{ formatNumber(group.totalCartons) }} 箱</strong><span v-if="group.unknownItemCount">· 含 {{ group.unknownItemCount }} 项数量不确定</span></div>
+            <div v-if="group.direction==='PRODUCTION_TO_WAREHOUSE'&&group.totalPallets" class="stats-total pallet-total"><strong>共 {{ formatNumber(group.totalPallets) }} 托</strong></div>
             <div>
               <button v-for="product in group.products" :key="JSON.stringify([product.productName, product.materialCode, product.materialBatch, product.subBatch, product.baseUnit])" type="button" class="product-stat" @click="openProduct(product)">
                 <MaterialSummary compact v-bind="{ ...product, ...statIdentifiers(product) }" />

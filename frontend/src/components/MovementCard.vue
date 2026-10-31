@@ -14,6 +14,12 @@ const dialog=ref<HTMLDialogElement>(), options=ref<ProductionTaskOption[]>([]), 
 const linked=ref<{id:number;name:string}>();
 const taskId=computed(()=>props.movement.productionTaskId || linked.value?.id);
 const taskName=computed(()=>props.movement.productionTaskName || linked.value?.name);
+function palletLabel(movement: MovementSummary) {
+  if (movement.palletNo == null) return '';
+  const count = movement.palletCount || 1;
+  const end = movement.palletNo + count - 1;
+  return end === movement.palletNo ? String(movement.palletNo) : `${movement.palletNo}-${end}`;
+}
 async function openLink(){
   message.value='';selected.value=undefined;options.value=[];busy.value=true;
   await nextTick();dialog.value?.showModal();
@@ -29,6 +35,7 @@ async function saveLink(){
   <RouterLink :to="`/movements/${movement.id}`" class="record-link" :aria-label="`${directionLabel(movement.direction)}，${movement.items.map(i => i.productName).join('、')}，查看流转详情`">
     <div class="record-heading">
       <span class="movement-direction"><span class="direction-icon" aria-hidden="true">{{ movement.direction === 'WAREHOUSE_TO_PRODUCTION' ? '↗' : '↙' }}</span>{{ directionLabel(movement.direction) }}<span class="direction-kind">{{ movement.returnMovement ? '退回' : movement.direction === 'WAREHOUSE_TO_PRODUCTION' ? '出库' : '入库' }}</span></span>
+      <span v-if="movement.direction==='PRODUCTION_TO_WAREHOUSE'&&!movement.returnMovement&&movement.palletNo!=null" class="pallet-tag">PALLET NO: {{ palletLabel(movement) }}</span>
       <time :datetime="movement.movementTime">{{ showDate ? showDateTime(movement.movementTime) : showTime(movement.movementTime) }}</time>
     </div>
     <div class="movement-items">
@@ -62,6 +69,7 @@ async function saveLink(){
 .movement-direction{display:flex;align-items:center;flex-wrap:wrap;gap:6px;color:var(--flow-color);font-weight:650}
 .direction-icon{display:inline-grid;place-items:center;width:22px;height:22px;background:var(--flow-soft);border-radius:5px;font-size:16px}
 .direction-kind{font-size:11px;font-weight:500;padding-left:6px;border-left:1px solid var(--line)}
+.pallet-tag{display:inline-flex;align-items:center;min-height:22px;padding:2px 7px;border-radius:5px;background:#e5f2ea;color:#1e6542;font-size:11px;font-weight:700;font-variant-numeric:tabular-nums}
 .movement-items{display:grid;gap:8px;min-width:0}.movement-items>:not(:first-child){border-top:1px solid var(--line);padding-top:8px}
 .movement-items :deep(.compact .material-name){font-size:16px;line-height:1.4}
 .movement-items :deep(.material-identifiers b),.movement-items :deep(.quantity-total b){color:var(--flow-color)}

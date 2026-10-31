@@ -27,6 +27,7 @@ public class ProductionTask extends PersistentEntity {
     @Column(name="output_boxes_per_carton") private Integer outputBoxesPerCarton;
     @Column(name="output_units_per_box") private Integer outputUnitsPerBox;
     @Column(name="output_cartons_per_pallet") private Integer outputCartonsPerPallet;
+    @Column(name="next_pallet_no",nullable=false) private int nextPalletNo=1;
     @Column(name="yield_material_quantity") private Long yieldMaterialQuantity;
     @Column(name="yield_output_quantity") private Long yieldOutputQuantity;
     @Enumerated(EnumType.STRING) @Column(name="output_quantity_basis",length=10) private OutputQuantityBasis outputQuantityBasis;

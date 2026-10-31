@@ -1,8 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { onBeforeRouteLeave, useRoute, useRouter } from "vue-router";
-import ProductionTaskTargets from "../components/ProductionTaskTargets.vue";
-import ProductionTaskOutput from "../components/ProductionTaskOutput.vue";
 import MaterialBatchPicker from "../components/MaterialBatchPicker.vue";
 import ProductionNumberPicker from "../components/ProductionNumberPicker.vue";
 import SearchPicker from "../components/SearchPicker.vue";
@@ -15,7 +13,6 @@ import type {
   Product,
   BoxPacking,
   ProductionTaskOption,
-  ProductionTask,
 } from "../types";
 import { directionLabel } from "../utils/labels";
 import { nowLocalInput, toInstant, toLocalInput } from "../utils/time";
@@ -40,7 +37,7 @@ const blankItem = (): ItemInput => ({
   productionNumber: "",
   subBatch: "",
   fullCartons: 0,
-  wholePallet: false,
+  wholePallets: 0,
   tailCountTouched: false,
   tailSectionOpen: false,
   tailCartons: 0,
@@ -100,59 +97,46 @@ async function refreshTasks() {
   finally { if (request === taskRequest) taskLoading.value = false; }
 }
 watch(taskSelection, refreshTasks);
-const selectedTask = ref<ProductionTask>();
-const previewLoading = ref(false), previewError = ref("");
-let previewRequest = 0;
-async function loadTaskPreview() {
-  const request = ++previewRequest, id = draft.value.productionTaskId;
-  selectedTask.value = undefined; previewError.value = "";
-  previewLoading.value = !!id;
-  if (!id) return;
-  try {
-    const task = await productionTasksApi.detail(id);
-    if (request === previewRequest) {
-      selectedTask.value = task;
-      if (direction.value === 'PRODUCTION_TO_WAREHOUSE' && !draft.value.returnMovement && task.output?.boxesPerCarton && task.output.unitsPerBox) {
-        for (const item of draft.value.items) if (!item.id && item.productId === task.output.productId) {
-          applyBoxPacking(item);
-          item.unitsPerCarton = taskCartonUnits(task.output);
-          quantityChanged(item);
-        }
-      }
-    }
-  } catch (e) { if (request === previewRequest) previewError.value = errorMessage(e); }
-  finally { if (request === previewRequest) previewLoading.value = false; }
-}
+const selectedTask = computed(() => productionTasks.value.find(task => task.id === draft.value.productionTaskId));
+const isFinishedReceipt = computed(() => direction.value === 'PRODUCTION_TO_WAREHOUSE' && !draft.value.returnMovement);
 const isNewFinishedReceipt = computed(() => !editId && direction.value === 'PRODUCTION_TO_WAREHOUSE' && !draft.value.returnMovement);
 function taskOutput(item: ItemInput) {
-  const output = selectedTask.value?.output;
-  return direction.value === 'PRODUCTION_TO_WAREHOUSE' && !draft.value.returnMovement && output?.productId === item.productId ? output : undefined;
+  const output = selectedTask.value;
+  return isFinishedReceipt.value && output?.outputProductId === item.productId ? output : undefined;
 }
 function taskPacking(item: ItemInput) {
   const output = taskOutput(item);
-  return output?.boxesPerCarton && output.unitsPerBox ? output : undefined;
+  if (!output?.outputBoxesPerCarton || !output.outputUnitsPerBox || !output.outputQuantityBasis) return undefined;
+  return { boxesPerCarton: output.outputBoxesPerCarton, unitsPerBox: output.outputUnitsPerBox, quantityBasis: output.outputQuantityBasis, primaryMaterialUnit: output.outputPrimaryMaterialUnit };
 }
 function palletCartonCount(item: ItemInput) {
-  const count = taskOutput(item)?.cartonsPerPallet;
+  const count = taskOutput(item)?.outputCartonsPerPallet;
   return Number.isSafeInteger(count) && Number(count) > 0 ? Number(count) : undefined;
 }
-function isWholePallet(item: ItemInput) {
-  return isNewFinishedReceipt.value && item.wholePallet === true && palletCartonCount(item) != null;
+function wholePalletCartons(item: ItemInput) {
+  return Number(item.wholePallets || 0) * (palletCartonCount(item) || 0);
 }
 function quantityItem(item: ItemInput): ItemInput {
-  const wholePallet = isWholePallet(item);
   return {
     ...item,
-    fullCartons: fullCartonsForPalletSelection(item.fullCartons, palletCartonCount(item), wholePallet),
+    fullCartons: fullCartonsForPalletSelection(Number(item.fullCartons || 0), palletCartonCount(item), isNewFinishedReceipt.value ? Number(item.wholePallets || 0) : 0),
     looseUnits: isNewFinishedReceipt.value ? 0 : Number(item.looseUnits || 0),
     quantityUnknown: isNewFinishedReceipt.value ? false : item.quantityUnknown,
-    manualTotal: wholePallet ? false : item.manualTotal,
+    manualTotal: item.manualTotal,
   };
 }
-function setWholePallet(item: ItemInput, event: Event) {
-  item.wholePallet = (event.target as HTMLInputElement).checked;
-  if (item.wholePallet) item.manualTotal = false;
+function changeWholePallets(item: ItemInput, amount: number) {
+  item.wholePallets = Math.max(0, Number(item.wholePallets || 0) + amount);
   quantityChanged(item);
+}
+function setWholePallets(item: ItemInput, event: Event) {
+  const value = (event.target as HTMLInputElement).value;
+  item.wholePallets = value === '' ? 0 : Math.max(0, Math.floor(Number(value) || 0));
+  quantityChanged(item);
+}
+function changePalletNo(event: Event) {
+  const value = (event.target as HTMLInputElement).value;
+  draft.value.palletNo = value === '' ? undefined : Number(value);
 }
 function tailSectionToggled(item: ItemInput, event: Event) {
   const section = event.currentTarget as HTMLDetailsElement;
@@ -186,18 +170,43 @@ function setTailBoxes(item: ItemInput, event: Event) {
   item.tailUnitsPerCarton = value === '' ? null : packing ? unitsForBoxes(packing, Number(value)) : Number(value);
   quantityChanged(item);
 }
-watch([() => draft.value.productionTaskId, taskSelection], loadTaskPreview);
+watch(selectedTask, task => {
+  if (!task || !isNewFinishedReceipt.value) return;
+  for (const item of draft.value.items) if (!item.id && item.productId === task.outputProductId && task.outputCartonUnits) {
+    item.unitsPerCarton = task.outputCartonUnits;
+    quantityChanged(item);
+  }
+});
 const draftKey = computed(() => `movement-draft:${direction.value}`);
 const productUsage = computed<Direction>(() => draft.value.returnMovement ? "WAREHOUSE_TO_PRODUCTION" : direction.value);
 const needsMaterialBatch = computed(() => direction.value === "WAREHOUSE_TO_PRODUCTION" || draft.value.returnMovement);
+const palletCount = computed(() => {
+  if (!isNewFinishedReceipt.value) return Number(draft.value.palletCount || 1);
+  const count = draft.value.items.reduce((total, item) => {
+    const fullPallets = Math.max(0, Number(item.wholePallets || 0));
+    const remainder = Math.max(0, Number(item.fullCartons || 0)) + Math.max(0, Number(item.tailCartons || 0));
+    if (!remainder) return total + fullPallets;
+    const cartonsPerPallet = palletCartonCount(item);
+    return total + fullPallets + (cartonsPerPallet ? Math.ceil(remainder / cartonsPerPallet) : 1);
+  }, 0);
+  return Math.max(1, count);
+});
+const nextPalletNo = computed(() => draft.value.palletNo || selectedTask.value?.nextPalletNo || 1);
+const palletRangeText = computed(() => {
+  const start = Number(draft.value.palletNo || nextPalletNo.value);
+  const end = start + Math.max(1, palletCount.value) - 1;
+  return start === end ? String(start) : `${start}-${end}`;
+});
+watch(() => draft.value.productionTaskId, (id, previousId) => {
+  if (initialized.value && editId && id !== previousId) draft.value.palletNo = undefined;
+});
 async function loadProductChoices(query: string, item: ItemInput): Promise<Product[]> {
   const search = query.trim();
-  if (search) return productsApi.search(search, false, productUsage.value);
-  const [catalog, tasks] = await Promise.all([
-    productsApi.search('', false, productUsage.value),
-    productionTasksApi.list(),
+  const [catalog, productIds] = await Promise.all([
+    productsApi.search(search, false, productUsage.value),
+    productionTasksApi.productChoices(productUsage.value),
   ]);
-  return taskProductChoices(catalog, tasks, productUsage.value === 'WAREHOUSE_TO_PRODUCTION', item.productId);
+  return taskProductChoices(catalog, productIds, item.productId);
 }
 function returnChanged() {
   draft.value.items = [blankItem()];
@@ -228,7 +237,7 @@ function selectProduct(item: ItemInput, p?: Product) {
   item.unitsPerCarton = initialCartonSpec(p) ?? null;
   item.product = p;
   item.productId = p?.id;
-  item.wholePallet = false;
+  item.wholePallets = 0;
   item.tailCountTouched = false;
   item.tailSectionOpen = false;
   applyBoxPacking(item,initialBoxPacking(p));
@@ -284,10 +293,9 @@ function removeFile(index: number) {
   files.value.splice(index, 1);
 }
 function validate() {
-  if (draft.value.productionTaskId && previewLoading.value) return "正在读取任务包装设置，请稍候。";
-  if (draft.value.productionTaskId && previewError.value) return "读取任务设置失败，请重试后保存。";
   if (taskLoading.value) return "生产任务正在加载，请稍候。";
   if (taskError.value && draft.value.productionTaskId && !keepOriginalTask.value) return "请重试加载生产任务后保存。";
+  if (isFinishedReceipt.value && draft.value.palletNo != null && (!Number.isInteger(draft.value.palletNo) || draft.value.palletNo < 1)) return "PALLET NO 必须是大于零的整数。";
   if (editId && (!draft.value.senderPersonId || !draft.value.receiverPersonId))
     return "请选择发送人和接收人。";
   for (let i = 0; i < draft.value.items.length; i++) {
@@ -320,6 +328,8 @@ function payload() {
 
     returnMovement: direction.value === "PRODUCTION_TO_WAREHOUSE" && draft.value.returnMovement,
     productionTaskId: draft.value.productionTaskId,
+    palletNo: isFinishedReceipt.value && draft.value.productionTaskId ? draft.value.palletNo : undefined,
+    palletCount: isFinishedReceipt.value && draft.value.productionTaskId ? palletCount.value : undefined,
     remarks: editId ? draft.value.remarks : undefined,
     items: draft.value.items.map((x) => {
       const quantity = quantityItem(x);
@@ -429,6 +439,8 @@ onMounted(async () => {
       manufactureLot: m.manufactureLot || "",
       returnMovement: m.returnMovement,
       productionTaskId: m.productionTaskId,
+      palletNo: m.palletNo ?? undefined,
+      palletCount: m.palletCount ?? undefined,
       remarks: m.remarks || "",
       items: m.items.map((x) => ({
         id: x.id,
@@ -480,6 +492,9 @@ onMounted(async () => {
     }
   }
   draft.value.items.forEach(item => {
+    const legacyItem = item as ItemInput & { wholePallet?: boolean };
+    item.wholePallets ??= legacyItem.wholePallet ? 1 : 0;
+    delete legacyItem.wholePallet;
     item.tailCartons ??= 0;
     item.tailSectionOpen ??= Number(item.tailCartons || 0) > 0 || Number(item.looseUnits || 0) > 0;
   });
@@ -506,7 +521,7 @@ onMounted(async () => {
   dirty.value = false;
 });
 onBeforeUnmount(() => {
-  previewRequest++; taskRequest++;
+  taskRequest++;
   window.removeEventListener("beforeunload", beforeUnload);
   files.value.forEach((x) => URL.revokeObjectURL(x.url));
 });
@@ -605,12 +620,11 @@ onBeforeUnmount(() => {
           </div>
           <div class="packing-fields">
             <p v-if="taskPacking(item)" class="hint">任务包装：{{ taskPacking(item)!.boxesPerCarton }} 盒/箱 × {{ taskPacking(item)!.unitsPerBox }} {{ taskPacking(item)!.primaryMaterialUnit }}/盒。尾箱可填写实际盒数。</p>
-            <label v-if="isNewFinishedReceipt && palletCartonCount(item)" class="full-pallet-choice"><input type="checkbox" :checked="item.wholePallet===true" @change="setWholePallet(item,$event)" /><span><strong>整托入库</strong><small>按任务规格计 {{ palletCartonCount(item) }} 箱</small></span></label>
+            <div v-if="isNewFinishedReceipt && palletCartonCount(item)" class="field"><label :for="`whole-pallets-${index}`">整托数量</label><div class="count-stepper"><button type="button" :aria-label="`减少整托数量，第 ${index + 1} 项`" :disabled="Number(item.wholePallets || 0)<=0" @click="changeWholePallets(item,-1)">-</button><input :id="`whole-pallets-${index}`" class="input mono" type="number" min="0" step="1" inputmode="numeric" :value="item.wholePallets || 0" @input="setWholePallets(item,$event)" /><button type="button" :aria-label="`增加整托数量，第 ${index + 1} 项`" @click="changeWholePallets(item,1)">+</button></div><small class="hint">每托 {{ palletCartonCount(item) }} 箱，共 {{ wholePalletCartons(item) }} 箱</small></div>
             <div v-if="boxed(item)" class="grid-2"><div class="field"><label :for="`box-count-${index}`">每箱装几盒</label><input :id="`box-count-${index}`" class="input" type="number" min="1" step="1" inputmode="numeric" v-model.number="item.boxesPerCarton" @input="quantityChanged(item)" /></div><div class="field"><label :for="`box-units-${index}`">每盒装几{{item.product?.baseUnit||'个'}}</label><input :id="`box-units-${index}`" class="input" type="number" min="1" step="1" inputmode="numeric" v-model.number="item.unitsPerBox" @input="quantityChanged(item)" /></div></div>
             <div class="grid-2">
               <div class="field"><label :for="`size-${index}`" :class="{required:item.fullCartons > 0 && commonSpecs(item).length > 1}">{{boxed(item)?'每箱数量（自动计算）':'完整箱每箱数量'}}</label><input :id="`size-${index}`" class="input mono" type="number" min="1" step="1" inputmode="numeric" v-model.number="item.unitsPerCarton" :readonly="!!taskPacking(item)||boxed(item)" @input="quantityChanged(item)" placeholder="选择下方规格或输入每箱数量" /><small v-if="!taskPacking(item) && commonSpecs(item).length > 1" class="hint">有多种每箱数量，请选择本次完整箱规格；仅尾箱或散装可留空。</small></div>
-              <div v-if="isWholePallet(item)" class="field"><span class="field-label">完整箱数</span><p class="pallet-count">{{ palletCartonCount(item) }} 箱（整托）</p></div>
-              <div v-else class="field"><label :for="`full-${index}`">完整箱数</label><input :id="`full-${index}`" class="input mono" type="number" min="0" step="1" inputmode="numeric" v-model.number="item.fullCartons" @input="quantityChanged(item)" /></div>
+              <div class="field"><label :for="`full-${index}`">额外完整箱数</label><input :id="`full-${index}`" class="input mono" type="number" min="0" step="1" inputmode="numeric" v-model.number="item.fullCartons" @input="quantityChanged(item)" /></div>
             </div>
             <div v-if="!taskPacking(item) && item.product?.boxPackings?.length" class="spec-options" aria-label="选择包装规格"><button v-for="packing in item.product.boxPackings" :key="`${packing.boxesPerCarton}/${packing.unitsPerBox}`" type="button" :aria-pressed="item.boxesPerCarton===packing.boxesPerCarton&&item.unitsPerBox===packing.unitsPerBox" :class="{active:item.boxesPerCarton===packing.boxesPerCarton&&item.unitsPerBox===packing.unitsPerBox}" @click="choosePacking(item,packing)">{{packing.boxesPerCarton}} 盒 × {{packing.unitsPerBox}} {{item.product.baseUnit}}/盒</button></div>
             <button v-if="productUsage==='PRODUCTION_TO_WAREHOUSE'&&!taskPacking(item)&&!boxed(item)" type="button" class="btn btn-ghost" @click="choosePacking(item,{boxesPerCarton:0,unitsPerBox:0})">填写每箱盒数 / 每盒数量</button>
@@ -635,7 +649,7 @@ onBeforeUnmount(() => {
             {{item.product?.quantityUnknown ? '该产品已设置为数量不确定' : '数量不确定（无法清点或没有数量标识）'}}
           </label>
           <div class="total-box">
-            <span>总箱数：{{ cartonCount(quantityItem(item)) }} 箱（<template v-if="isWholePallet(item)">{{ palletCartonCount(item) }} 箱整托</template><template v-else>{{ quantityItem(item).fullCartons || 0 }} 满箱</template> + {{ item.tailCartons || 0 }} 尾箱）</span>
+            <span>总箱数：{{ cartonCount(quantityItem(item)) }} 箱（<template v-if="wholePalletCartons(item)">{{ item.wholePallets }} 托 × {{ palletCartonCount(item) }} 箱 + </template>{{ item.fullCartons || 0 }} 额外满箱 + {{ item.tailCartons || 0 }} 尾箱）</span>
             <span v-if="direction==='PRODUCTION_TO_WAREHOUSE'&&!draft.returnMovement&&(taskPacking(item)||item.boxesPerCarton&&item.unitsPerBox)">总盒数：{{ (quantityItem(item).fullCartons * (taskPacking(item)?.boxesPerCarton || item.boxesPerCarton || 0) + (item.tailCartons || 0) * (tailBoxes(item) || 0)).toLocaleString() }} 盒</span>
             <span>总数量</span
             ><strong class="mono"
@@ -643,18 +657,18 @@ onBeforeUnmount(() => {
               }}<small v-if="displayedTotal(item) != null">
                 {{ item.product?.baseUnit || "个" }}</small
               ></strong
-            ><label v-if="!isWholePallet(item)" class="manual"
+            ><label class="manual"
               ><input type="checkbox" v-model="item.manualTotal" :disabled="item.quantityUnknown" />
               人工填写总数量</label
             ><input
-              v-if="item.manualTotal && !isWholePallet(item)"
+              v-if="item.manualTotal"
               class="input mono"
               type="number"
               inputmode="numeric"
               min="0"
               v-model.number="item.totalUnits"
             /><small
-              v-if="item.manualTotal && !isWholePallet(item) && calculate(quantityItem(item)) != null"
+              v-if="item.manualTotal && calculate(quantityItem(item)) != null"
               class="hint"
               >按箱规应为 {{ calculate(quantityItem(item)) }}，当前填写
               {{ item.totalUnits ?? "—" }}</small
@@ -738,18 +752,11 @@ onBeforeUnmount(() => {
         <small v-else-if="draft.items.some(i => !i.productId)" class="hint">先选择产品，再显示匹配的生产任务。</small>
         <small v-else-if="!productionTasks.length && !keepOriginalTask" class="hint">没有匹配任务。{{ direction === 'WAREHOUSE_TO_PRODUCTION' ? '仅显示需要本单全部物料且进行中的任务。' : draft.returnMovement ? '仅显示需要本单物料且未取消的任务。' : '请先在任务中设置对应成品；进行中即可分批回仓。' }}</small>
         <small v-else class="hint">{{ direction === 'WAREHOUSE_TO_PRODUCTION' ? '只显示需要本单全部物料且进行中的任务。' : draft.returnMovement ? '退料计入任务的净发料，不计入成品产量。' : '按任务对应成品累计回仓产量；已完成任务请从任务详情补关联已有记录。' }}</small>
-        <p v-if="taskError" class="form-alert" role="alert">{{ taskError }} <button type="button" class="btn btn-ghost" @click="refreshTasks">重试</button></p>
-        <div v-if="draft.productionTaskId" class="task-preview" aria-live="polite" :aria-busy="previewLoading">
-          <p v-if="previewLoading" class="hint">正在读取任务进度和缺料情况…</p>
-          <p v-else-if="previewError" class="form-alert" role="alert">{{ previewError }} <button type="button" class="btn btn-ghost" @click="loadTaskPreview">重试</button></p>
-          <template v-else-if="selectedTask">
-            <div class="preview-heading"><strong>{{ selectedTask.name }}</strong><b>备料进度 {{ selectedTask.progressPercent }}%</b></div>
-            <small class="hint">{{ selectedTask.batchNo ? `${selectedTask.batchNo} · ` : '' }}{{ selectedTask.status === 'PREPARING' ? '进行中' : selectedTask.status === 'COMPLETED' ? '已完成' : selectedTask.status === 'CANCELLED' ? '已取消' : '进行中' }}</small>
-            <ProductionTaskOutput v-if="selectedTask.output" :output="selectedTask.output" />
-            <ProductionTaskTargets :targets="selectedTask.targets" />
-            <small class="hint">{{ editId ? '按已保存记录统计，包含本单原数量；本次修改保存后更新。' : '按已保存记录统计，不含本次尚未保存的数量。' }}</small>
-          </template>
+        <div v-if="isFinishedReceipt" class="grid-2 pallet-fields">
+          <div class="field"><label for="pallet-no">PALLET NO</label><input id="pallet-no" class="input mono" type="number" min="1" step="1" inputmode="numeric" :value="draft.palletNo ?? ''" :disabled="!!editId || !draft.productionTaskId" placeholder="自动分配" @input="changePalletNo" /><small class="hint" v-if="editId">{{ draft.palletNo != null ? `原记录 PALLET NO：${palletRangeText}` : '旧记录没有 PALLET NO，编辑时不会补号' }}</small><small class="hint" v-else-if="draft.productionTaskId">本次 {{ palletCount }} 托；留空自动分配 {{ palletRangeText }}</small><small class="hint" v-else>关联生产任务后自动分配</small></div>
+          <div class="field"><span class="field-label">本次托数</span><p class="pallet-count">{{ draft.productionTaskId ? palletCount : '—' }} 托</p></div>
         </div>
+        <p v-if="taskError" class="form-alert" role="alert">{{ taskError }} <button type="button" class="btn btn-ghost" @click="refreshTasks">重试</button></p>
       </div>
     </section>
     <div class="sticky-actions">
@@ -771,10 +778,10 @@ onBeforeUnmount(() => {
 .product-option-meta{display:block;margin-top:3px;font-size:12px;color:var(--muted);overflow-wrap:anywhere}
 .product-option-warning{display:block;margin-top:3px;font-size:12px;color:var(--orange)}
 .packing-fields > .grid-2 { align-items: start; }
-.task-preview{display:grid;gap:14px;margin-top:10px;padding-top:16px;border-top:1px solid #e5ecee;min-width:0}.preview-heading{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}.preview-heading strong{overflow-wrap:anywhere}.preview-heading b{color:#267566;font-size:14px}
+.pallet-fields{align-items:start}.pallet-fields .field{min-width:0}
 
 .packing-fields{display:grid;gap:12px}.spec-options{display:flex;flex-wrap:wrap;gap:6px;align-items:center}.spec-options button{border:1px solid var(--line);background:#fff;border-radius:6px;padding:7px 10px;min-height:36px;font-size:12px}.spec-options button.active{background:var(--soft-blue);border-color:var(--blue);color:var(--blue)}
-.full-pallet-choice{display:flex;align-items:center;gap:10px;min-height:48px;padding:8px 12px;border:1px solid var(--line);border-radius:8px;cursor:pointer}.full-pallet-choice input{width:18px;height:18px;margin:0;accent-color:var(--blue);flex:none}.full-pallet-choice span{display:grid;gap:2px}.full-pallet-choice strong{font-size:13px}.full-pallet-choice small{color:var(--muted);font-size:12px}.pallet-count{display:flex;align-items:center;min-height:44px;margin:0;color:var(--ink);font-size:14px;font-weight:650}
+.pallet-count{display:flex;align-items:center;min-height:44px;margin:0;color:var(--ink);font-size:14px;font-weight:650}
 .count-stepper{display:grid;grid-template-columns:40px minmax(0,1fr) 40px;align-items:center;gap:6px}.count-stepper button{width:40px;height:44px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--blue);font-size:20px;line-height:1;cursor:pointer}.count-stepper button:disabled{color:var(--muted);cursor:not-allowed}.count-stepper input{min-width:0;text-align:center}
 .optional-packing{border:1px solid var(--line);border-radius:9px;padding:12px}.optional-packing summary{cursor:pointer;color:var(--blue);font-weight:650}.optional-packing[open] summary{margin-bottom:12px}.optional-packing>.hint{display:block;margin:8px 0 12px}
 

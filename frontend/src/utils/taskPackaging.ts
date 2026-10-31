@@ -12,9 +12,9 @@ export function boxesForUnits(packing: Packing, units: number): number {
   return units / (packing.quantityBasis === 'UNIT' ? packing.unitsPerBox! : 1);
 }
 
-export function fullCartonsForPalletSelection(current: number, cartonsPerPallet: number | null | undefined, selected: boolean): number {
-  return selected && Number.isSafeInteger(cartonsPerPallet) && Number(cartonsPerPallet) > 0
-    ? Number(cartonsPerPallet)
+export function fullCartonsForPalletSelection(current: number, cartonsPerPallet: number | null | undefined, selectedCount: number): number {
+  return Number.isSafeInteger(cartonsPerPallet) && Number(cartonsPerPallet) > 0 && Number.isSafeInteger(selectedCount) && selectedCount > 0
+    ? current + Number(cartonsPerPallet) * selectedCount
     : current;
 }
 

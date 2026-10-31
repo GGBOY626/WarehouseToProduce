@@ -120,6 +120,39 @@ class MovementServiceIntegrationTest {
         assertThat(inbound.productionTaskId()).isEqualTo(task.id());
     }
 
+    @Test void assignsSequentialPalletRangesOnlyToNewFinishedReceipts() throws Exception {
+        var task=productionTasks.create(new ProductionTaskService.SaveRequest(product,1000L,LocalDate.of(2026,9,28),"PALLETS",null,null,inboundProduct,1000L));
+        var day=LocalDate.of(2026,9,28);
+        var legacy=movements.create(new MovementDtos.SaveRequest(UUID.randomUUID().toString(),MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE,
+                Instant.parse("2026-09-28T01:00:00Z"),sender,receiver,null,false,null,List.of(new MovementDtos.ItemRequest(inboundProduct,"PALLET-LOT",1,0,null,null,List.of()))));
+        var first=movements.create(new MovementDtos.SaveRequest(UUID.randomUUID().toString(),MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE,
+                Instant.parse("2026-09-28T02:00:00Z"),sender,receiver,null,false,task.id(),null,3,null,
+                List.of(new MovementDtos.ItemRequest(inboundProduct,"PALLET-LOT",3,0,null,null,List.of()))));
+        var second=movements.create(new MovementDtos.SaveRequest(UUID.randomUUID().toString(),MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE,
+                Instant.parse("2026-09-28T03:00:00Z"),sender,receiver,null,false,task.id(),null,2,null,
+                List.of(new MovementDtos.ItemRequest(inboundProduct,"PALLET-LOT",2,0,null,null,List.of()))));
+        var returned=movements.create(new MovementDtos.SaveRequest(UUID.randomUUID().toString(),MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE,
+                Instant.parse("2026-09-28T04:00:00Z"),sender,receiver,"PALLET-LOT",true,task.id(),null,4,null,
+                List.of(new MovementDtos.ItemRequest(product,"PALLET-LOT",1,0,null,null,List.of()))));
+
+        assertThat(legacy.palletNo()).isNull();
+        assertThat(first.palletNo()).isEqualTo(1);
+        assertThat(first.palletCount()).isEqualTo(3);
+        assertThat(second.palletNo()).isEqualTo(4);
+        assertThat(second.palletCount()).isEqualTo(2);
+        assertThat(returned.palletNo()).isNull();
+        var rows=movements.search(day,day,MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE,MovementEnums.Status.ACTIVE,null,null,"PALLET-LOT",0,20,null,null);
+        assertThat(rows.content()).filteredOn(row->row.id().equals(second.id())).singleElement().satisfies(row->{
+            assertThat(row.palletNo()).isEqualTo(4);
+            assertThat(row.palletCount()).isEqualTo(2);
+        });
+        var stats=movements.queryStats(day,day,MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE,MovementEnums.Status.ACTIVE,null,null,"PALLET-LOT");
+        assertThat(stats.directions()).singleElement().satisfies(group->assertThat(group.totalPallets()).isEqualTo(5));
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/movements/stats/query")
+                        .param("from",day.toString()).param("to",day.toString()).param("direction","PRODUCTION_TO_WAREHOUSE").param("q","PALLET-LOT"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.directions[0].totalPallets").value(5));
+    }
+
     @Test void taskDatesFollowEffectiveMovementsAndCompletedCorrectionsUseTaskEntry(){
         var task=productionTasks.create(new ProductionTaskService.SaveRequest(product,1000L,LocalDate.of(2026,10,19),"DATES",null,null,inboundProduct,1000L));
         var issue=movements.create(new MovementDtos.SaveRequest(UUID.randomUUID().toString(),MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,

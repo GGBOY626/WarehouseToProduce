@@ -80,7 +80,9 @@ public class ProductionTaskService {
                                  Long primaryMaterialProductId,String primaryMaterialName,String primaryMaterialUnit,Long netIssuedQuantity,
                                  BigDecimal producedQuantity,BigDecimal receivedBoxes,BigDecimal productionPercent,BigDecimal lossPercent,boolean provisional,
                                  Integer cartonsPerPallet) {}
-    public record LinkOption(Long id,String productName,String batchNo,ProductionTask.Status status,String name) {}
+    public record LinkOption(Long id,String productName,String batchNo,ProductionTask.Status status,String name,Long outputProductId,
+                             Integer outputBoxesPerCarton,Integer outputUnitsPerBox,ProductionTask.OutputQuantityBasis outputQuantityBasis,
+                             Integer outputCartonUnits,Integer outputCartonsPerPallet,String outputPrimaryMaterialUnit,int nextPalletNo) {}
 
     @Transactional(readOnly=true) public List<Response> list(ProductionTask.Status status){
         List<ProductionTask> found=tasks.search(status);
@@ -111,7 +113,31 @@ public class ProductionTaskService {
         Set<Long> selected=new HashSet<>(productIds);
         if(selected.isEmpty()||selected.contains(null))return List.of();
         return tasks.search(null).stream().filter(t->linkStatusAllowed(t,direction)&&matches(t,selected,direction,returned))
-                .map(t->new LinkOption(t.getId(),t.displayName(),t.getBatchNo(),t.getStatus(),t.displayName())).toList();
+                .map(this::linkOption).toList();
+    }
+    @Transactional(readOnly=true)
+    public List<Long> productChoices(MovementEnums.Direction direction){
+        return tasks.search(null).stream().filter(t->linkStatusAllowed(t,direction)).flatMap(task->{
+            if(direction==MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE)
+                return task.getOutputProduct()==null?java.util.stream.Stream.<Long>empty():java.util.stream.Stream.of(task.getOutputProduct().canonicalId());
+            return task.getTargets().stream().map(target->target.getProduct()).filter(product->product.getMovementDirection()==ProductUsage.WAREHOUSE_TO_PRODUCTION).map(Product::canonicalId);
+        }).distinct().toList();
+    }
+    private LinkOption linkOption(ProductionTask task){
+        return new LinkOption(task.getId(),task.displayName(),task.getBatchNo(),task.getStatus(),task.displayName(),
+                task.getOutputProduct()==null?null:task.getOutputProduct().canonicalId(),task.getOutputBoxesPerCarton(),task.getOutputUnitsPerBox(),
+                task.getOutputQuantityBasis(),task.outputCartonUnits(),task.getOutputCartonsPerPallet(),task.getPrimaryMaterial()==null?null:task.getPrimaryMaterial().getBaseUnit(),task.getNextPalletNo());
+    }
+    @Transactional
+    public int allocatePalletRange(long taskId,int count,Integer requestedStart){
+        if(count<1)throw BusinessException.badRequest("PALLET_COUNT_INVALID","托数必须大于零。");
+        ProductionTask task=tasks.findByIdForUpdate(taskId).orElseThrow(()->BusinessException.notFound("PRODUCTION_TASK_NOT_FOUND","找不到该生产任务。"));
+        int next=task.getNextPalletNo();
+        int start=requestedStart==null?next:requestedStart;
+        if(start<next)throw BusinessException.badRequest("PALLET_NO_ALREADY_USED","PALLET NO 已被使用，请留空自动分配或填写下一个编号。");
+        try{task.setNextPalletNo(Math.addExact(start,count));}
+        catch(ArithmeticException ex){throw BusinessException.badRequest("PALLET_RANGE_OVERFLOW","托盘编号超出可保存范围。");}
+        return start;
     }
     @Transactional(readOnly=true)
     public ProductionTask getLinkable(long id,List<Long> productIds,MovementEnums.Direction direction,boolean returned){
@@ -126,7 +152,7 @@ public class ProductionTaskService {
     public List<LinkOption> linkableBatches(LinkRequest r){
         if(r.items()==null||r.items().isEmpty())return List.of();
         return tasks.search(null).stream().filter(t->linkStatusAllowed(t,r.direction())&&matchesBatches(t,r.items(),r.direction(),r.returnMovement()))
-                .map(t->new LinkOption(t.getId(),t.displayName(),t.getBatchNo(),t.getStatus(),t.displayName())).toList();
+                .map(this::linkOption).toList();
     }
     public ProductionTask getLinkableBatches(long id,List<BatchSelection> items,MovementEnums.Direction direction,boolean returned){
         return getLinkableBatches(id,items,direction,returned,false);
