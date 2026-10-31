@@ -275,7 +275,7 @@ public class ProductionTaskService {
         targets=baseTargets.stream().map(target->{
             if(!target.materialTarget()||capacityRatio==null)return target;
             BigDecimal theoreticalUsed=BigDecimal.valueOf(target.targetQuantity()).multiply(capacityRatio).setScale(6,RoundingMode.HALF_UP).stripTrailingZeros();
-            BigDecimal theoreticalReturn=BigDecimal.valueOf(target.issuedQuantity()).subtract(theoreticalUsed).max(BigDecimal.ZERO).setScale(6,RoundingMode.DOWN).stripTrailingZeros();
+            BigDecimal theoreticalReturn=BigDecimal.valueOf(target.issuedQuantity()).subtract(theoreticalUsed).max(BigDecimal.ZERO).setScale(0,RoundingMode.HALF_UP);
             return new TargetResponse(target.productId(),target.productName(),target.materialCode(),target.baseUnit(),target.targetQuantity(),target.shortageCartonSize(),target.completedQuantity(),target.progressPercent(),target.issuedQuantity(),target.returnedQuantity(),target.shortageQuantity(),target.unknownQuantityCount(),target.materialTarget(),target.estimatedUsedQuantity(),theoreticalUsed,theoreticalReturn,target.materialBatch(),target.batches());
         }).toList();
         TargetResponse primary=t.getPrimaryMaterial()==null?null:targets.stream().filter(x->x.productId().equals(t.getPrimaryMaterial().canonicalId())).findFirst().orElse(null);

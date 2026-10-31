@@ -145,6 +145,16 @@ class TaskYieldIntegrationTest {
         tasks.status(task.id(),ProductionTask.Status.IN_PROGRESS);
         assertThatCode(()->move(task.id(),raw,"22677",1,false)).doesNotThrowAnyException();
     }
+    @Test void theoreticalReturnIsRoundedToWholeInventoryUnits(){
+        var task=tasks.create(plan(7,1,ProductionTask.OutputQuantityBasis.UNIT));
+        move(task.id(),raw,"22677",3,false);
+        move(task.id(),inner,"22677",2144,false);
+
+        var packagingTarget=tasks.detail(task.id()).targets().stream()
+                .filter(target->target.productId().equals(inner)).findFirst().orElseThrow();
+        assertThat(packagingTarget.theoreticalReturnQuantity()).isEqualByComparingTo("1");
+        assertThat(packagingTarget.theoreticalReturnQuantity().scale()).isZero();
+    }
     @Test void twentyEightBoxesWithThirtyUnitsIncludesThreeBoxTail(){
         var task=tasks.create(plan(120000,30,ProductionTask.OutputQuantityBasis.BOX));
         move(task.id(),raw,"22677",120000,false);

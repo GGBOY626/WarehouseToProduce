@@ -13,12 +13,12 @@ defineEmits<{ select: [] }>();
       <div class="output-values"><span>实际净发 {{ output.primaryMaterialName }}：{{ output.netIssuedQuantity?.toLocaleString() }} {{ output.primaryMaterialUnit }}</span><b>{{ output.provisional ? '暂估损耗率' : '损耗率' }}：{{ output.lossPercent == null ? '—' : `${output.lossPercent}%` }}</b></div>
       <div class="output-values"><b>{{ output.provisional ? '暂估损耗数量' : '损耗数量' }}：{{ output.lossPercent == null ? '—' : Math.max(0,(output.netIssuedQuantity ?? 0)-(output.producedQuantity ?? 0)).toLocaleString() }} {{ output.primaryMaterialUnit }}</b></div>
       <div v-if="!hideProgress" class="progress" role="progressbar" aria-label="生产完成度" :aria-valuenow="output.productionPercent ?? undefined" :aria-valuemin="0" :aria-valuemax="100"><i :style="{ width: `${output.productionPercent || 0}%` }" /></div>
-      <p v-if="output.productionPercent == null" class="unknown">无有效净发料，或关联数量未确定，暂无法计算完成度与损耗率。</p>
+      <p v-if="!hideProgress && output.productionPercent == null" class="unknown">无有效净发料，或关联数量未确定，暂无法计算完成度与损耗率。</p>
       <p v-else-if="output.provisional" class="hint">暂估未转为成品的部分可能仍在车间生产；确认生产结束并补齐退料、回仓后再核对损耗。</p>
-      <p v-if="(output.producedQuantity || 0) > (output.netIssuedQuantity || 0)" class="unknown">回仓折算数量超过净发主料，请核对发料、退料和计量口径。</p>
+      <p v-if="!hideProgress && (output.producedQuantity || 0) > (output.netIssuedQuantity || 0)" class="unknown">回仓折算数量超过净发主料，请核对发料、退料和计量口径。</p>
     </template>
-    <p v-else class="hint">此旧任务未配置主料和包装换算，编辑后可按实际净发料计算生产完成度与损耗率。</p>
-    <p v-if="output.unknownQuantityCount" class="unknown">另有 {{ output.unknownQuantityCount }} 条回仓明细数量不确定。</p>
+    <p v-else-if="!hideProgress" class="hint">此旧任务未配置主料和包装换算，编辑后可按实际净发料计算生产完成度与损耗率。</p>
+    <p v-if="!hideProgress && output.unknownQuantityCount" class="unknown">另有 {{ output.unknownQuantityCount }} 条回仓明细数量不确定。</p>
   </div>
 </template>
 <style scoped>
