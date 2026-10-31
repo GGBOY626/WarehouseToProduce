@@ -8,7 +8,7 @@ import { taskIssuedMaterials } from '../utils/taskIssuedMaterials';
 const props = defineProps<{ task: ProductionTask; expanded: boolean }>();
 const emit = defineEmits<{ toggle: [] }>();
 const labels: Record<ProductionTaskStatus, string> = {
-  PREPARING: '进行中', IN_PROGRESS: '进行中', COMPLETED: '已完成', CANCELLED: '已取消',
+  PREVIEW: '任务预告', PREPARING: '进行中', IN_PROGRESS: '进行中', COMPLETED: '已完成', CANCELLED: '已取消',
 };
 const shortages = computed(() => props.task.targets.filter(t => t.materialTarget && t.shortageQuantity > 0));
 const visibleShortages = computed(() => props.expanded ? shortages.value : shortages.value.slice(0, 3));

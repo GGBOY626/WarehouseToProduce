@@ -91,7 +91,9 @@ public class ProductionTaskService {
         return found.stream().map(task->response(task,photosByTask.getOrDefault(task.getId(),List.of()))).toList();
     }
     @Transactional(readOnly=true) public Response detail(long id){return response(get(id));}
-    @Transactional public Response create(SaveRequest r){ProductionTask t=new ProductionTask();apply(t,r,false);return response(tasks.saveAndFlush(t));}
+    @Transactional public Response create(SaveRequest r){return create(r,ProductionTask.Status.IN_PROGRESS);}
+    @Transactional public Response createPreview(SaveRequest r){return create(r,ProductionTask.Status.PREVIEW);}
+    private Response create(SaveRequest r,ProductionTask.Status status){ProductionTask t=new ProductionTask();t.setStatus(status);apply(t,r,false);return response(tasks.saveAndFlush(t));}
     @Transactional public Response update(long id,SaveRequest r){ProductionTask t=get(id);apply(t,r,true);return response(t);}
     @Transactional public void delete(long id){
         ProductionTask task=get(id);
@@ -102,7 +104,8 @@ public class ProductionTaskService {
         tasks.delete(task);
         tasks.flush();
     }
-    @Transactional public Response status(long id,ProductionTask.Status status){ProductionTask t=get(id);t.setStatus(status);return response(t);}
+    @Transactional public Response status(long id,ProductionTask.Status status){ProductionTask t=get(id);if(t.getStatus()==ProductionTask.Status.PREVIEW||status==ProductionTask.Status.PREVIEW)throw BusinessException.badRequest("PRODUCTION_TASK_PREVIEW_TRANSITION","任务预告只能通过开始生产转为进行中。");t.setStatus(status);return response(t);}
+    @Transactional public Response startProduction(long id){ProductionTask t=get(id);if(t.getStatus()!=ProductionTask.Status.PREVIEW)throw BusinessException.badRequest("PRODUCTION_TASK_NOT_PREVIEW","只有任务预告可以开始生产。");t.setStatus(ProductionTask.Status.IN_PROGRESS);return response(t);}
     @Transactional(readOnly=true)
     public List<LinkOption> linkable(List<Long> productIds,MovementEnums.Direction direction,boolean returned){
         Set<Long> selected=new HashSet<>(productIds);

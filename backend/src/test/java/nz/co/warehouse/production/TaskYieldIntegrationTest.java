@@ -83,6 +83,21 @@ class TaskYieldIntegrationTest {
         assertThat(target.progressPercent()).isEqualTo(100);
         assertThat(target.batches()).extracting(ProductionTaskService.BatchResponse::netQuantity).containsExactly(2000L,3100L);
     }
+    @Test void previewDoesNotLinkUntilManuallyStarted(){
+        var task=tasks.createPreview(plan(20000,1,ProductionTask.OutputQuantityBasis.UNIT));
+        assertThat(task.status()).isEqualTo(ProductionTask.Status.PREVIEW);
+        assertThat(tasks.linkable(List.of(raw),MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,false))
+                .extracting(ProductionTaskService.LinkOption::id).doesNotContain(task.id());
+        var selection=List.of(new ProductionTaskService.BatchSelection(raw,"22677"));
+        assertThatThrownBy(()->tasks.getLinkableBatches(task.id(),selection,MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,false))
+                .hasMessageContaining("已结束");
+
+        var started=tasks.startProduction(task.id());
+        assertThat(started.status()).isEqualTo(ProductionTask.Status.IN_PROGRESS);
+        assertThat(tasks.getLinkableBatches(task.id(),selection,MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,false).getId())
+                .isEqualTo(task.id());
+        assertThatThrownBy(()->tasks.startProduction(task.id())).hasMessageContaining("任务预告");
+    }
     @Test void taskHistoryKeepsEachDeliveryPackagingAndDirection(){
         var task=tasks.create(plan(20000,30,ProductionTask.OutputQuantityBasis.BOX));
         var issued=movement(task.id(),raw,"22677",2,1,20L,5,100,false);

@@ -67,7 +67,8 @@ public class PdfReportService {
         validateRange(from,to);
         ZoneId businessZone=ZoneId.of(zone);
         List<ProductionTaskService.Response> rows=productionTasks.list(null).stream().filter(task ->
-                task.status()!=nz.co.warehouse.production.ProductionTask.Status.CANCELLED && (
+                task.status()!=nz.co.warehouse.production.ProductionTask.Status.CANCELLED &&
+                task.status()!=nz.co.warehouse.production.ProductionTask.Status.PREVIEW && (
                 !task.plannedDate().isBefore(from)&&!task.plannedDate().isAfter(to) ||
                 task.movements().stream().anyMatch(m->m.status()==MovementEnums.Status.ACTIVE&&
                         !m.movementTime().atZone(businessZone).toLocalDate().isBefore(from)&&

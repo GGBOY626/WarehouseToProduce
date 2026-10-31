@@ -1,7 +1,7 @@
 export type Direction = "WAREHOUSE_TO_PRODUCTION" | "PRODUCTION_TO_WAREHOUSE";
 export type ProductUsage = Direction;
 export type MovementStatus = "ACTIVE" | "VOID";
-export type ProductionTaskStatus = "PREPARING" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED";
+export type ProductionTaskStatus = "PREVIEW" | "PREPARING" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED";
 export type IssueType =
   | "MISSING_LABEL"
   | "WRONG_LABEL"

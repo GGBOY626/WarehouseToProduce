@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref } from "vue";
 import { productionTasksApi, productsApi } from "../api";
+import { createProductionTaskPreview } from "../api/productionTaskActions";
 import { errorMessage } from "../api/http";
 import type { Photo, Product, ProductionTask, BoxPacking } from "../types";
 import { initialBoxPacking } from "../utils/boxPacking";
@@ -41,6 +42,7 @@ const files = ref<{ file: File; url: string; status: 'preparing' | 'ready' | 'up
 const photoCount = computed(() => existingPhotos.value.length + files.value.filter(file => file.status !== 'uploaded').length);
 const photoSlots = computed(() => Math.max(0, 10 - photoCount.value));
 const deletingPhotoId = ref<number>();
+const formElement = ref<HTMLFormElement>();
 async function pickPhotos(event: Event) {
   const input = event.target as HTMLInputElement;
   const selected = Array.from(input.files || []);
@@ -89,8 +91,9 @@ async function loadOutputs(q: string): Promise<Product[]> {
 async function loadMaterials(q: string): Promise<Product[]> {
   return (await productsApi.search(q, !!props.task, 'WAREHOUSE_TO_PRODUCTION')).filter(p => p.active || props.task?.targets.some(t => t.productId === p.id));
 }
-async function save() {
+async function save(asPreview = false) {
   if (saving.value) return;
+  if (!formElement.value?.reportValidity()) return;
   if (!form.value.name.trim()) { message.value = "请填写任务名称。"; return; }
   const targets = form.value.targets;
   if (!form.value.plannedDate || targets.some(t => !t.productId || !Number.isSafeInteger(t.targetQuantity) || t.targetQuantity <= 0)) {
@@ -118,7 +121,7 @@ async function save() {
       outputCartonsPerPallet: packed && cartonsPerPallet.value ? cartonsPerPallet.value : null,
       targets: targets.map(t => ({ productId: t.productId, targetQuantity: t.targetQuantity })) };
     const taskId = props.task?.id ?? savedTask.value?.id;
-    savedTask.value = taskId ? await productionTasksApi.update(taskId, payload) : await productionTasksApi.create(payload);
+    savedTask.value = taskId ? await productionTasksApi.update(taskId, payload) : asPreview ? await createProductionTaskPreview(payload) : await productionTasksApi.create(payload);
     existingPhotos.value = [...(savedTask.value.photos || existingPhotos.value)];
     for (const entry of files.value) {
       if (entry.status === 'uploaded') continue;
@@ -138,8 +141,8 @@ async function save() {
 }
 </script>
 <template>
-  <form class="card card-pad task-form" @submit.prevent="save">
-    <p class="hint">每种物料填写需求总数即可，不同批次的发料合计计算，批次明细仍可查看。新任务保存后即为进行中。</p>
+  <form ref="formElement" class="card card-pad task-form" @submit.prevent="save()">
+    <p class="hint">每种物料填写需求总数即可，不同批次的发料合计计算，批次明细仍可查看。任务预告需手动开始生产后才能关联流转。</p>
     <fieldset :disabled="saving">
       <label class="field"><span>任务名称 *</span><input class="input" v-model.trim="form.name" maxlength="100" required placeholder="例如：轻体粉第一批" /></label>
       <div v-for="(target, index) in form.targets" :key="target.key" class="target-row">
@@ -204,7 +207,7 @@ async function save() {
       </div>
     </section>
     <p v-if="message" class="form-alert" role="alert">{{ message }}</p>
-    <div class="form-actions"><button class="btn btn-primary" :disabled="saving">{{ saving ? '保存中…' : task ? '保存修改' : '创建生产任务' }}</button><button type="button" class="btn btn-secondary" :disabled="saving" @click="emit('cancel')">取消</button></div>
+    <div class="form-actions"><template v-if="task"><button class="btn btn-primary" :disabled="saving">{{ saving ? '保存中…' : '保存修改' }}</button></template><template v-else><button type="button" class="btn btn-primary" :disabled="saving" @click="save(false)">{{ saving ? '保存中…' : '创建进行中任务' }}</button><button type="button" class="btn btn-secondary" :disabled="saving" @click="save(true)">{{ saving ? '保存中…' : '创建任务预告' }}</button></template><button type="button" class="btn btn-secondary" :disabled="saving" @click="emit('cancel')">取消</button></div>
   </form>
 </template>
 <style scoped>

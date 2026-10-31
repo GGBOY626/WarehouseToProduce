@@ -48,5 +48,5 @@ public class ProductionTask extends PersistentEntity {
         String productName=outputProduct!=null?outputProduct.getName():product.getName();
         return batchNo==null||batchNo.isBlank()?productName:productName+" · "+batchNo;
     }
-    public enum Status { PREPARING, IN_PROGRESS, COMPLETED, CANCELLED }
+    public enum Status { PREVIEW, PREPARING, IN_PROGRESS, COMPLETED, CANCELLED }
 }
