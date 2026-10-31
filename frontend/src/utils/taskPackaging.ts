@@ -11,3 +11,13 @@ export function taskCartonUnits(packing: Packing): number {
 export function boxesForUnits(packing: Packing, units: number): number {
   return units / (packing.quantityBasis === 'UNIT' ? packing.unitsPerBox! : 1);
 }
+
+export function fullCartonsForPalletSelection(current: number, cartonsPerPallet: number | null | undefined, selected: boolean): number {
+  return selected && Number.isSafeInteger(cartonsPerPallet) && Number(cartonsPerPallet) > 0
+    ? Number(cartonsPerPallet)
+    : current;
+}
+
+export function tailCartonsOnOpen(current: number | undefined, touched: boolean, defaultToOne: boolean): number {
+  return defaultToOne && !touched && Number(current || 0) === 0 ? 1 : current ?? 0;
+}

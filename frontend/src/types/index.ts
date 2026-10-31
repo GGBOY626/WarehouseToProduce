@@ -51,6 +51,9 @@ export interface ItemInput {
   productionNumber?: string | null;
   subBatch?: string | null;
   fullCartons: number;
+  wholePallet?: boolean;
+  tailCountTouched?: boolean;
+  tailSectionOpen?: boolean;
   looseUnits: number;
   totalUnits?: number;
   quantityUnknown: boolean;

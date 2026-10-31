@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { taskCartonUnits, unitsForBoxes, boxesForUnits } from '../src/utils/taskPackaging.ts';
+import { taskCartonUnits, unitsForBoxes, boxesForUnits, fullCartonsForPalletSelection, tailCartonsOnOpen } from '../src/utils/taskPackaging.ts';
 import { calculateQuantity, cartonCount } from '../src/utils/quantity.ts';
 
 test('28 boxes of 30 units and a three-box tail preserve actual units and cartons', () => {
@@ -18,4 +18,17 @@ test('box-based inventory records boxes without multiplying the stock quantity t
   assert.equal(unitsForBoxes(packing,3),3);
   assert.equal(boxesForUnits(packing,3),3);
   assert.equal(calculateQuantity({unitsPerCarton:28,fullCartons:0,tailCartons:1,tailUnitsPerCarton:3,looseUnits:0}),3);
+});
+test('a selected whole pallet uses the configured carton count and still adds tail cartons', () => {
+  const fullCartons=fullCartonsForPalletSelection(4,30,true);
+  assert.equal(fullCartons,30);
+  assert.equal(fullCartonsForPalletSelection(4,30,false),4);
+  assert.equal(fullCartonsForPalletSelection(4,null,true),4);
+  assert.equal(calculateQuantity({unitsPerCarton:28,fullCartons,tailCartons:1,tailUnitsPerCarton:3,looseUnits:0}),843);
+});
+test('opening a new receipt tail section starts at one without restoring a user-cleared count', () => {
+  assert.equal(tailCartonsOnOpen(0,false,true),1);
+  assert.equal(tailCartonsOnOpen(0,true,true),0);
+  assert.equal(tailCartonsOnOpen(0,false,false),0);
+  assert.equal(tailCartonsOnOpen(2,false,true),2);
 });
