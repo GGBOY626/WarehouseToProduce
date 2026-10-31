@@ -164,6 +164,7 @@ export interface ProductionTask {
   startDate?: string | null; endDate?: string | null;
   targets: ProductionTaskTarget[];
   output?: ProductionTaskOutput;
+  photos?: Photo[];
 }
 export interface PackedQuantity { cartons: string; boxes: string; units: string; fraction: string | null; pallets: string | null; palletCartons: string | null }
 export interface FinishedReceiptForecast {

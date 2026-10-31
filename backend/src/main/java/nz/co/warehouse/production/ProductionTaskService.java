@@ -17,6 +17,8 @@ import java.util.*;
 @Service @RequiredArgsConstructor
 public class ProductionTaskService {
     private final ProductionTaskRepository tasks;
+    private final ProductionTaskPhotoRepository taskPhotos;
+    private final ProductionTaskPhotoService taskPhotoService;
     private final MovementRepository movements;
     private final ProductService products;
     @Value("${app.business-zone:Pacific/Auckland}") private String zone;
@@ -69,7 +71,9 @@ public class ProductionTaskService {
                            String batchNo,ProductionTask.Status status,String remarks,long completedQuantity,int progressPercent,
                            int issueMovementCount,int returnMovementCount,List<MovementResponse> movements,Instant createdAt,Instant updatedAt,
                            List<TargetResponse> targets,OutputResponse output,String name,FinishedReceiptForecast forecast,
-                           String orderNo,String feishuNo,Long plannedQuantity,String productBatch,LocalDate startDate,LocalDate endDate) {}
+                           String orderNo,String feishuNo,Long plannedQuantity,String productBatch,LocalDate startDate,LocalDate endDate,
+                           List<PhotoResponse> photos) {}
+    public record PhotoResponse(Long id,String url,String originalName,String mimeType,long fileSize,int width,int height,Instant createdAt) {}
     public record OutputResponse(Long productId,String productName,String materialCode,String baseUnit,long targetQuantity,
                                  long receivedQuantity,int progressPercent,int unknownQuantityCount,String materialBatch,
                                  Integer boxesPerCarton,Integer unitsPerBox,ProductionTask.OutputQuantityBasis quantityBasis,
@@ -78,7 +82,14 @@ public class ProductionTaskService {
                                  Integer cartonsPerPallet) {}
     public record LinkOption(Long id,String productName,String batchNo,ProductionTask.Status status,String name) {}
 
-    @Transactional(readOnly=true) public List<Response> list(ProductionTask.Status status){return tasks.search(status).stream().map(this::response).toList();}
+    @Transactional(readOnly=true) public List<Response> list(ProductionTask.Status status){
+        List<ProductionTask> found=tasks.search(status);
+        if(found.isEmpty())return List.of();
+        Map<Long,List<PhotoResponse>> photosByTask=taskPhotos.findAllForTaskIds(found.stream().map(ProductionTask::getId).toList()).stream()
+                .collect(java.util.stream.Collectors.groupingBy(p->p.getTask().getId(),LinkedHashMap::new,
+                        java.util.stream.Collectors.mapping(this::photoResponse,java.util.stream.Collectors.toList())));
+        return found.stream().map(task->response(task,photosByTask.getOrDefault(task.getId(),List.of()))).toList();
+    }
     @Transactional(readOnly=true) public Response detail(long id){return response(get(id));}
     @Transactional public Response create(SaveRequest r){ProductionTask t=new ProductionTask();apply(t,r,false);return response(tasks.saveAndFlush(t));}
     @Transactional public Response update(long id,SaveRequest r){ProductionTask t=get(id);apply(t,r,true);return response(t);}
@@ -87,6 +98,7 @@ public class ProductionTaskService {
         // Preserve original movement records, including voided records and their photos.
         movements.findByProductionTaskIdOrderByMovementTimeAsc(id).forEach(m->m.setProductionTask(null));
         movements.flush();
+        taskPhotoService.cleanupForTaskDeletion(id);
         tasks.delete(task);
         tasks.flush();
     }
@@ -216,6 +228,9 @@ public class ProductionTaskService {
         t.setOrderNo(blank(r.orderNo()));t.setFeishuNo(blank(r.feishuNo()));t.setPlannedQuantity(r.plannedQuantity());t.setProductBatch(blank(r.productBatch()));
     }
     private Response response(ProductionTask t){
+        return response(t,taskPhotos.findByTaskIdOrderByCreatedAtAsc(t.getId()).stream().map(this::photoResponse).toList());
+    }
+    private Response response(ProductionTask t,List<PhotoResponse> taskPhotoResponses){
         List<Movement> rows=movements.findByProductionTaskIdOrderByMovementTimeAsc(t.getId());
         long received=0;int unknownOutput=0;
         for(Movement m:rows){
@@ -286,7 +301,11 @@ public class ProductionTaskService {
                 .map(m->m.getMovementTime().atZone(businessZone).toLocalDate()).min(LocalDate::compareTo).orElse(null);
         LocalDate end=t.getStatus()==ProductionTask.Status.COMPLETED?rows.stream().filter(m->m.getStatus()==MovementEnums.Status.ACTIVE&&m.getDirection()==MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE&&!m.isReturnMovement())
                 .map(m->m.getMovementTime().atZone(businessZone).toLocalDate()).max(LocalDate::compareTo).orElse(null):null;
-        return new Response(t.getId(),t.getProduct().canonicalId(),t.displayName(),t.getProduct().getBaseUnit(),t.getTargetQuantity(),t.getPlannedDate(),t.getBatchNo(),t.getStatus(),t.getRemarks(),completed,progress,issues,returns,linked,t.getCreatedAt(),t.getUpdatedAt(),targets,output,t.displayName(),FinishedReceiptForecast.calculate(t,targets,primary,received,unknownOutput),t.getOrderNo(),t.getFeishuNo(),t.getPlannedQuantity(),t.getProductBatch(),start,end);
+        return new Response(t.getId(),t.getProduct().canonicalId(),t.displayName(),t.getProduct().getBaseUnit(),t.getTargetQuantity(),t.getPlannedDate(),t.getBatchNo(),t.getStatus(),t.getRemarks(),completed,progress,issues,returns,linked,t.getCreatedAt(),t.getUpdatedAt(),targets,output,t.displayName(),FinishedReceiptForecast.calculate(t,targets,primary,received,unknownOutput),t.getOrderNo(),t.getFeishuNo(),t.getPlannedQuantity(),t.getProductBatch(),start,end,taskPhotoResponses);
+    }
+    private PhotoResponse photoResponse(ProductionTaskPhoto photo){
+        long taskId=photo.getTask().getId();
+        return new PhotoResponse(photo.getId(),"/api/production-tasks/"+taskId+"/photos/"+photo.getId()+"/content",photo.getOriginalName(),photo.getMimeType(),photo.getFileSize(),photo.getWidth(),photo.getHeight(),photo.getCreatedAt());
     }
     private List<MovementMaterialResponse> movementMaterials(Movement movement){
         return movement.getItems().stream().collect(java.util.stream.Collectors.groupingBy(i->i.getProduct().canonicalId(),LinkedHashMap::new,java.util.stream.Collectors.toList()))

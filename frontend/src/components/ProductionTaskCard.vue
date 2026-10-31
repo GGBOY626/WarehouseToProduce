@@ -16,6 +16,8 @@ const warnings = computed(() => taskWarnings(props.task));
 // Keep the list's existing eligibility and precision for production progress.
 const productionPercent = computed(() => props.task.output?.quantityBasis ? props.task.output.productionPercent : null);
 const issued = computed(() => taskIssuedMaterials(props.task));
+const visiblePhotos = computed(() => (props.task.photos || []).slice(0, 4));
+const hiddenPhotoCount = computed(() => Math.max(0, (props.task.photos?.length || 0) - visiblePhotos.value.length));
 </script>
 
 <template>
@@ -31,6 +33,12 @@ const issued = computed(() => taskIssuedMaterials(props.task));
       </div>
     </header>
     <p class="task-dates">开始日期 {{ task.startDate || '暂无发料记录' }}<template v-if="task.status==='COMPLETED'"> · 结束日期 {{ task.endDate || '暂无成品回仓记录' }}</template></p>
+    <div v-if="visiblePhotos.length" class="task-photos" aria-label="生产照片">
+      <a v-for="photo in visiblePhotos" :key="photo.id" :href="photo.url" target="_blank" rel="noopener" :aria-label="`打开照片：${photo.originalName}`" @click.stop>
+        <img :src="photo.url" :alt="photo.originalName" loading="lazy" width="92" height="72" />
+      </a>
+      <span v-if="hiddenPhotoCount">另有 {{ hiddenPhotoCount }} 张</span>
+    </div>
 
     <div class="task-progress-pair">
       <div class="task-progress">
@@ -88,6 +96,11 @@ const issued = computed(() => taskIssuedMaterials(props.task));
 .task-card{position:relative;isolation:isolate;min-width:0;padding:20px 22px;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);box-shadow:0 2px 5px rgba(20,39,50,.035)}
 .task-card:hover{border-color:#b9c5ca;box-shadow:0 4px 12px rgba(20,39,50,.07)}
 .task-card:active{border-color:var(--blue2)}
+.task-photos{position:relative;z-index:2;display:flex;align-items:center;flex-wrap:wrap;gap:7px;margin:0 0 14px}
+.task-photos a{display:block;width:92px;height:72px;flex:0 0 auto;overflow:hidden;border:1px solid var(--line);border-radius:6px;background:#eef2f3}
+.task-photos a:focus-visible{outline:2px solid var(--blue2);outline-offset:2px}
+.task-photos img{display:block;width:100%;height:100%;object-fit:cover}
+.task-photos>span{color:var(--muted);font-size:11px}
 .task-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
 .task-dates{margin:8px 0 14px;color:var(--muted);font-size:12px}
 .task-heading h3{margin:0;min-width:0;font-family:"Microsoft YaHei UI","PingFang SC",sans-serif;font-size:18px;font-weight:700;line-height:1.5;overflow-wrap:anywhere;text-wrap:pretty}

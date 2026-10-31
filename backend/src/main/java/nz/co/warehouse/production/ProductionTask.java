@@ -40,6 +40,9 @@ public class ProductionTask extends PersistentEntity {
     @OneToMany(mappedBy="task",cascade=CascadeType.ALL,orphanRemoval=true)
     @OrderBy("sortOrder ASC, id ASC")
     private List<ProductionTaskTarget> targets=new ArrayList<>();
+    @OneToMany(mappedBy="task",cascade=CascadeType.ALL,orphanRemoval=true)
+    @OrderBy("createdAt ASC, id ASC")
+    private List<ProductionTaskPhoto> photos=new ArrayList<>();
     public String displayName(){
         if(name!=null&&!name.isBlank())return name;
         String productName=outputProduct!=null?outputProduct.getName():product.getName();
