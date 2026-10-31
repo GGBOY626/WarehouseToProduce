@@ -72,6 +72,7 @@ const savedMovementId = ref<number>();
 const productionTasks = ref<ProductionTaskOption[]>([]);
 const taskLoading = ref(false), taskError = ref("");
 const initialized = ref(false);
+const palletSetupPromptIndex = ref<number | null>(null);
 const originalTask = ref<{ id: number; name: string; selection: string }>();
 const taskSelection = computed(() => JSON.stringify([direction.value, draft.value.returnMovement,
   [...new Set(draft.value.items.map(i => JSON.stringify([i.productId,i.materialBatch || ""])))].sort()]));
@@ -110,7 +111,13 @@ function taskPacking(item: ItemInput) {
   return { boxesPerCarton: output.outputBoxesPerCarton, unitsPerBox: output.outputUnitsPerBox, quantityBasis: output.outputQuantityBasis, primaryMaterialUnit: output.outputPrimaryMaterialUnit };
 }
 function palletCartonCount(item: ItemInput) {
-  const count = taskOutput(item)?.outputCartonsPerPallet;
+  const taskCount = taskOutput(item)?.outputCartonsPerPallet;
+  if (Number.isSafeInteger(taskCount) && Number(taskCount) > 0) return Number(taskCount);
+  const packings = item.product?.boxPackings || [];
+  const matchingPacking = packings.find(packing => packing.boxesPerCarton === item.boxesPerCarton && packing.unitsPerBox === item.unitsPerBox);
+  const hasSelectedPacking = item.boxesPerCarton != null || item.unitsPerBox != null;
+  const packing = matchingPacking || (!hasSelectedPacking && packings.length === 1 ? packings[0] : undefined);
+  const count = packing?.cartonsPerPallet;
   return Number.isSafeInteger(count) && Number(count) > 0 ? Number(count) : undefined;
 }
 function wholePalletCartons(item: ItemInput) {
@@ -133,6 +140,27 @@ function setWholePallets(item: ItemInput, event: Event) {
   const value = (event.target as HTMLInputElement).value;
   item.wholePallets = value === '' ? 0 : Math.max(0, Math.floor(Number(value) || 0));
   quantityChanged(item);
+}
+function toggleWholePallet(item: ItemInput, event: Event, index: number) {
+  const checked = (event.target as HTMLInputElement).checked;
+  if (!checked) {
+    item.wholePallets = 0;
+    palletSetupPromptIndex.value = null;
+    quantityChanged(item);
+    return;
+  }
+  if (!palletCartonCount(item)) {
+    (event.target as HTMLInputElement).checked = false;
+    palletSetupPromptIndex.value = index;
+    return;
+  }
+  palletSetupPromptIndex.value = null;
+  item.wholePallets = Math.max(1, Number(item.wholePallets || 0));
+  item.fullCartons = 0;
+  quantityChanged(item);
+}
+function openProductManagement() {
+  window.open(router.resolve('/products').href, '_blank', 'noopener,noreferrer');
 }
 function changePalletNo(event: Event) {
   const value = (event.target as HTMLInputElement).value;
@@ -234,6 +262,7 @@ function displayedTotal(item: ItemInput) {
 function selectProduct(item: ItemInput, p?: Product) {
   item.id = undefined;
   item.subBatch = "";
+  palletSetupPromptIndex.value = null;
   item.unitsPerCarton = initialCartonSpec(p) ?? null;
   item.product = p;
   item.productId = p?.id;
@@ -252,6 +281,10 @@ function selectProduct(item: ItemInput, p?: Product) {
   quantityChanged(item);
 }
 function quantityChanged(item: ItemInput) {
+  if (isNewFinishedReceipt.value && Number(item.wholePallets || 0) > 0 && !palletCartonCount(item)) {
+    item.wholePallets = 0;
+    palletSetupPromptIndex.value = draft.value.items.indexOf(item);
+  }
   if(!taskPacking(item))syncBoxQuantity(item);
   else if (!Number(item.tailCartons || 0)) {
     item.tailBoxesPerCarton = null;
@@ -304,7 +337,7 @@ function validate() {
     const invalidQuantity = quantityError(quantity);
     if (invalidQuantity) return `产品明细 ${i + 1}：${invalidQuantity}`;
     if (!x.productId) return `请选择产品明细 ${i + 1} 的产品。`;
-    if ((needsMaterialBatch.value || (x.product?.materialBatches?.length || 0) > 1) && !x.materialBatch?.trim()) return `请选择产品明细 ${i + 1} 的具体物料批次。`;
+    if (!isNewFinishedReceipt.value && (needsMaterialBatch.value || (x.product?.materialBatches?.length || 0) > 1) && !x.materialBatch?.trim()) return `请选择产品明细 ${i + 1} 的具体物料批次。`;
     if ((x.product?.productionNumbers?.length || 0) > 1 && !x.productionNumber?.trim() && !x.id) return `请选择产品明细 ${i + 1} 的具体生产编号。`;
     if (!x.batchNo.trim()) return `请填写产品明细 ${i + 1} 的物料编码。`;
     if (
@@ -328,8 +361,8 @@ function payload() {
 
     returnMovement: direction.value === "PRODUCTION_TO_WAREHOUSE" && draft.value.returnMovement,
     productionTaskId: draft.value.productionTaskId,
-    palletNo: isFinishedReceipt.value && draft.value.productionTaskId ? draft.value.palletNo : undefined,
-    palletCount: isFinishedReceipt.value && draft.value.productionTaskId ? palletCount.value : undefined,
+    palletNo: isFinishedReceipt.value ? draft.value.palletNo : undefined,
+    palletCount: isFinishedReceipt.value && (draft.value.productionTaskId || draft.value.palletNo != null) ? palletCount.value : undefined,
     remarks: editId ? draft.value.remarks : undefined,
     items: draft.value.items.map((x) => {
       const quantity = quantityItem(x);
@@ -343,9 +376,9 @@ function payload() {
         tailCartons: Number(x.tailCartons) || 0,
         tailUnitsPerCarton: x.tailCartons > 0 ? Number(x.tailUnitsPerCarton) : null,
         batchNo: x.batchNo,
-        materialBatch: x.materialBatch || "",
+        materialBatch: isNewFinishedReceipt.value ? "" : x.materialBatch || "",
         productionNumber: x.productionNumber || "",
-        subBatch: x.subBatch || "",
+        subBatch: isNewFinishedReceipt.value ? "" : x.subBatch || "",
         fullCartons: Number(quantity.fullCartons) || 0,
         looseUnits: Number(quantity.looseUnits) || 0,
         totalUnits:
@@ -592,7 +625,7 @@ onBeforeUnmount(() => {
           <SearchPicker
             v-model="item.productId"
             label="产品"
-            placeholder="输入产品名、物料编码或物料批次"
+            :placeholder="isNewFinishedReceipt ? '输入产品名或物料编码' : '输入产品名、物料编码或物料批次'"
             :load="(q) => loadProductChoices(q, item)"
             @select="(p) => selectProduct(item, p)"
           >
@@ -611,20 +644,38 @@ onBeforeUnmount(() => {
               placeholder="选择产品后自动带入"
             />
           </div>
-          <MaterialBatchPicker v-model="item.materialBatch" :batches="item.product?.materialBatches" :required="needsMaterialBatch" />
+          <MaterialBatchPicker v-if="!isNewFinishedReceipt" v-model="item.materialBatch" :batches="item.product?.materialBatches" :required="needsMaterialBatch" />
           <ProductionNumberPicker v-model="item.productionNumber" :numbers="item.product?.productionNumbers" :allow-unspecified="!!item.id && !item.productionNumber" />
-          <div class="field">
+          <div v-if="isFinishedReceipt && index === 0" class="field pallet-number-field">
+            <label for="pallet-no">PALLET NO</label>
+            <input id="pallet-no" class="input mono" type="number" min="1" step="1" inputmode="numeric" :value="draft.palletNo ?? ''" :disabled="!!editId" :placeholder="draft.productionTaskId ? '留空自动分配' : '手动输入托盘号'" @input="changePalletNo" />
+            <small class="hint" v-if="editId">{{ draft.palletNo != null ? `原记录 PALLET NO：${palletRangeText}` : '原记录没有 PALLET NO' }}</small>
+            <small class="hint" v-else-if="draft.productionTaskId">关联生产任务时留空，系统自动分配下一托盘号；也可手动填写起始编号。</small>
+            <small class="hint" v-else>未关联生产任务时可手动填写；留空不记录托盘号。</small>
+          </div>
+          <div v-if="!isNewFinishedReceipt" class="field">
             <label :for="`sub-batch-${index}`">区分批次（可选）</label>
             <input :id="`sub-batch-${index}`" class="input mono" maxlength="100" v-model.trim="item.subBatch" placeholder="外盒同编码、同批次仍需区分时填写" />
             <small class="hint">填写实际区分标识。不同区分批次分别统计；不需要区分时留空。</small>
           </div>
           <div class="packing-fields">
             <p v-if="taskPacking(item)" class="hint">任务包装：{{ taskPacking(item)!.boxesPerCarton }} 盒/箱 × {{ taskPacking(item)!.unitsPerBox }} {{ taskPacking(item)!.primaryMaterialUnit }}/盒。尾箱可填写实际盒数。</p>
-            <div v-if="isNewFinishedReceipt && palletCartonCount(item)" class="field"><label :for="`whole-pallets-${index}`">整托数量</label><div class="count-stepper"><button type="button" :aria-label="`减少整托数量，第 ${index + 1} 项`" :disabled="Number(item.wholePallets || 0)<=0" @click="changeWholePallets(item,-1)">-</button><input :id="`whole-pallets-${index}`" class="input mono" type="number" min="0" step="1" inputmode="numeric" :value="item.wholePallets || 0" @input="setWholePallets(item,$event)" /><button type="button" :aria-label="`增加整托数量，第 ${index + 1} 项`" @click="changeWholePallets(item,1)">+</button></div><small class="hint">每托 {{ palletCartonCount(item) }} 箱，共 {{ wholePalletCartons(item) }} 箱</small></div>
+            <div v-if="isNewFinishedReceipt" class="field">
+              <label class="whole-pallet-toggle"><input type="checkbox" :checked="Number(item.wholePallets || 0) > 0" @change="toggleWholePallet(item,$event,index)" /><span>整托入库</span></label>
+              <div v-if="Number(item.wholePallets || 0) > 0" class="whole-pallet-count">
+                <label :for="`whole-pallets-${index}`">托数</label>
+                <div class="count-stepper"><button type="button" :aria-label="`减少整托数量，第 ${index + 1} 项`" :disabled="Number(item.wholePallets || 0)<=1" @click="changeWholePallets(item,-1)">-</button><input :id="`whole-pallets-${index}`" class="input mono" type="number" min="1" step="1" inputmode="numeric" :value="item.wholePallets || 1" @input="setWholePallets(item,$event)" /><button type="button" :aria-label="`增加整托数量，第 ${index + 1} 项`" @click="changeWholePallets(item,1)">+</button></div>
+                <small class="hint">{{ palletCartonCount(item) }} 箱/托，共 {{ wholePalletCartons(item) }} 箱</small>
+              </div>
+              <div v-if="palletSetupPromptIndex === index" class="pallet-setup-prompt" role="status">
+                <p>产品尚未设置每托箱数。设置后才能按整托入库。</p>
+                <div><button type="button" class="btn btn-secondary" @click="openProductManagement">去产品管理设置</button><button type="button" class="btn btn-ghost" @click="palletSetupPromptIndex = null">待会设置</button></div>
+              </div>
+            </div>
             <div v-if="boxed(item)" class="grid-2"><div class="field"><label :for="`box-count-${index}`">每箱装几盒</label><input :id="`box-count-${index}`" class="input" type="number" min="1" step="1" inputmode="numeric" v-model.number="item.boxesPerCarton" @input="quantityChanged(item)" /></div><div class="field"><label :for="`box-units-${index}`">每盒装几{{item.product?.baseUnit||'个'}}</label><input :id="`box-units-${index}`" class="input" type="number" min="1" step="1" inputmode="numeric" v-model.number="item.unitsPerBox" @input="quantityChanged(item)" /></div></div>
             <div class="grid-2">
               <div class="field"><label :for="`size-${index}`" :class="{required:item.fullCartons > 0 && commonSpecs(item).length > 1}">{{boxed(item)?'每箱数量（自动计算）':'完整箱每箱数量'}}</label><input :id="`size-${index}`" class="input mono" type="number" min="1" step="1" inputmode="numeric" v-model.number="item.unitsPerCarton" :readonly="!!taskPacking(item)||boxed(item)" @input="quantityChanged(item)" placeholder="选择下方规格或输入每箱数量" /><small v-if="!taskPacking(item) && commonSpecs(item).length > 1" class="hint">有多种每箱数量，请选择本次完整箱规格；仅尾箱或散装可留空。</small></div>
-              <div class="field"><label :for="`full-${index}`">额外完整箱数</label><input :id="`full-${index}`" class="input mono" type="number" min="0" step="1" inputmode="numeric" v-model.number="item.fullCartons" @input="quantityChanged(item)" /></div>
+              <div class="field"><label :for="`full-${index}`">额外完整箱数</label><input :id="`full-${index}`" class="input mono" type="number" min="0" step="1" inputmode="numeric" v-model.number="item.fullCartons" :disabled="isNewFinishedReceipt && Number(item.wholePallets || 0) > 0" @input="quantityChanged(item)" /></div>
             </div>
             <div v-if="!taskPacking(item) && item.product?.boxPackings?.length" class="spec-options" aria-label="选择包装规格"><button v-for="packing in item.product.boxPackings" :key="`${packing.boxesPerCarton}/${packing.unitsPerBox}`" type="button" :aria-pressed="item.boxesPerCarton===packing.boxesPerCarton&&item.unitsPerBox===packing.unitsPerBox" :class="{active:item.boxesPerCarton===packing.boxesPerCarton&&item.unitsPerBox===packing.unitsPerBox}" @click="choosePacking(item,packing)">{{packing.boxesPerCarton}} 盒 × {{packing.unitsPerBox}} {{item.product.baseUnit}}/盒</button></div>
             <button v-if="productUsage==='PRODUCTION_TO_WAREHOUSE'&&!taskPacking(item)&&!boxed(item)" type="button" class="btn btn-ghost" @click="choosePacking(item,{boxesPerCarton:0,unitsPerBox:0})">填写每箱盒数 / 每盒数量</button>
@@ -639,10 +690,10 @@ onBeforeUnmount(() => {
                 <div v-if="taskPacking(item)||boxed(item)" class="field"><label :for="`tail-boxes-${index}`">每个尾箱实际盒数</label><input :id="`tail-boxes-${index}`" class="input mono" type="number" min="1" step="1" :value="tailBoxes(item)" @input="setTailBoxes(item, $event)" placeholder="例如 12 盒" /><small class="hint">实际 {{ item.tailUnitsPerCarton || 0 }} {{ item.product?.baseUnit }} / 尾箱</small></div>
                 <div v-else class="field"><label :for="`tail-size-${index}`">每个尾箱实际数量</label><input :id="`tail-size-${index}`" class="input mono" type="number" min="1" step="1" inputmode="numeric" v-model.number="item.tailUnitsPerCarton" @input="quantityChanged(item)" placeholder="例如 3" /></div>
               </div>
-              <small class="hint">尾箱计入总箱数。尾箱数量不同时，点击“添加同物料规格 / 批次”分开填写。</small>
+              <small class="hint">{{ isNewFinishedReceipt ? '尾箱计入总箱数；不同规格的尾箱请分开填写。' : '尾箱计入总箱数。尾箱数量不同时，点击“添加同物料规格 / 批次”分开填写。' }}</small>
               <div v-if="!isNewFinishedReceipt" class="field"><label :for="`loose-${index}`">真正散装（未装箱的{{item.product?.baseUnit || '数量'}}）</label><input :id="`loose-${index}`" class="input mono" type="number" min="0" step="1" inputmode="numeric" v-model.number="item.looseUnits" @input="quantityChanged(item)" /></div>
             </details>
-            <button v-if="item.productId" class="btn btn-ghost" type="button" @click="addSpecification(item)">＋ 添加同物料规格 / 批次</button>
+            <button v-if="item.productId" class="btn btn-ghost" type="button" @click="addSpecification(item)">{{ isNewFinishedReceipt ? '＋ 添加同产品规格' : '＋ 添加同物料规格 / 批次' }}</button>
           </div>
           <label v-if="!isNewFinishedReceipt" class="unknown-quantity">
             <input type="checkbox" v-model="item.quantityUnknown" :disabled="item.product?.quantityUnknown" @change="toggleUnknownQuantity(item)" />
@@ -752,10 +803,6 @@ onBeforeUnmount(() => {
         <small v-else-if="draft.items.some(i => !i.productId)" class="hint">先选择产品，再显示匹配的生产任务。</small>
         <small v-else-if="!productionTasks.length && !keepOriginalTask" class="hint">没有匹配任务。{{ direction === 'WAREHOUSE_TO_PRODUCTION' ? '仅显示需要本单全部物料且进行中的任务。' : draft.returnMovement ? '仅显示需要本单物料且未取消的任务。' : '请先在任务中设置对应成品；进行中即可分批回仓。' }}</small>
         <small v-else class="hint">{{ direction === 'WAREHOUSE_TO_PRODUCTION' ? '只显示需要本单全部物料且进行中的任务。' : draft.returnMovement ? '退料计入任务的净发料，不计入成品产量。' : '按任务对应成品累计回仓产量；已完成任务请从任务详情补关联已有记录。' }}</small>
-        <div v-if="isFinishedReceipt" class="grid-2 pallet-fields">
-          <div class="field"><label for="pallet-no">PALLET NO</label><input id="pallet-no" class="input mono" type="number" min="1" step="1" inputmode="numeric" :value="draft.palletNo ?? ''" :disabled="!!editId || !draft.productionTaskId" placeholder="自动分配" @input="changePalletNo" /><small class="hint" v-if="editId">{{ draft.palletNo != null ? `原记录 PALLET NO：${palletRangeText}` : '旧记录没有 PALLET NO，编辑时不会补号' }}</small><small class="hint" v-else-if="draft.productionTaskId">本次 {{ palletCount }} 托；留空自动分配 {{ palletRangeText }}</small><small class="hint" v-else>关联生产任务后自动分配</small></div>
-          <div class="field"><span class="field-label">本次托数</span><p class="pallet-count">{{ draft.productionTaskId ? palletCount : '—' }} 托</p></div>
-        </div>
         <p v-if="taskError" class="form-alert" role="alert">{{ taskError }} <button type="button" class="btn btn-ghost" @click="refreshTasks">重试</button></p>
       </div>
     </section>
@@ -778,10 +825,15 @@ onBeforeUnmount(() => {
 .product-option-meta{display:block;margin-top:3px;font-size:12px;color:var(--muted);overflow-wrap:anywhere}
 .product-option-warning{display:block;margin-top:3px;font-size:12px;color:var(--orange)}
 .packing-fields > .grid-2 { align-items: start; }
-.pallet-fields{align-items:start}.pallet-fields .field{min-width:0}
+.pallet-number-field{max-width:420px}
+.whole-pallet-toggle{display:flex;align-items:center;gap:9px;min-height:40px;font-weight:650;color:var(--ink)}
+.whole-pallet-toggle input{width:18px;height:18px;accent-color:var(--blue)}
+.whole-pallet-count{display:grid;gap:8px;margin:8px 0 0 27px;max-width:320px}
+.pallet-setup-prompt{margin-top:10px;padding:11px;border:1px solid #e3b56d;border-radius:7px;background:#fff8e8;color:#744a10}
+.pallet-setup-prompt p{margin:0 0 9px;font-size:13px}
+.pallet-setup-prompt>div{display:flex;flex-wrap:wrap;gap:7px}
 
 .packing-fields{display:grid;gap:12px}.spec-options{display:flex;flex-wrap:wrap;gap:6px;align-items:center}.spec-options button{border:1px solid var(--line);background:#fff;border-radius:6px;padding:7px 10px;min-height:36px;font-size:12px}.spec-options button.active{background:var(--soft-blue);border-color:var(--blue);color:var(--blue)}
-.pallet-count{display:flex;align-items:center;min-height:44px;margin:0;color:var(--ink);font-size:14px;font-weight:650}
 .count-stepper{display:grid;grid-template-columns:40px minmax(0,1fr) 40px;align-items:center;gap:6px}.count-stepper button{width:40px;height:44px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--blue);font-size:20px;line-height:1;cursor:pointer}.count-stepper button:disabled{color:var(--muted);cursor:not-allowed}.count-stepper input{min-width:0;text-align:center}
 .optional-packing{border:1px solid var(--line);border-radius:9px;padding:12px}.optional-packing summary{cursor:pointer;color:var(--blue);font-weight:650}.optional-packing[open] summary{margin-bottom:12px}.optional-packing>.hint{display:block;margin:8px 0 12px}
 

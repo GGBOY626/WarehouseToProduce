@@ -153,6 +153,22 @@ class MovementServiceIntegrationTest {
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.directions[0].totalPallets").value(5));
     }
 
+    @Test void savesManualPalletRangeForUnlinkedFinishedReceipt() {
+        var receipt=movements.create(new MovementDtos.SaveRequest(UUID.randomUUID().toString(),MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE,
+                Instant.parse("2026-09-28T05:00:00Z"),sender,receiver,null,false,null,17,3,null,
+                List.of(new MovementDtos.ItemRequest(inboundProduct,"MANUAL-PALLET",12,0,null,null,List.of()))));
+
+        assertThat(receipt.productionTaskId()).isNull();
+        assertThat(receipt.palletNo()).isEqualTo(17);
+        assertThat(receipt.palletCount()).isEqualTo(3);
+        var rows=movements.search(LocalDate.of(2026,9,28),LocalDate.of(2026,9,28),MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE,
+                MovementEnums.Status.ACTIVE,null,null,"MANUAL-PALLET",0,20,null,null);
+        assertThat(rows.content()).singleElement().satisfies(row->{
+            assertThat(row.palletNo()).isEqualTo(17);
+            assertThat(row.palletCount()).isEqualTo(3);
+        });
+    }
+
     @Test void taskDatesFollowEffectiveMovementsAndCompletedCorrectionsUseTaskEntry(){
         var task=productionTasks.create(new ProductionTaskService.SaveRequest(product,1000L,LocalDate.of(2026,10,19),"DATES",null,null,inboundProduct,1000L));
         var issue=movements.create(new MovementDtos.SaveRequest(UUID.randomUUID().toString(),MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,

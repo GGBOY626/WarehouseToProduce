@@ -219,15 +219,21 @@ public class MovementService {
                 throw BusinessException.badRequest("TASK_CARTON_SPEC_MISMATCH","满箱规格与任务包装设置不一致，请核对每箱盒数和每盒数量。");
         }
         boolean finishedReceipt=r.direction()==MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE&&!r.returnMovement();
-        if(!finishedReceipt||m.getProductionTask()==null){
+        if(!finishedReceipt){
             m.setPalletNo(null);m.setPalletCount(null);
-        }else if(!isNew&&Objects.equals(previousTaskId,m.getProductionTask().getId())&&previousPalletNo!=null){
+        }else if(m.getProductionTask()!=null&&!isNew&&Objects.equals(previousTaskId,m.getProductionTask().getId())&&previousPalletNo!=null){
             m.setPalletNo(previousPalletNo);m.setPalletCount(previousPalletCount);
-        }else if(isNew){
+        }else if(m.getProductionTask()!=null&&isNew){
             int palletCount=r.palletCount()==null?1:r.palletCount();
             if(palletCount<1)throw BusinessException.badRequest("PALLET_COUNT_INVALID","托数必须大于零。");
             m.setPalletNo(productionTasks.allocatePalletRange(m.getProductionTask().getId(),palletCount,r.palletNo()));
             m.setPalletCount(palletCount);
+        }else if(m.getProductionTask()==null&&!isNew&&previousTaskId==null&&previousPalletNo!=null){
+            m.setPalletNo(previousPalletNo);m.setPalletCount(previousPalletCount);
+        }else if(m.getProductionTask()==null&&isNew&&r.palletNo()!=null){
+            int palletCount=r.palletCount()==null?1:r.palletCount();
+            if(palletCount<1)throw BusinessException.badRequest("PALLET_COUNT_INVALID","托数必须大于零。");
+            m.setPalletNo(r.palletNo());m.setPalletCount(palletCount);
         }else{
             m.setPalletNo(null);m.setPalletCount(null);
         }
