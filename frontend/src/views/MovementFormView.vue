@@ -219,14 +219,11 @@ const palletCount = computed(() => {
   }, 0);
   return Math.max(1, count);
 });
-const nextPalletNo = computed(() => draft.value.palletNo || selectedTask.value?.nextPalletNo || 1);
+const nextPalletNo = computed(() => draft.value.palletNo || 1);
 const palletRangeText = computed(() => {
   const start = Number(draft.value.palletNo || nextPalletNo.value);
   const end = start + Math.max(1, palletCount.value) - 1;
   return start === end ? String(start) : `${start}-${end}`;
-});
-watch(() => draft.value.productionTaskId, (id, previousId) => {
-  if (initialized.value && editId && id !== previousId) draft.value.palletNo = undefined;
 });
 async function loadProductChoices(query: string, item: ItemInput): Promise<Product[]> {
   const search = query.trim();
@@ -362,7 +359,7 @@ function payload() {
     returnMovement: direction.value === "PRODUCTION_TO_WAREHOUSE" && draft.value.returnMovement,
     productionTaskId: draft.value.productionTaskId,
     palletNo: isFinishedReceipt.value ? draft.value.palletNo : undefined,
-    palletCount: isFinishedReceipt.value && (draft.value.productionTaskId || draft.value.palletNo != null) ? palletCount.value : undefined,
+    palletCount: isFinishedReceipt.value && draft.value.palletNo != null ? palletCount.value : undefined,
     remarks: editId ? draft.value.remarks : undefined,
     items: draft.value.items.map((x) => {
       const quantity = quantityItem(x);
@@ -439,15 +436,7 @@ async function save() {
     saving.value = false;
   }
 }
-function beforeUnload(e: BeforeUnloadEvent) {
-  if (dirty.value) {
-    e.preventDefault();
-    e.returnValue = "";
-  }
-}
-onBeforeRouteLeave(
-  () => !dirty.value || confirm("表单还有未保存内容，确定离开？"),
-);
+onBeforeRouteLeave(() => true);
 watch(
   draft,
   () => {
@@ -458,7 +447,6 @@ watch(
   { deep: true },
 );
 onMounted(async () => {
-  window.addEventListener("beforeunload", beforeUnload);
   if (editId) {
     const m = await movementsApi.detail(editId);
     const catalog = await productsApi.search('', true);
@@ -517,12 +505,8 @@ onMounted(async () => {
     if (m.productionTaskId) originalTask.value = { id: m.productionTaskId, name: m.productionTaskName || '原关联任务', selection: taskSelection.value };
     dirty.value = false;
   } else {
-    const cached = localStorage.getItem(draftKey.value);
-    if (cached && confirm("发现未保存的表单草稿，是否继续填写？"))
-      draft.value = { ...JSON.parse(cached), returnMovement: !!JSON.parse(cached).returnMovement };
-    else {
-      dirty.value = false;
-    }
+    localStorage.removeItem(draftKey.value);
+    dirty.value = false;
   }
   draft.value.items.forEach(item => {
     const legacyItem = item as ItemInput & { wholePallet?: boolean };
@@ -555,7 +539,6 @@ onMounted(async () => {
 });
 onBeforeUnmount(() => {
   taskRequest++;
-  window.removeEventListener("beforeunload", beforeUnload);
   files.value.forEach((x) => URL.revokeObjectURL(x.url));
 });
 </script>
@@ -648,10 +631,9 @@ onBeforeUnmount(() => {
           <ProductionNumberPicker v-model="item.productionNumber" :numbers="item.product?.productionNumbers" :allow-unspecified="!!item.id && !item.productionNumber" />
           <div v-if="isFinishedReceipt && index === 0" class="field pallet-number-field">
             <label for="pallet-no">PALLET NO</label>
-            <input id="pallet-no" class="input mono" type="number" min="1" step="1" inputmode="numeric" :value="draft.palletNo ?? ''" :disabled="!!editId" :placeholder="draft.productionTaskId ? '留空自动分配' : '手动输入托盘号'" @input="changePalletNo" />
+            <input id="pallet-no" class="input mono" type="number" min="1" step="1" inputmode="numeric" :value="draft.palletNo ?? ''" placeholder="手动输入起始托盘号" @input="changePalletNo" />
             <small class="hint" v-if="editId">{{ draft.palletNo != null ? `原记录 PALLET NO：${palletRangeText}` : '原记录没有 PALLET NO' }}</small>
-            <small class="hint" v-else-if="draft.productionTaskId">关联生产任务时留空，系统自动分配下一托盘号；也可手动填写起始编号。</small>
-            <small class="hint" v-else>未关联生产任务时可手动填写；留空不记录托盘号。</small>
+            <small class="hint">只需填写最小托盘号；托数会自动连续编号。{{ draft.palletNo != null || isNewFinishedReceipt ? `本次编号：${palletRangeText}` : '' }}留空不记录托盘号。</small>
           </div>
           <div v-if="!isNewFinishedReceipt" class="field">
             <label :for="`sub-batch-${index}`">区分批次（可选）</label>
@@ -667,6 +649,7 @@ onBeforeUnmount(() => {
                 <div class="count-stepper"><button type="button" :aria-label="`减少整托数量，第 ${index + 1} 项`" :disabled="Number(item.wholePallets || 0)<=1" @click="changeWholePallets(item,-1)">-</button><input :id="`whole-pallets-${index}`" class="input mono" type="number" min="1" step="1" inputmode="numeric" :value="item.wholePallets || 1" @input="setWholePallets(item,$event)" /><button type="button" :aria-label="`增加整托数量，第 ${index + 1} 项`" @click="changeWholePallets(item,1)">+</button></div>
                 <small class="hint">{{ palletCartonCount(item) }} 箱/托，共 {{ wholePalletCartons(item) }} 箱</small>
               </div>
+              <small v-if="Number(item.wholePallets || 0) > 0" class="hint">标准托只填写完整托数；最后一托请在下方尾托中填写实际箱数、盒数或数量。</small>
               <div v-if="palletSetupPromptIndex === index" class="pallet-setup-prompt" role="status">
                 <p>产品尚未设置每托箱数。设置后才能按整托入库。</p>
                 <div><button type="button" class="btn btn-secondary" @click="openProductManagement">去产品管理设置</button><button type="button" class="btn btn-ghost" @click="palletSetupPromptIndex = null">待会设置</button></div>

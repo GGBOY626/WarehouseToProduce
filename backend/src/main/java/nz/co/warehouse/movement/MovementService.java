@@ -221,16 +221,7 @@ public class MovementService {
         boolean finishedReceipt=r.direction()==MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE&&!r.returnMovement();
         if(!finishedReceipt){
             m.setPalletNo(null);m.setPalletCount(null);
-        }else if(m.getProductionTask()!=null&&!isNew&&Objects.equals(previousTaskId,m.getProductionTask().getId())&&previousPalletNo!=null){
-            m.setPalletNo(previousPalletNo);m.setPalletCount(previousPalletCount);
-        }else if(m.getProductionTask()!=null&&isNew){
-            int palletCount=r.palletCount()==null?1:r.palletCount();
-            if(palletCount<1)throw BusinessException.badRequest("PALLET_COUNT_INVALID","托数必须大于零。");
-            m.setPalletNo(productionTasks.allocatePalletRange(m.getProductionTask().getId(),palletCount,r.palletNo()));
-            m.setPalletCount(palletCount);
-        }else if(m.getProductionTask()==null&&!isNew&&previousTaskId==null&&previousPalletNo!=null){
-            m.setPalletNo(previousPalletNo);m.setPalletCount(previousPalletCount);
-        }else if(m.getProductionTask()==null&&isNew&&r.palletNo()!=null){
+        }else if(r.palletNo()!=null){
             int palletCount=r.palletCount()==null?1:r.palletCount();
             if(palletCount<1)throw BusinessException.badRequest("PALLET_COUNT_INVALID","托数必须大于零。");
             m.setPalletNo(r.palletNo());m.setPalletCount(palletCount);
