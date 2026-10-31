@@ -145,6 +145,7 @@ function quantityItem(item: ItemInput): ItemInput {
     ...item,
     fullCartons: fullCartonsForPalletSelection(item.fullCartons, palletCartonCount(item), wholePallet),
     looseUnits: isNewFinishedReceipt.value ? 0 : Number(item.looseUnits || 0),
+    quantityUnknown: isNewFinishedReceipt.value ? false : item.quantityUnknown,
     manualTotal: wholePallet ? false : item.manualTotal,
   };
 }
@@ -237,7 +238,7 @@ function selectProduct(item: ItemInput, p?: Product) {
   const numbers = p?.productionNumbers || [];
   item.productionNumber = numbers.length === 1 ? numbers[0] : "";
   item.manualTotal = false;
-  item.quantityUnknown = !!p?.quantityUnknown;
+  item.quantityUnknown = isNewFinishedReceipt.value ? false : !!p?.quantityUnknown;
 
   quantityChanged(item);
 }
@@ -299,7 +300,7 @@ function validate() {
     if ((x.product?.productionNumbers?.length || 0) > 1 && !x.productionNumber?.trim() && !x.id) return `请选择产品明细 ${i + 1} 的具体生产编号。`;
     if (!x.batchNo.trim()) return `请填写产品明细 ${i + 1} 的物料编码。`;
     if (
-      !x.quantityUnknown &&
+      !quantity.quantityUnknown &&
       quantity.fullCartons <= 0 &&
       quantity.tailCartons <= 0 &&
       quantity.looseUnits <= 0 &&
@@ -341,7 +342,7 @@ function payload() {
           quantity.quantityUnknown ? undefined : quantity.manualTotal && quantity.totalUnits !== undefined
             ? Number(quantity.totalUnits)
             : displayedTotal(x),
-        quantityUnknown: x.quantityUnknown,
+        quantityUnknown: quantity.quantityUnknown,
         remarks: x.remarks,
         issues: editId ? x.issues : [],
       };
@@ -629,7 +630,7 @@ onBeforeUnmount(() => {
             </details>
             <button v-if="item.productId" class="btn btn-ghost" type="button" @click="addSpecification(item)">＋ 添加同物料规格 / 批次</button>
           </div>
-          <label class="unknown-quantity">
+          <label v-if="!isNewFinishedReceipt" class="unknown-quantity">
             <input type="checkbox" v-model="item.quantityUnknown" :disabled="item.product?.quantityUnknown" @change="toggleUnknownQuantity(item)" />
             {{item.product?.quantityUnknown ? '该产品已设置为数量不确定' : '数量不确定（无法清点或没有数量标识）'}}
           </label>
