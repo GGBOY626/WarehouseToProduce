@@ -14,7 +14,7 @@ defineEmits<{ select: [target: ProductionTaskTarget] }>();
         <p v-else-if="!target.unknownQuantityCount" class="ready">已备齐</p>
         <p v-if="target.unknownQuantityCount" class="shortage">有 {{target.unknownQuantityCount}} 条发料或退料明细数量不确定，请核对后确认是否备齐。</p>
         <div v-if="!target.unknownQuantityCount" class="return-summary">
-          <p v-if="target.issuedQuantity > target.targetQuantity">车间应退 {{ (target.issuedQuantity-target.targetQuantity).toLocaleString() }} {{target.baseUnit || '个'}} · 已退 {{target.returnedQuantity.toLocaleString()}} {{target.baseUnit || '个'}} · 尚差 {{Math.max(0,target.completedQuantity-target.targetQuantity).toLocaleString()}} {{target.baseUnit || '个'}}</p>
+          <p v-if="target.theoreticalReturnQuantity!=null">理论应退 {{ target.theoreticalReturnQuantity.toLocaleString(undefined,{maximumFractionDigits:6}) }} {{target.baseUnit || '个'}} · 实际已退 {{target.returnedQuantity.toLocaleString()}} {{target.baseUnit || '个'}} · 还差 {{Math.max(0,target.theoreticalReturnQuantity-target.returnedQuantity).toLocaleString(undefined,{maximumFractionDigits:6})}} {{target.baseUnit || '个'}}</p>
           <p>{{completed ? '损耗数量' : '暂估损耗数量'}}：{{Math.max(0,target.completedQuantity-target.targetQuantity).toLocaleString()}} {{target.baseUnit || '个'}} · 损耗率：{{target.completedQuantity > 0 ? (Math.max(0,target.completedQuantity-target.targetQuantity)/target.completedQuantity*100).toFixed(2)+'%' : '—'}}</p>
           <small>按计划需求核对：损耗 = 已发 − 已退 − 需求；损耗率按净发料计算。{{completed ? '' : '生产结束并核对退料后确认。'}}</small>
         </div>
@@ -32,6 +32,7 @@ defineEmits<{ select: [target: ProductionTaskTarget] }>();
             <div v-if="cards" class="material-quantities"><span>已退料 <b>{{target.returnedQuantity.toLocaleString()}} {{target.baseUnit || '个'}}</b></span><span>净发料 <b>{{target.completedQuantity.toLocaleString()}} {{target.baseUnit || '个'}}</b></span></div>
             <small v-else class="quantities">已发 {{target.issuedQuantity.toLocaleString()}} · 已退 {{target.returnedQuantity.toLocaleString()}} {{target.baseUnit || '个'}}</small>
             <small v-if="target.estimatedUsedQuantity!=null" class="quantities">按回仓产量预计耗用 {{target.estimatedUsedQuantity.toLocaleString(undefined,{maximumFractionDigits:6})}} {{target.baseUnit || '个'}}</small>
+            <small v-if="target.theoreticalUsedQuantity!=null" class="quantities">按物料瓶颈理论耗用 {{target.theoreticalUsedQuantity.toLocaleString(undefined,{maximumFractionDigits:6})}} {{target.baseUnit || '个'}}</small>
 
           </template>
         </div>

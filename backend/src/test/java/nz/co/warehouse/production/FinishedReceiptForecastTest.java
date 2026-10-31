@@ -71,6 +71,27 @@ class FinishedReceiptForecastTest {
         assertThat(tasks.detail(task.id()).forecast().received().cartons()).isEqualTo("0");
         assertThat(tasks.detail(task.id()).forecast().remaining().cartons()).isEqualTo("99");
     }
+    @Test void packagingMaterialLimitsForecastAndReturnAmounts(){
+        Long bag=products.create(new ProductDtos.Request(name+"-bag","BAG",null,ProductUsage.WAREHOUSE_TO_PRODUCTION,400,"个")).id();
+        var request=new ProductionTaskService.SaveRequest(null,null,LocalDate.now(),"PACK",null,
+                List.of(new ProductionTaskService.TargetRequest(raw,30000),new ProductionTaskService.TargetRequest(bag,3000)),output,30000L,"Packaging forecast",null,
+                22,30,ProductionTask.OutputQuantityBasis.UNIT,raw,null,null,null);
+        var task=tasks.create(request);
+        move(task.id(),raw,30000,false);move(task.id(),bag,2000,false);move(task.id(),raw,1000,true);
+        var detail=tasks.detail(task.id());
+        assertThat(detail.forecast().expected().cartons()).isEqualTo("30");
+        assertThat(detail.forecast().expected().boxes()).isEqualTo("6");
+        assertThat(detail.forecast().expected().units()).isEqualTo("20");
+        assertThat(detail.forecast().messages()).anyMatch(message->message.contains("20000"));
+        var rawTarget=detail.targets().stream().filter(target->target.productId().equals(raw)).findFirst().orElseThrow();
+        var bagTarget=detail.targets().stream().filter(target->target.productId().equals(bag)).findFirst().orElseThrow();
+        assertThat(rawTarget.theoreticalUsedQuantity()).isEqualByComparingTo("20000");
+        assertThat(rawTarget.theoreticalReturnQuantity()).isEqualByComparingTo("10000");
+        assertThat(bagTarget.theoreticalUsedQuantity()).isEqualByComparingTo("2000");
+        assertThat(bagTarget.theoreticalReturnQuantity()).isEqualByComparingTo("0");
+        assertThat(rawTarget.returnedQuantity()).isEqualTo(1000);
+        assertThat(bagTarget.returnedQuantity()).isZero();
+    }
     @Test void missingRatioDefaultsToOneToOneAndNoIssuesOrReceiptsAreZero(){
         var legacy=tasks.create(plan(null,null,null));
         move(legacy.id(),raw,66000,false);

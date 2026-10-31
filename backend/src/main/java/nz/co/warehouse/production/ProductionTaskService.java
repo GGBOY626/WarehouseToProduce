@@ -59,7 +59,8 @@ public class ProductionTaskService {
     }
     public record TargetResponse(Long productId,String productName,String materialCode,String baseUnit,long targetQuantity,Integer shortageCartonSize,
                                  long completedQuantity,int progressPercent,long issuedQuantity,long returnedQuantity,
-                                 long shortageQuantity,int unknownQuantityCount,boolean materialTarget,BigDecimal estimatedUsedQuantity,String materialBatch,List<BatchResponse> batches) {}
+                                 long shortageQuantity,int unknownQuantityCount,boolean materialTarget,BigDecimal estimatedUsedQuantity,
+                                 BigDecimal theoreticalUsedQuantity,BigDecimal theoreticalReturnQuantity,String materialBatch,List<BatchResponse> batches) {}
     public record BatchResponse(String materialBatch,String subBatch,long issuedQuantity,long returnedQuantity,long netQuantity,int unknownQuantityCount) {}
     public record MovementResponse(Long id,String recordNo,MovementEnums.Direction direction,boolean returnMovement,
                                    Instant movementTime,int totalCartons,long totalQuantity,List<String> productNames,MovementEnums.Status status,int unknownQuantityCount,String quantityUnit,List<MovementMaterialResponse> items) {}
@@ -227,7 +228,7 @@ public class ProductionTaskService {
         final long outputReceived=received;
         Map<Long,List<ProductionTaskTarget>> grouped=new LinkedHashMap<>();
         t.getTargets().forEach(x->grouped.computeIfAbsent(x.getProduct().canonicalId(),ignored->new ArrayList<>()).add(x));
-        List<TargetResponse> targets=grouped.entrySet().stream().map(entry->{
+        List<TargetResponse> baseTargets=grouped.entrySet().stream().map(entry->{
             Product p=entry.getValue().getFirst().getProduct().canonical();
             long required=entry.getValue().stream().mapToLong(ProductionTaskTarget::getTargetQuantity).reduce(0L,Math::addExact);
             Map<BatchSelectionKey,long[]> batches=new LinkedHashMap<>();
@@ -249,8 +250,18 @@ public class ProductionTaskService {
             return new TargetResponse(p.getId(),p.getName(),p.getMaterialCode(),p.getBaseUnit(),required,p.availableCartonSpecs().stream().findFirst().orElse(null),completed,
                     material?(int)Math.max(0,Math.min(100,completed*100.0/required)):0,
                     issued,returned,Math.max(0,required-completed),unknown,material,t.getOutputProduct()==null||!material?null:BigDecimal.valueOf(outputReceived).multiply(BigDecimal.valueOf(required))
-                            .divide(BigDecimal.valueOf(t.getTargetOutputQuantity()),6,RoundingMode.HALF_UP),null,
+                            .divide(BigDecimal.valueOf(t.getTargetOutputQuantity()),6,RoundingMode.HALF_UP),null,null,null,
                     batches.entrySet().stream().map(e->new BatchResponse(e.getKey().batch(),e.getKey().subBatch(),e.getValue()[0],e.getValue()[1],e.getValue()[0]-e.getValue()[1],(int)e.getValue()[2])).toList());
+        }).toList();
+        List<TargetResponse> targets;
+        List<TargetResponse> materialTargets=baseTargets.stream().filter(TargetResponse::materialTarget).toList();
+        boolean canCalculateReturns=!materialTargets.isEmpty() && materialTargets.stream().allMatch(x->x.unknownQuantityCount()==0&&x.completedQuantity()>=0&&x.targetQuantity()>0);
+        BigDecimal capacityRatio=canCalculateReturns?materialTargets.stream().map(x->BigDecimal.valueOf(x.completedQuantity()).divide(BigDecimal.valueOf(x.targetQuantity()),12,RoundingMode.DOWN)).min(BigDecimal::compareTo).orElse(BigDecimal.ZERO):null;
+        targets=baseTargets.stream().map(target->{
+            if(!target.materialTarget()||capacityRatio==null)return target;
+            BigDecimal theoreticalUsed=BigDecimal.valueOf(target.targetQuantity()).multiply(capacityRatio).setScale(6,RoundingMode.HALF_UP).stripTrailingZeros();
+            BigDecimal theoreticalReturn=BigDecimal.valueOf(target.issuedQuantity()).subtract(theoreticalUsed).max(BigDecimal.ZERO).setScale(6,RoundingMode.DOWN).stripTrailingZeros();
+            return new TargetResponse(target.productId(),target.productName(),target.materialCode(),target.baseUnit(),target.targetQuantity(),target.shortageCartonSize(),target.completedQuantity(),target.progressPercent(),target.issuedQuantity(),target.returnedQuantity(),target.shortageQuantity(),target.unknownQuantityCount(),target.materialTarget(),target.estimatedUsedQuantity(),theoreticalUsed,theoreticalReturn,target.materialBatch(),target.batches());
         }).toList();
         TargetResponse primary=t.getPrimaryMaterial()==null?null:targets.stream().filter(x->x.productId().equals(t.getPrimaryMaterial().canonicalId())).findFirst().orElse(null);
         BigDecimal produced=t.getOutputQuantityBasis()==null?null:BigDecimal.valueOf(received).multiply(BigDecimal.valueOf(t.getOutputQuantityBasis()==ProductionTask.OutputQuantityBasis.BOX?t.getOutputUnitsPerBox():1));
@@ -275,7 +286,7 @@ public class ProductionTaskService {
                 .map(m->m.getMovementTime().atZone(businessZone).toLocalDate()).min(LocalDate::compareTo).orElse(null);
         LocalDate end=t.getStatus()==ProductionTask.Status.COMPLETED?rows.stream().filter(m->m.getStatus()==MovementEnums.Status.ACTIVE&&m.getDirection()==MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE&&!m.isReturnMovement())
                 .map(m->m.getMovementTime().atZone(businessZone).toLocalDate()).max(LocalDate::compareTo).orElse(null):null;
-        return new Response(t.getId(),t.getProduct().canonicalId(),t.displayName(),t.getProduct().getBaseUnit(),t.getTargetQuantity(),t.getPlannedDate(),t.getBatchNo(),t.getStatus(),t.getRemarks(),completed,progress,issues,returns,linked,t.getCreatedAt(),t.getUpdatedAt(),targets,output,t.displayName(),FinishedReceiptForecast.calculate(t,primary,received,unknownOutput),t.getOrderNo(),t.getFeishuNo(),t.getPlannedQuantity(),t.getProductBatch(),start,end);
+        return new Response(t.getId(),t.getProduct().canonicalId(),t.displayName(),t.getProduct().getBaseUnit(),t.getTargetQuantity(),t.getPlannedDate(),t.getBatchNo(),t.getStatus(),t.getRemarks(),completed,progress,issues,returns,linked,t.getCreatedAt(),t.getUpdatedAt(),targets,output,t.displayName(),FinishedReceiptForecast.calculate(t,targets,primary,received,unknownOutput),t.getOrderNo(),t.getFeishuNo(),t.getPlannedQuantity(),t.getProductBatch(),start,end);
     }
     private List<MovementMaterialResponse> movementMaterials(Movement movement){
         return movement.getItems().stream().collect(java.util.stream.Collectors.groupingBy(i->i.getProduct().canonicalId(),LinkedHashMap::new,java.util.stream.Collectors.toList()))
