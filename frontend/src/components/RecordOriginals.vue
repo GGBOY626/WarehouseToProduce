@@ -104,7 +104,7 @@ async function upload(event: Event) {
 <template>
   <section class="originals card card-pad">
     <button class="originals-toggle" type="button" :aria-expanded="expanded" aria-controls="record-originals-panel" @click="expanded = !expanded">
-      <strong>记录表照片</strong><span>{{ loading ? '读取中…' : `${photos.length} 张` }} · {{ expanded ? '收起' : authenticated ? '查看 / 上传' : '查看' }} {{ expanded ? '⌃' : '⌄' }}</span>
+      <strong>记录表照片</strong><span>{{ loading ? '读取中…' : `${totalElements} 张` }} · {{ expanded ? '收起' : authenticated ? '查看 / 上传' : '查看' }} {{ expanded ? '⌃' : '⌄' }}</span>
     </button>
     <div v-show="expanded" id="record-originals-panel">
       <div class="direction-tabs" role="tablist" aria-label="记录表照片方向"><button type="button" :class="{active:selectedDirection==='WAREHOUSE_TO_PRODUCTION'}" @click="selectedDirection='WAREHOUSE_TO_PRODUCTION'">仓库 → 生产车间</button><button type="button" :class="{active:selectedDirection==='PRODUCTION_TO_WAREHOUSE'}" @click="selectedDirection='PRODUCTION_TO_WAREHOUSE'">生产车间 → 仓库</button></div>
