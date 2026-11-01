@@ -492,7 +492,7 @@ onMounted(async () => {
         batchNo: x.batchNo,
         materialBatch: x.materialBatch ?? m.manufactureLot ?? "",
         productionNumber: x.productionNumber ?? "",
-          sku: x.sku ?? "",
+        sku: x.sku ?? "",
         subBatch: x.subBatch || "",
         fullCartons: x.fullCartons,
         looseUnits: x.looseUnits,
