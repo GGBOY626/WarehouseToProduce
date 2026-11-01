@@ -11,6 +11,7 @@ import java.time.LocalDate;
 public class RecordOriginal extends PersistentEntity {
     @Id @GeneratedValue(strategy=GenerationType.IDENTITY) private Long id;
     @Column(nullable=false) private LocalDate recordDate;
+    @Column(name="record_end_date",nullable=false) private LocalDate recordEndDate;
     @Enumerated(EnumType.STRING) @Column(nullable=false,length=40) private MovementEnums.Direction direction;
     @Column(nullable=false,length=500) private String filePath;
     @Column(nullable=false,length=255) private String originalName;

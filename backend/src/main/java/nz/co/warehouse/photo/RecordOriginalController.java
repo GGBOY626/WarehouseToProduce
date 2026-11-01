@@ -15,22 +15,35 @@ import java.io.*;
 import java.nio.file.*;
 import java.time.*;
 import java.util.*;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 
 @RestController @RequestMapping("/api/record-originals") @RequiredArgsConstructor
 public class RecordOriginalController {
     private final RecordOriginalRepository repository;
     @Value("${app.upload-dir:./data/uploads}") private String uploadDir;
-    public record Response(Long id,LocalDate recordDate,MovementEnums.Direction direction,String originalName,String url) {}
+    public record Response(Long id,LocalDate recordDate,LocalDate recordEndDate,MovementEnums.Direction direction,String originalName,String url) {}
+    public record PageResponse(List<Response> content,int page,int size,long totalElements,int totalPages) {}
     private Response response(RecordOriginal value) {
-        return new Response(value.getId(),value.getRecordDate(),value.getDirection(),value.getOriginalName(),"/api/record-originals/"+value.getId()+"/content");
+        return new Response(value.getId(),value.getRecordDate(),value.getRecordEndDate(),value.getDirection(),value.getOriginalName(),"/api/record-originals/"+value.getId()+"/content");
     }
     @GetMapping
-    public List<Response> list(@RequestParam LocalDate from,@RequestParam LocalDate to,@RequestParam MovementEnums.Direction direction) {
+    public Object list(@RequestParam(required=false) LocalDate from,@RequestParam(required=false) LocalDate to,
+                       @RequestParam MovementEnums.Direction direction,@RequestParam(defaultValue="0") int page,
+                       @RequestParam(defaultValue="24") int size) {
+        if(from==null && to==null) {
+            int bounded=Math.max(1,Math.min(size,60));
+            Page<RecordOriginal> result=repository.findByDirectionOrderByRecordEndDateDescRecordDateDescIdDesc(direction,PageRequest.of(Math.max(0,page),bounded));
+            return new PageResponse(result.getContent().stream().map(this::response).toList(),result.getNumber(),result.getSize(),result.getTotalElements(),result.getTotalPages());
+        }
+        if(from==null || to==null) throw BusinessException.badRequest("DATE_RANGE_INVALID","开始日期和结束日期必须同时填写。");
         if(from.isAfter(to)) throw BusinessException.badRequest("DATE_RANGE_INVALID","开始日期不能晚于结束日期。");
         return repository.findByRecordDateBetweenAndDirectionOrderByRecordDateDescIdDesc(from,to,direction).stream().map(this::response).toList();
     }
     @PostMapping
-    public Response upload(@RequestParam LocalDate date,@RequestParam MovementEnums.Direction direction,@RequestParam MultipartFile file) throws IOException {
+    public Response upload(@RequestParam LocalDate date,@RequestParam(required=false) LocalDate toDate,@RequestParam MovementEnums.Direction direction,@RequestParam MultipartFile file) throws IOException {
+        LocalDate end=toDate==null?date:toDate;
+        if(date.isAfter(end)) throw BusinessException.badRequest("DATE_RANGE_INVALID","结束日期不能早于开始日期。");
         if(file.isEmpty()||file.getSize()>12L*1024*1024) throw BusinessException.badRequest("PHOTO_TOO_LARGE","请选择不超过 12MB 的记录表照片。");
         Path directory=resolve("record-originals/"+date);
         Files.createDirectories(directory);
@@ -44,7 +57,7 @@ public class RecordOriginalController {
             target=resolve(relative);
             Files.move(temp,target,StandardCopyOption.ATOMIC_MOVE);
             RecordOriginal value=new RecordOriginal();
-            value.setRecordDate(date);value.setDirection(direction);value.setFilePath(relative);
+            value.setRecordDate(date);value.setRecordEndDate(end);value.setDirection(direction);value.setFilePath(relative);
             String name=Optional.ofNullable(file.getOriginalFilename()).orElse("记录表照片");
             value.setOriginalName(name.substring(0,Math.min(name.length(),255)));
             value.setMimeType(png?MediaType.IMAGE_PNG_VALUE:MediaType.IMAGE_JPEG_VALUE);

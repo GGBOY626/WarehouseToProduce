@@ -7,13 +7,15 @@ import { directionLabel } from "../utils/labels";
 import { prepareRecordOriginalPhoto, RecordPhotoPreparationError } from "../utils/recordOriginalPhoto";
 import axios from "axios";
 
-const props = defineProps<{ from: string; to: string; direction: Direction }>();
-interface Original { id: number; recordDate: string; direction: Direction; originalName: string; url: string }
+interface Original { id: number; recordDate: string; recordEndDate: string; direction: Direction; originalName: string; url: string }
+interface PhotoPage { content: Original[]; page: number; size: number; totalElements: number; totalPages: number }
 const { authenticated } = useAuth();
 const photos = ref<Original[]>([]);
 const loading = ref(false), uploading = ref(false), expanded = ref(false);
 const message = ref(""), loadError = ref("");
-const uploadDate = ref(props.to);
+const selectedDirection = ref<Direction>("WAREHOUSE_TO_PRODUCTION");
+const uploadDate = ref(new Date().toISOString().slice(0,10));
+const uploadEndDate = ref(uploadDate.value);
 type UploadStatus = "preparing" | "uploading" | "uploaded" | "error";
 interface UploadItem { id: number; name: string; originalSize: number; compressedSize?: number; progress: number; status: UploadStatus; error?: string }
 const uploadItems = ref<UploadItem[]>([]);
@@ -21,22 +23,22 @@ const completedUploads = computed(() => uploadItems.value.filter(item => item.st
 const settledUploads = computed(() => uploadItems.value.filter(item => item.status === "uploaded" || item.status === "error").length);
 const activeUploads = computed(() => uploadItems.value.filter(item => item.status === "uploading").length);
 let requestId = 0;
-const groups = computed(() => [...new Set(photos.value.map(p => p.recordDate))].map(date => ({date, photos: photos.value.filter(p => p.recordDate === date)})));
+const page = ref(0), totalPages = ref(0), totalElements = ref(0);
+const groups = computed(() => photos.value.map(photo => ({photo, label: photo.recordDate === photo.recordEndDate ? photo.recordDate : `${photo.recordDate} ～ ${photo.recordEndDate}`})));
 async function load() {
   const current = ++requestId;
   photos.value = [];
   loadError.value = "";
   loading.value = false;
-  if (!props.from || !props.to || props.from > props.to) return;
   loading.value = true;
   try {
-    const result = await http.get<Original[]>("/record-originals", {params: {from: props.from, to: props.to, direction: props.direction}});
-    if (current === requestId) photos.value = result.data;
+    const result = await http.get<PhotoPage>("/record-originals", {params: {direction: selectedDirection.value, page: page.value, size: 24}});
+    if (current === requestId) { photos.value = result.data.content; totalPages.value=result.data.totalPages; totalElements.value=result.data.totalElements; }
   } catch (error) {
     if (current === requestId) loadError.value = errorMessage(error);
   } finally { if (current === requestId) loading.value = false; }
 }
-watch(() => [props.from, props.to, props.direction], () => { uploadDate.value = props.to; message.value = ""; void load(); }, { immediate: true });
+watch(selectedDirection, () => { page.value=0; message.value=""; void load(); }, { immediate: true });
 onBeforeUnmount(() => ++requestId);
 function sizeLabel(bytes?: number) {
   if (bytes === undefined) return "—";
@@ -60,7 +62,7 @@ async function upload(event: Event) {
   const files = Array.from(input.files || []);
   input.value = "";
   if (!files.length || !uploadDate.value) return;
-  const date = uploadDate.value, direction = props.direction;
+  const date = uploadDate.value, toDate = uploadEndDate.value || date, direction = selectedDirection.value;
   uploading.value = true;
   message.value = "";
   uploadItems.value = files.map((file, id) => ({id, name: file.name, originalSize: file.size, progress: 0, status: "preparing"}));
@@ -75,7 +77,7 @@ async function upload(event: Event) {
         item.compressedSize = prepared.size;
         item.status = "uploading";
         const form = new FormData();
-        form.append("file", prepared); form.append("date", date); form.append("direction", direction);
+        form.append("file", prepared); form.append("date", date); form.append("toDate", toDate); form.append("direction", direction);
         await http.post("/record-originals", form, {
           timeout: 90000,
           onUploadProgress: progress => item.progress = progress.total ? Math.round(progress.loaded / progress.total * 100) : 0,
@@ -93,7 +95,7 @@ async function upload(event: Event) {
     const failed = files.length - completedUploads.value;
     message.value = failed
       ? `已上传 ${completedUploads.value} 张，${failed} 张未成功，请查看下方原因后重试。`
-      : `已上传 ${completedUploads.value} 张，归档到 ${date} · ${directionLabel(direction)}`;
+      : `已上传 ${completedUploads.value} 张，归档到 ${date}${toDate !== date ? ` ～ ${toDate}` : ''} · ${directionLabel(direction)}`;
   } catch (error) { message.value = uploadError(error); }
   finally { uploading.value = false; await load(); }
 }
@@ -105,11 +107,13 @@ async function upload(event: Event) {
       <strong>记录表照片</strong><span>{{ loading ? '读取中…' : `${photos.length} 张` }} · {{ expanded ? '收起' : authenticated ? '查看 / 上传' : '查看' }} {{ expanded ? '⌃' : '⌄' }}</span>
     </button>
     <div v-show="expanded" id="record-originals-panel">
-      <p class="hint">{{ from }} ～ {{ to }} · {{ directionLabel(direction) }}</p>
+      <div class="direction-tabs" role="tablist" aria-label="记录表照片方向"><button type="button" :class="{active:selectedDirection==='WAREHOUSE_TO_PRODUCTION'}" @click="selectedDirection='WAREHOUSE_TO_PRODUCTION'">仓库 → 生产车间</button><button type="button" :class="{active:selectedDirection==='PRODUCTION_TO_WAREHOUSE'}" @click="selectedDirection='PRODUCTION_TO_WAREHOUSE'">生产车间 → 仓库</button></div>
+      <p class="hint">按最新日期排序，共 {{ totalElements }} 张；一张照片可覆盖连续多天。</p>
       <div v-if="authenticated" class="upload-originals">
-        <label>照片日期 <input class="input" type="date" v-model="uploadDate" :disabled="uploading" /></label>
+        <label>开始日期 <input class="input" type="date" v-model="uploadDate" :disabled="uploading" /></label>
+        <label>结束日期 <input class="input" type="date" v-model="uploadEndDate" :disabled="uploading" /></label>
         <label class="btn btn-primary">{{ uploading ? '正在上传…' : '上传记录表照片' }}<input class="sr-only" type="file" accept="image/*" multiple :disabled="uploading || !uploadDate" @change="upload" /></label>
-        <small class="hint">上传至{{ directionLabel(direction) }}，支持多张照片，每张原图不超过 12MB；上传前会优化为清晰的记录表照片。</small>
+        <small class="hint">上传至{{ directionLabel(selectedDirection) }}，支持多张照片，每张原图不超过 12MB；上传前会优化为清晰的记录表照片。</small>
       </div>
       <div v-if="uploadItems.length" class="upload-progress" aria-live="polite">
         <strong>{{ uploading ? `正在上传 ${Math.min(settledUploads + activeUploads, uploadItems.length)} / ${uploadItems.length}` : `本次上传 ${completedUploads} / ${uploadItems.length}` }}</strong>
@@ -123,22 +127,24 @@ async function upload(event: Event) {
       <p v-if="message" role="status">{{ message }}</p>
       <p v-if="loadError" role="alert">{{ loadError }} <button class="btn" @click="load">重试</button></p>
       <p v-else-if="loading" role="status">正在读取记录表照片…</p>
-      <p v-else-if="!photos.length" class="hint">该日期范围及方向暂无记录表照片。</p>
-      <div v-for="group in groups" :key="group.date" class="original-day">
-        <h3>{{ group.date }}</h3>
+      <p v-else-if="!photos.length" class="hint">该方向暂无记录表照片。</p>
+      <div v-for="group in groups" :key="group.photo.id" class="original-day">
+        <h3>{{ group.label }}</h3>
         <div class="original-grid">
-          <a v-for="(photo, index) in group.photos" :key="photo.id" :href="photo.url" target="_blank" rel="noopener" :aria-label="`查看 ${group.date} ${directionLabel(photo.direction)} 记录表照片 ${index + 1}`">
-            <img :src="photo.url" :alt="`${group.date} 记录表照片 ${index + 1}`" loading="lazy" />
-            <span>照片 {{ index + 1 }} · 点击查看大图</span>
+          <a :href="group.photo.url" target="_blank" rel="noopener" :aria-label="`查看 ${group.label} 记录表照片`">
+            <img :src="group.photo.url" :alt="`${group.label} 记录表照片`" loading="lazy" />
+            <span>{{ group.photo.originalName }} · 点击查看大图</span>
           </a>
         </div>
       </div>
+      <div v-if="totalPages > 1" class="original-pages"><button class="btn btn-secondary" :disabled="loading || page===0" @click="page--;load()">上一页</button><span>{{ page + 1 }} / {{ totalPages }}</span><button class="btn btn-secondary" :disabled="loading || page+1>=totalPages" @click="page++;load()">下一页</button></div>
     </div>
   </section>
 </template>
 
 <style scoped>
 .originals { margin-top: 16px; }
+.direction-tabs { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:4px; padding:4px; margin:12px 0; background:#edf0f2; border-radius:8px; }.direction-tabs button { min-height:40px; border:0; border-radius:6px; background:transparent; color:#60737d; cursor:pointer; }.direction-tabs button.active { background:#fff; color:#174a68; box-shadow:0 1px 3px #1721261f; }.original-pages { display:flex; justify-content:center; align-items:center; gap:12px; margin-top:16px; }
 .originals-toggle { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; border: 0; background: transparent; padding: 4px 0; min-height: 44px; color: #174a68; font: inherit; cursor: pointer; text-align: left; }
 .originals-toggle span { color: #60737d; font-size: 13px; }
 .originals-toggle:focus-visible,.original-grid a:focus-visible { outline: 3px solid #267566; outline-offset: 3px; }

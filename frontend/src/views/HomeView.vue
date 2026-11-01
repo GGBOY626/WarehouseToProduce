@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { onBeforeRouteLeave, useRouter } from "vue-router";
 import TodayOverview from "../components/TodayOverview.vue";
 import MaterialSummary from "../components/MaterialSummary.vue";
@@ -60,6 +60,15 @@ const rows = ref<MovementSummary[]>([]),
   moreFilters = ref(initialFilters.moreFilters),
   activePreset = ref<DatePreset>(initialFilters.activePreset);
 const singleDate = ref(initialFilters.activePreset === 'single' ? initialFilters.from : '');
+const advancedStatus = computed(() => [
+  materialKind.value === 'finished' ? '成品' : materialKind.value === 'material' ? '正常物料' : materialKind.value === 'return' ? '只看车间退回仓库' : '',
+  activePreset.value === 'single' ? `指定日期 ${from.value}` : activePreset.value === 'range' ? `自定义日期 ${from.value} 起` : '',
+].filter(Boolean).join(' · '));
+function clearAdvanced() {
+  materialKind.value = 'all';
+  moreFilters.value = false;
+  preset('today');
+}
 watch([from, to, direction, q, materialKind, moreFilters, activePreset], () => {
   if (!validDate(from.value) || !validDate(to.value) || from.value > to.value) return;
   try {
@@ -212,20 +221,19 @@ const formatNumber = (value: number) => value.toLocaleString("zh-CN");
           <button type="button" class="return" :class="{active:direction==='PRODUCTION_TO_WAREHOUSE'}" :aria-pressed="direction==='PRODUCTION_TO_WAREHOUSE'" @click="selectDirection('PRODUCTION_TO_WAREHOUSE')"><span class="flow-icon" aria-hidden="true">↙</span><span>生产车间 → 仓库<small>入库 / 退回</small></span></button>
         </div>
       </div>
-      <div class="field">
+      <div class="field search-row">
         <label for="material-search" class="sr-only">搜索物料</label>
         <input id="material-search" class="input" v-model.trim="q" placeholder="搜索物料名称、编码或批次…" @keyup.enter="load" />
+        <button class="filter-button" type="button" :class="{ applied: !!advancedStatus }" :aria-expanded="moreFilters" aria-controls="advanced-filters" @click="moreFilters=!moreFilters">筛选<span v-if="advancedStatus" class="filter-dot" aria-hidden="true" /></button>
       </div>
+      <div v-if="advancedStatus" class="filter-status" role="status"><span>已筛选：{{ advancedStatus }}</span><button type="button" @click="clearAdvanced">清除</button></div>
+      <div v-show="moreFilters" id="advanced-filters" class="advanced-filters">
       <div class="field">
         <label for="movement-material-kind">物料类型</label>
         <select id="movement-material-kind" class="input" v-model="materialKind" @change="selectMaterialKind">
           <option value="all">全部类型</option><option value="finished">成品</option><option value="material">正常物料（含退回）</option><option value="return">只看车间退回仓库</option>
         </select>
       </div>
-      <button class="more-toggle" type="button" :aria-expanded="moreFilters" aria-controls="advanced-filters" @click="moreFilters=!moreFilters">
-        <span>{{ activePreset==='single' ? `指定日期 · ${from}` : activePreset==='range' ? `自定义 · ${from} 起` : '指定日期 / 更多筛选' }}</span><span aria-hidden="true">{{moreFilters ? '收起' : '展开'}} {{moreFilters ? '⌃' : '⌄'}}</span>
-      </button>
-      <div v-show="moreFilters" id="advanced-filters" class="advanced-filters">
       <div class="field single-day" :class="{selected:activePreset==='single'}">
         <label for="single-day">只看某一天</label>
         <input id="single-day" class="input" type="date" v-model="singleDate" :max="today()" @change="selectSingleDay" />
@@ -269,7 +277,7 @@ const formatNumber = (value: number) => value.toLocaleString("zh-CN");
         <MovementCard v-for="row in rows" :key="row.id" :movement="row" show-date />
       </div>
     </section>
-    <RecordOriginals :from="from" :to="to" :direction="direction" />
+    <RecordOriginals />
   </div>
     <dialog ref="recordDialog" class="record-dialog" aria-labelledby="record-dialog-title" @click="event => { if (event.target === recordDialog) recordDialog?.close(); }">
       <div class="dialog-heading"><h2 id="record-dialog-title">选择流转记录</h2><button type="button" class="btn" autofocus @click="recordDialog?.close()">关闭</button></div>
@@ -289,7 +297,8 @@ const formatNumber = (value: number) => value.toLocaleString("zh-CN");
 <style scoped>
 .movement-page{--flow-color:var(--blue);--flow-soft:var(--soft-blue)}
 .movement-page.inbound{--flow-color:var(--green);--flow-soft:var(--soft-green)}
-#movement-filters{scroll-margin-top:68px}.filters.card-pad{padding:12px}.stats-heading{cursor:pointer;min-height:44px}.query-stats[open] .stats-heading{border-bottom:1px solid var(--line)}.create-actions .btn{min-height:42px;padding:8px 12px;font-size:13px}.page-heading{align-items:center}.filters .input{min-height:42px}.filters .more-toggle{min-height:36px;padding:5px 2px 0;font-size:12px}
+#movement-filters{scroll-margin-top:68px}.filters.card-pad{padding:12px}.stats-heading{cursor:pointer;min-height:44px}.query-stats[open] .stats-heading{border-bottom:1px solid var(--line)}.create-actions .btn{min-height:42px;padding:8px 12px;font-size:13px}.page-heading{align-items:center}.filters .input{min-height:42px}
+.search-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px}.filter-button{position:relative;min-width:68px;min-height:44px;padding:7px 12px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--blue);font-size:13px;font-weight:700;cursor:pointer}.filter-button.applied{border-color:var(--blue);background:var(--soft-blue)}.filter-button:focus-visible,.filter-status button:focus-visible{outline:2px solid var(--blue2);outline-offset:2px}.filter-dot{display:inline-block;width:6px;height:6px;margin-left:5px;border-radius:50%;background:var(--blue);vertical-align:middle}.filter-status{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:2px 3px;color:var(--blue);font-size:12px;overflow-wrap:anywhere}.filter-status button{flex-shrink:0;min-height:36px;border:0;background:none;color:var(--blue);font-weight:700;text-decoration:underline;text-underline-offset:2px;cursor:pointer}
 .page-heading { flex-wrap: wrap; gap: 12px; }
 .page-heading .page-title { margin: 0; }
 .create-actions { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -298,7 +307,7 @@ const formatNumber = (value: number) => value.toLocaleString("zh-CN");
 .quick-links a + a { border-left: 1px solid #dce2e5; }
 .filters {
   display: grid;
-  gap: 8px;
+  gap: 7px;
 }
 .single-day{grid-template-columns:auto minmax(0,1fr);align-items:center;gap:12px}.single-day.selected label{color:#267566}.single-day input{min-width:0;width:100%;box-sizing:border-box}
 .preset {
@@ -310,7 +319,7 @@ const formatNumber = (value: number) => value.toLocaleString("zh-CN");
   background: #e7edef;
 }
 .quick-date {
-  min-height: 36px;
+  min-height: 42px;
   border: 0;
   border-radius: 8px;
   background: transparent;
@@ -321,7 +330,7 @@ const formatNumber = (value: number) => value.toLocaleString("zh-CN");
   cursor: pointer;
 }
 .quick-date.active { background: #fff; color: #174a68; box-shadow: 0 2px 8px rgba(32,53,64,.14); }
-.quick-date:focus-visible,.more-toggle:focus-visible,.direction-choice button:focus-visible { outline: 3px solid rgba(31,107,138,.3); outline-offset: 2px; }
+.quick-date:focus-visible,.direction-choice button:focus-visible { outline: 3px solid rgba(31,107,138,.3); outline-offset: 2px; }
 .direction-choice { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 6px; padding: 4px; border-radius: 10px; background: #edf0f2; }
 .direction-choice button { --choice-color:var(--blue);--choice-soft:var(--soft-blue);display:flex;align-items:center;justify-content:center;gap:9px;min-height:52px;border:1px solid transparent;border-radius:7px;padding:8px;background:transparent;color:var(--choice-color);font:inherit;font-size:13px;font-weight:650;cursor:pointer; }
 .direction-choice button.return{--choice-color:var(--green);--choice-soft:var(--soft-green)}
@@ -331,23 +340,7 @@ const formatNumber = (value: number) => value.toLocaleString("zh-CN");
 .direction-choice button:focus-visible{outline:2px solid var(--choice-color);outline-offset:2px}
 .direction-choice small{display:block;margin-top:2px;font-size:11px;font-weight:400}
 .flow-icon{display:grid;place-items:center;width:28px;height:28px;flex-shrink:0;border-radius:6px;background:var(--choice-soft);font-size:20px}
-.more-toggle {
-  min-height: 42px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  border: 0;
-  border-top: 1px solid #e1e7e9;
-  padding: 10px 2px 0;
-  background: transparent;
-  color: #174a68;
-  font: inherit;
-  font-size: 14px;
-  font-weight: 720;
-  cursor: pointer;
-}
-.more-toggle span:last-child { color: #6c7d85; font-size: 12px; font-weight: 600; }
-.advanced-filters { display: grid; gap: 13px; padding: 13px; border-radius: 10px; background: #f4f7f8; }
+.advanced-filters { display: grid; gap: 10px; padding: 11px; border-radius: 8px; background: #f4f7f8; }
 .query-stats { margin-bottom: 14px; overflow: hidden; }
 .stats-heading { display: flex; justify-content: space-between; gap: 12px; padding: 12px 16px; background:var(--flow-soft);color:var(--flow-color);border-left:3px solid var(--flow-color) }
 .stats-heading:focus-visible{outline:2px solid var(--flow-color);outline-offset:-3px}
@@ -375,7 +368,7 @@ const formatNumber = (value: number) => value.toLocaleString("zh-CN");
 .photo-tag { padding:2px 6px; border-radius:5px; background:#edf0f2; font-size:11px; }
 .record-stack { gap: 10px; }
 @media (max-width: 560px) {
-  .direction-choice button { font-size: 11px; }
+  .direction-choice button { font-size: 11px;min-height:44px;padding:6px 4px;gap:5px }.direction-choice small{display:none}.flow-icon{width:23px;height:23px;font-size:17px}
   .stats-heading { align-items: center; flex-direction: row; gap: 8px; font-size:13px; padding:12px; }.stats-heading span{font-size:11px;text-align:right;max-width:58%}
   .product-stat { gap: 8px; font-size: 13px; }
   .record-dialog { padding: 14px; }
