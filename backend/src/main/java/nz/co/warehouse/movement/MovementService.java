@@ -259,7 +259,7 @@ public class MovementService {
         if(original==null&&r.fullCartons()>0&&packedUnits==null&&r.unitsPerCarton()==null&&specs.size()>1)
             throw BusinessException.badRequest("CARTON_SPEC_REQUIRED","该产品有多种每箱数量，请选择本次完整箱规格。");
         Integer unitsPerCarton=packedUnits!=null?packedUnits:r.unitsPerCarton()!=null?r.unitsPerCarton():original!=null?original.getUnitsPerCartonSnapshot():specs.size()==1?specs.iterator().next():null;
-        MovementItem i=new MovementItem();i.setProduct(p);i.setProductNameSnapshot(original==null?p.getName():original.getProductNameSnapshot());i.setSkuSnapshot(original==null?null:original.getSkuSnapshot());i.setUnitsPerCartonSnapshot(unitsPerCarton);i.setBatchNo(r.batchNo().trim());i.setSortOrder(order);i.setRemarks(blank(r.remarks()));
+        MovementItem i=new MovementItem();i.setProduct(p);i.setProductNameSnapshot(original==null?p.getName():original.getProductNameSnapshot());String sku=r.sku()==null?(original==null?blank(p.getSku()):original.getSkuSnapshot()):blank(r.sku());i.setSkuSnapshot(sku);i.setUnitsPerCartonSnapshot(unitsPerCarton);i.setBatchNo(r.batchNo().trim());i.setSortOrder(order);i.setRemarks(blank(r.remarks()));
         i.setBoxesPerCartonSnapshot(r.boxesPerCarton());i.setUnitsPerBoxSnapshot(r.unitsPerBox());
         // Older clients may omit the factors when editing notes/counts. Keep the
         // snapshot only when their quantities still match that original packing.

@@ -4,6 +4,7 @@ import { productsApi } from "../api";
 import { errorMessage } from "../api/http";
 import type { Product, ProductUsage, BoxPacking } from "../types";
 import { availableCartonSpecs } from "../utils/cartonSpecs";
+import { productPackagingLines } from "../utils/productPackaging";
 import { packingError } from "../utils/boxPacking";
 import { useAuth } from "../auth";
 const { authenticated } = useAuth();
@@ -14,6 +15,7 @@ const rows = ref<Product[]>([]),
   form = ref({
     name: "",
     materialCode: "",
+    sku: "",
     materialBatch: "",
     movementDirection: "" as ProductUsage | "",
     baseUnit: "个",
@@ -49,6 +51,7 @@ function open(p?: Product) {
     ? {
         name: p.name,
         materialCode: p.materialCode,
+        sku: p.sku || "",
         materialBatch: p.materialBatch || "",
         movementDirection: p.movementDirection || "",
         baseUnit: p.baseUnit || "",
@@ -57,6 +60,7 @@ function open(p?: Product) {
     : {
         name: "",
         materialCode: "",
+        sku: "",
         materialBatch: "",
         movementDirection: selectedDirection.value,
         baseUnit: "个",
@@ -91,7 +95,8 @@ async function save() {
     const productionNumbers=productionNumbersText.value.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
     if(productionNumbers.length>100||productionNumbers.some(s=>s.length>100)){message.value='生产编号最多 100 项，每项最多 100 个字符。';return;}
     saving.value=true;
-    const payload = { ...form.value, boxPackings:boxPackings.value, materialBatches: batchesText.value.split(/\r?\n/).map(s => s.trim()).filter(Boolean), productionNumbers, defaultUnitsPerCarton: !form.value.quantityUnknown && new Set(cartonSpecs).size === 1 ? cartonSpecs[0] : null, cartonSpecs: [...new Set(cartonSpecs)] };
+    const inbound = form.value.movementDirection === 'PRODUCTION_TO_WAREHOUSE';
+    const payload = { ...form.value, sku: form.value.sku.trim() || null, materialBatch: inbound ? null : form.value.materialBatch, boxPackings:boxPackings.value, materialBatches: inbound ? [] : batchesText.value.split(/\r?\n/).map(s => s.trim()).filter(Boolean), productionNumbers, defaultUnitsPerCarton: !form.value.quantityUnknown && new Set(cartonSpecs).size === 1 ? cartonSpecs[0] : null, cartonSpecs: [...new Set(cartonSpecs)] };
     if (editing.value) await productsApi.update(editing.value.id, payload);
     else await productsApi.create(payload);
     showEditor.value = false;
@@ -100,12 +105,6 @@ async function save() {
   } catch (e) {
     message.value = errorMessage(e);
   } finally {saving.value=false;}
-}
-async function toggle(p: Product) {
-  if(busyId.value!=null || !confirm(`${p.active ? "停用" : "启用"}产品“${p.name}”？`))return;
-  busyId.value=p.id;message.value='';success.value='';
-  try{await productsApi.status(p.id,!p.active);await load();success.value=`产品已${p.active?'停用':'启用'}`}
-  catch(e){message.value=errorMessage(e)}finally{busyId.value=undefined}
 }
 async function remove(p: Product) {
   if(busyId.value!=null || !confirm(`确定永久删除产品“${p.name}”吗？删除后无法恢复。`))return;
@@ -152,12 +151,14 @@ onMounted(load);
       <div class="field">
         <label for="product-production-numbers">生产编号（可选，每行一个）</label>
         <textarea id="product-production-numbers" class="textarea mono" v-model="productionNumbersText" placeholder="P001&#10;P002" />
+        <label v-if="form.movementDirection === 'PRODUCTION_TO_WAREHOUSE'" for="product-sku">SKU（可选）</label>
+        <input v-if="form.movementDirection === 'PRODUCTION_TO_WAREHOUSE'" id="product-sku" class="input mono" maxlength="100" v-model.trim="form.sku" placeholder="成品 SKU" />
         <small class="hint">保存时添加新编号，已有编号保留；多个编号在流转登记时选择实际使用的编号。</small>
       </div>
       <div class="field">
-        <label for="product-batches">物料批次（可选，每行一个）</label>
-        <textarea id="product-batches" class="textarea mono" v-model="batchesText" placeholder="A001&#10;A002" />
-        <small class="hint">保存时添加新批次，已有批次保留；流转登记时也可输入新批次。</small>
+        <label v-if="form.movementDirection !== 'PRODUCTION_TO_WAREHOUSE'" for="product-batches">物料批次（可选，每行一个）</label>
+        <textarea v-if="form.movementDirection !== 'PRODUCTION_TO_WAREHOUSE'" id="product-batches" class="textarea mono" v-model="batchesText" placeholder="A001&#10;A002" />
+        <small v-if="form.movementDirection !== 'PRODUCTION_TO_WAREHOUSE'" class="hint">保存时添加新批次，已有批次保留；流转登记时也可输入新批次。</small>
       </div>
       <div class="field">
         <label class="required">流转分类</label>
@@ -215,14 +216,14 @@ onMounted(load);
     <div v-else class="stack list">
       <article v-for="p in visibleRows" :key="p.id" class="card product-card">
         <component :is="authenticated ? 'button' : 'div'" class="product-main" :type="authenticated ? 'button' : undefined" :aria-label="authenticated ? `编辑 ${p.name}` : undefined" @click="authenticated && open(p)">
-          <div class="product-title"><strong>{{p.name}}</strong><span class="status neutral">{{p.active ? '启用' : '停用'}}</span></div>
-          <span class="material-code">编码 {{p.materialCode}}</span>
-          <span v-if="p.boxPackings?.length" class="product-spec">{{p.boxPackings.map(x=>`${x.boxesPerCarton} 盒/箱 × ${x.unitsPerBox} ${p.baseUnit}/盒${x.cartonsPerPallet ? ` · ${x.cartonsPerPallet} 箱/托盘` : ''}`).join('；')}}</span>
-          <span class="product-spec">{{ availableCartonSpecs(p).length ? `${availableCartonSpecs(p).join(' / ')} ${p.baseUnit || '个'}/箱` : '未设置箱规' }}<template v-if="p.quantityUnknown"> · 数量不确定</template></span>
+          <div class="product-title"><strong>{{p.name}}</strong></div>
+        <span class="material-code">编码 {{p.materialCode}}</span><span v-if="p.movementDirection === 'PRODUCTION_TO_WAREHOUSE' && p.sku" class="material-code">SKU {{p.sku}}</span>
+          <span v-for="(line,index) in productPackagingLines(p)" :key="line" class="product-spec" :class="{ 'primary-spec': index === 0 }">{{ line }}</span>
+          <span v-if="p.quantityUnknown" class="product-spec">数量不确定</span>
           <span v-if="p.duplicateName" class="duplicate-warning">同名产品，请核对编码</span><span v-if="!p.movementDirection" class="duplicate-warning">未分类，请编辑</span>
         </component>
-        <details v-if="authenticated" class="product-menu" @toggle="productMenu" @keydown.esc="($event.currentTarget as HTMLDetailsElement).removeAttribute('open')"><summary :aria-label="`${p.name}的更多操作`">⋯</summary><div class="product-menu-actions"><button :disabled="busyId!=null" @click="toggle(p)">{{p.active ? '停用产品' : '启用产品'}}</button><button class="danger-action" :disabled="busyId!=null" @click="remove(p)">删除产品</button></div></details>
-        <details v-if="p.materialBatches?.length || p.materialBatch" class="product-batches"><summary>物料批次 · {{p.materialBatches?.length || 1}} 项</summary><p>{{p.materialBatches?.length ? p.materialBatches.join(' / ') : p.materialBatch}}</p></details>
+        <details v-if="authenticated" class="product-menu" @toggle="productMenu" @keydown.esc="($event.currentTarget as HTMLDetailsElement).removeAttribute('open')"><summary :aria-label="`${p.name}的更多操作`">⋯</summary><div class="product-menu-actions"><button class="danger-action" :disabled="busyId!=null" @click="remove(p)">删除产品</button></div></details>
+        <details v-if="p.movementDirection !== 'PRODUCTION_TO_WAREHOUSE' && (p.materialBatches?.length || p.materialBatch)" class="product-batches"><summary>物料批次 · {{p.materialBatches?.length || 1}} 项</summary><p>{{p.materialBatches?.length ? p.materialBatches.join(' / ') : p.materialBatch}}</p></details>
         <details v-if="p.productionNumbers?.length" class="product-batches"><summary>生产编号 · {{p.productionNumbers.length}} 项</summary><p>{{p.productionNumbers.join(' / ')}}</p></details>
       </article>
     </div>
@@ -259,5 +260,5 @@ onMounted(load);
 .unknown-quantity { display: flex; align-items: center; gap: 8px; min-height: 42px; color: #174a68; font-size: 14px; font-weight: 680; }
 .unknown-quantity input { width: 18px; height: 18px; accent-color: #174a68; }
 .usage-choice{display:flex;gap:4px;padding:4px;margin:12px 0;background:#e7edef;border-radius:9px}.usage-choice button{flex:1;min-width:0;min-height:40px;border:0;background:transparent;border-radius:6px;padding:6px;color:var(--muted);font-size:12px;cursor:pointer}.usage-choice button.active{background:white;color:var(--blue);box-shadow:0 1px 3px #17212614}.usage-badge{display:inline-block;margin:4px 0;padding:4px 8px;border-radius:999px;background:#e9f2f6;color:#174a68;font-size:12px;font-weight:680}
-.product-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px}.product-heading .page-title{margin:0}.product-heading .btn{flex-shrink:0}.editor{margin-top:14px}.product-card{position:relative;min-width:0}.product-main{display:grid;gap:5px;width:100%;border:0;border-radius:10px;background:none;text-align:left;padding:14px 58px 12px 14px;min-width:0}.product-main:is(button){cursor:pointer}.product-title{display:flex;align-items:baseline;justify-content:space-between;gap:8px}.product-title strong{font-size:15px;overflow-wrap:anywhere}.product-title .status{flex-shrink:0}.product-main .material-code{font-size:12px;font-weight:400;color:var(--muted);margin:0;overflow-wrap:anywhere}.product-spec{font-size:12px;color:var(--muted);overflow-wrap:anywhere}.product-menu{position:absolute;top:7px;right:7px}.product-menu summary{list-style:none;width:40px;height:40px;display:grid;place-items:center;font:24px Arial,sans-serif;color:var(--blue);cursor:pointer;border-radius:7px}.product-menu summary::-webkit-details-marker{display:none}.product-menu[open] summary{background:var(--soft-blue)}.product-menu-actions{position:absolute;right:0;z-index:10;min-width:132px;border:1px solid var(--line);border-radius:9px;background:white;padding:5px;box-shadow:0 6px 18px #1721261f}.product-menu-actions button{display:block;width:100%;min-height:44px;padding:9px 12px;border:0;background:none;text-align:left;font-size:13px;cursor:pointer}.product-menu-actions .danger-action{color:var(--red)}.product-batches{margin:0 14px;border-top:1px solid #edf0f2;font-size:12px;color:var(--muted)}.product-batches summary{min-height:36px;padding:9px 0;cursor:pointer}.product-batches p{line-height:1.6;overflow-wrap:anywhere;margin:0 0 12px}.success-note{font-size:13px;color:var(--green)}.duplicate-warning{margin:0;font-size:12px}.product-main:focus-visible{outline-offset:-3px}@media(max-width:430px){.editor .grid-2{grid-template-columns:1fr}.product-title{align-items:flex-start}}
+.product-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px}.product-heading .page-title{margin:0}.product-heading .btn{flex-shrink:0}.editor{margin-top:14px}.product-card{position:relative;min-width:0}.product-main{display:grid;gap:4px;width:100%;border:0;border-radius:10px;background:none;text-align:left;padding:12px 58px 11px 14px;min-width:0}.product-main:is(button){cursor:pointer}.product-title{display:flex;align-items:baseline;justify-content:space-between;gap:8px}.product-title strong{font-size:16px;line-height:1.45;overflow-wrap:anywhere}.product-title .status{flex-shrink:0}.product-main .material-code{font-size:11px;font-weight:400;color:var(--muted);margin:0;overflow-wrap:anywhere}.product-spec{font-size:12px;color:var(--muted);overflow-wrap:anywhere;line-height:1.5}.product-spec.primary-spec{font-weight:650;color:var(--ink)}.product-menu{position:absolute;top:7px;right:7px}.product-menu summary{list-style:none;width:40px;height:40px;display:grid;place-items:center;font:24px Arial,sans-serif;color:var(--blue);cursor:pointer;border-radius:7px}.product-menu summary::-webkit-details-marker{display:none}.product-menu[open] summary{background:var(--soft-blue)}.product-menu-actions{position:absolute;right:0;z-index:10;min-width:132px;border:1px solid var(--line);border-radius:9px;background:white;padding:5px;box-shadow:0 6px 18px #1721261f}.product-menu-actions button{display:block;width:100%;min-height:44px;padding:9px 12px;border:0;background:none;text-align:left;font-size:13px;cursor:pointer}.product-menu-actions .danger-action{color:var(--red)}.product-batches{margin:0 14px;border-top:1px solid #edf0f2;font-size:12px;color:var(--muted)}.product-batches summary{min-height:36px;padding:9px 0;cursor:pointer}.product-batches p{line-height:1.6;overflow-wrap:anywhere;margin:0 0 12px}.success-note{font-size:13px;color:var(--green)}.duplicate-warning{margin:0;font-size:12px}.product-main:focus-visible{outline-offset:-3px}@media(max-width:430px){.editor .grid-2{grid-template-columns:1fr}.product-title{align-items:flex-start}}
 </style>

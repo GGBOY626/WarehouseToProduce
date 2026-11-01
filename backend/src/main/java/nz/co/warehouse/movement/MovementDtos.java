@@ -13,12 +13,15 @@ public final class MovementDtos {
                               @PositiveOrZero int fullCartons,@PositiveOrZero long looseUnits,
                               @PositiveOrZero Long totalUnits,boolean quantityUnknown,@Size(max=1000) String remarks,
                               @Valid List<IssueRequest> issues, @Positive Integer unitsPerCarton,
-                              @PositiveOrZero int tailCartons,@Positive Long tailUnitsPerCarton,Long id,@Size(max=100) String subBatch,@Size(max=100) String materialBatch,@Positive Integer boxesPerCarton,@Positive Integer unitsPerBox,@Positive Integer tailBoxesPerCarton,@Size(max=100) String productionNumber) {
+                              @PositiveOrZero int tailCartons,@Positive Long tailUnitsPerCarton,Long id,@Size(max=100) String subBatch,@Size(max=100) String materialBatch,@Positive Integer boxesPerCarton,@Positive Integer unitsPerBox,@Positive Integer tailBoxesPerCarton,@Size(max=100) String productionNumber,@Size(max=100) String sku) {
+        public ItemRequest(Long productId,String batchNo,int fullCartons,long looseUnits,Long totalUnits,boolean quantityUnknown,String remarks,List<IssueRequest> issues,Integer unitsPerCarton,int tailCartons,Long tailUnitsPerCarton,Long id,String subBatch,String materialBatch,Integer boxesPerCarton,Integer unitsPerBox,Integer tailBoxesPerCarton,String productionNumber){
+            this(productId,batchNo,fullCartons,looseUnits,totalUnits,quantityUnknown,remarks,issues,unitsPerCarton,tailCartons,tailUnitsPerCarton,id,subBatch,materialBatch,boxesPerCarton,unitsPerBox,tailBoxesPerCarton,productionNumber,null);
+        }
         public ItemRequest(Long productId,String batchNo,int fullCartons,long looseUnits,Long totalUnits,boolean quantityUnknown,String remarks,List<IssueRequest> issues,Integer unitsPerCarton,int tailCartons,Long tailUnitsPerCarton,Long id,String subBatch,String materialBatch,Integer boxesPerCarton,Integer unitsPerBox,Integer tailBoxesPerCarton){
-            this(productId,batchNo,fullCartons,looseUnits,totalUnits,quantityUnknown,remarks,issues,unitsPerCarton,tailCartons,tailUnitsPerCarton,id,subBatch,materialBatch,boxesPerCarton,unitsPerBox,tailBoxesPerCarton,null);
+            this(productId,batchNo,fullCartons,looseUnits,totalUnits,quantityUnknown,remarks,issues,unitsPerCarton,tailCartons,tailUnitsPerCarton,id,subBatch,materialBatch,boxesPerCarton,unitsPerBox,tailBoxesPerCarton,null,null);
         }
         public ItemRequest(Long productId,String batchNo,int fullCartons,long looseUnits,Long totalUnits,boolean quantityUnknown,String remarks,List<IssueRequest> issues,Integer unitsPerCarton,int tailCartons,Long tailUnitsPerCarton,Long id,String subBatch,String materialBatch){
-            this(productId,batchNo,fullCartons,looseUnits,totalUnits,quantityUnknown,remarks,issues,unitsPerCarton,tailCartons,tailUnitsPerCarton,id,subBatch,materialBatch,null,null,null);
+            this(productId,batchNo,fullCartons,looseUnits,totalUnits,quantityUnknown,remarks,issues,unitsPerCarton,tailCartons,tailUnitsPerCarton,id,subBatch,materialBatch,null,null,null,null,null);
         }
         public ItemRequest(Long productId,String batchNo,int fullCartons,long looseUnits,Long totalUnits,boolean quantityUnknown,String remarks,List<IssueRequest> issues,Integer unitsPerCarton,int tailCartons,Long tailUnitsPerCarton,Long id,String subBatch){
             this(productId,batchNo,fullCartons,looseUnits,totalUnits,quantityUnknown,remarks,issues,unitsPerCarton,tailCartons,tailUnitsPerCarton,id,subBatch,null);

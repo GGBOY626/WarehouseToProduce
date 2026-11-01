@@ -11,6 +11,7 @@ public class Product extends PersistentEntity {
     private Long id;
     @Column(nullable = false, length = 200) private String name;
     @Column(name = "material_code", nullable = false, length = 100) private String materialCode;
+    @Column(length = 100) private String sku;
     @Column(name = "material_batch", length = 100) private String materialBatch;
     @ElementCollection
     @CollectionTable(name="product_material_batch",joinColumns=@JoinColumn(name="product_id"))

@@ -8,31 +8,36 @@ public final class ProductDtos {
     private ProductDtos() {}
     public record Request(@NotBlank @Size(max=200) String name,
                           @NotBlank @Size(max=100) String materialCode,
+                          @Size(max=100) String sku,
                           @Size(max=100) String materialBatch,
                           @NotNull ProductUsage movementDirection,
                           @Positive Integer defaultUnitsPerCarton,
                           @Size(max=20) String baseUnit,
                           boolean quantityUnknown, java.util.List<@NotNull @Positive Integer> cartonSpecs, java.util.List<@NotBlank @Size(max=100) String> materialBatches, java.util.List<@Valid BoxPacking> boxPackings,
                           java.util.List<@NotBlank @Size(max=100) String> productionNumbers) {
+        public Request(String name,String materialCode,String materialBatch,ProductUsage movementDirection,Integer defaultUnitsPerCarton,String baseUnit,boolean quantityUnknown,java.util.List<Integer> cartonSpecs,java.util.List<String> materialBatches,java.util.List<BoxPacking> boxPackings,java.util.List<String> productionNumbers){
+            this(name,materialCode,null,materialBatch,movementDirection,defaultUnitsPerCarton,baseUnit,quantityUnknown,cartonSpecs,materialBatches,boxPackings,productionNumbers);
+        }
         public Request(String name,String materialCode,String materialBatch,ProductUsage movementDirection,Integer defaultUnitsPerCarton,String baseUnit,boolean quantityUnknown,java.util.List<Integer> cartonSpecs,java.util.List<String> materialBatches,java.util.List<BoxPacking> boxPackings){
-            this(name,materialCode,materialBatch,movementDirection,defaultUnitsPerCarton,baseUnit,quantityUnknown,cartonSpecs,materialBatches,boxPackings,null);
+            this(name,materialCode,null,materialBatch,movementDirection,defaultUnitsPerCarton,baseUnit,quantityUnknown,cartonSpecs,materialBatches,boxPackings,null);
         }
         public Request(String name,String materialCode,String materialBatch,ProductUsage movementDirection,Integer defaultUnitsPerCarton,String baseUnit,boolean quantityUnknown,java.util.List<Integer> cartonSpecs,java.util.List<String> materialBatches){
-            this(name,materialCode,materialBatch,movementDirection,defaultUnitsPerCarton,baseUnit,quantityUnknown,cartonSpecs,materialBatches,null);
+            this(name,materialCode,null,materialBatch,movementDirection,defaultUnitsPerCarton,baseUnit,quantityUnknown,cartonSpecs,materialBatches,null,null);
         }
         public Request(String name,String materialCode,String materialBatch,ProductUsage movementDirection,Integer defaultUnitsPerCarton,String baseUnit,boolean quantityUnknown,java.util.List<Integer> cartonSpecs){
-            this(name,materialCode,materialBatch,movementDirection,defaultUnitsPerCarton,baseUnit,quantityUnknown,cartonSpecs,null);
+            this(name,materialCode,null,materialBatch,movementDirection,defaultUnitsPerCarton,baseUnit,quantityUnknown,cartonSpecs,null,null,null);
         }
         public Request(String name,String materialCode,String materialBatch,ProductUsage movementDirection,Integer defaultUnitsPerCarton,String baseUnit,boolean quantityUnknown){
-            this(name,materialCode,materialBatch,movementDirection,defaultUnitsPerCarton,baseUnit,quantityUnknown,null);
+            this(name,materialCode,null,materialBatch,movementDirection,defaultUnitsPerCarton,baseUnit,quantityUnknown,null,null,null,null);
         }
         public Request(String name,String materialCode,String materialBatch,ProductUsage movementDirection,Integer defaultUnitsPerCarton,String baseUnit){
-            this(name,materialCode,materialBatch,movementDirection,defaultUnitsPerCarton,baseUnit,false);
+            this(name,materialCode,null,materialBatch,movementDirection,defaultUnitsPerCarton,baseUnit,false,null,null,null,null);
         }
     }
-    public record Response(Long id, String name, String materialCode, String materialBatch, Integer defaultUnitsPerCarton,
+    public record Response(Long id, String name, String materialCode, String sku, String materialBatch, Integer defaultUnitsPerCarton,
                            String baseUnit, boolean quantityUnknown, ProductUsage movementDirection, boolean active, boolean duplicateName, Instant createdAt, Instant updatedAt, java.util.List<Integer> cartonSpecs, java.util.List<String> materialBatches, java.util.List<BoxPacking> boxPackings,java.util.List<String> productionNumbers) {
         static Response from(Product p) { return from(p, false); }
-        static Response from(Product p, boolean duplicateName) { return new Response(p.getId(), p.getName(), p.getMaterialCode(), p.getMaterialBatch(), p.getDefaultUnitsPerCarton(), p.getBaseUnit(), p.isQuantityUnknown(), p.getMovementDirection(), p.isActive(), duplicateName, p.getCreatedAt(), p.getUpdatedAt(), p.getCartonSpecs().stream().sorted().toList(),p.availableBatches().stream().toList(),p.getBoxPackings().stream().sorted(java.util.Comparator.comparing(BoxPacking::getBoxesPerCarton).thenComparing(BoxPacking::getUnitsPerBox)).toList(),p.canonical().getProductionNumbers().stream().sorted().toList()); }
+        // Keep `active` in the response for older clients; canonical products are always selectable.
+        static Response from(Product p, boolean duplicateName) { return new Response(p.getId(), p.getName(), p.getMaterialCode(), p.getSku(), p.getMaterialBatch(), p.getDefaultUnitsPerCarton(), p.getBaseUnit(), p.isQuantityUnknown(), p.getMovementDirection(), true, duplicateName, p.getCreatedAt(), p.getUpdatedAt(), p.getCartonSpecs().stream().sorted().toList(),p.availableBatches().stream().toList(),p.getBoxPackings().stream().sorted(java.util.Comparator.comparing(BoxPacking::getBoxesPerCarton).thenComparing(BoxPacking::getUnitsPerBox)).toList(),p.canonical().getProductionNumbers().stream().sorted().toList()); }
     }
 }

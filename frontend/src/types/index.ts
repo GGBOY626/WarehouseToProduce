@@ -15,6 +15,7 @@ export interface Product {
   id: number;
   name: string;
   materialCode: string;
+  sku?: string;
   materialBatch?: string;
   materialBatches?: string[];
   productionNumbers?: string[];
@@ -49,6 +50,7 @@ export interface ItemInput {
   batchNo: string;
   materialBatch?: string | null;
   productionNumber?: string | null;
+  sku?: string | null;
   subBatch?: string | null;
   fullCartons: number;
   wholePallets?: number;

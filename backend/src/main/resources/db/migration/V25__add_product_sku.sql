@@ -1,0 +1,1 @@
+ALTER TABLE product ADD COLUMN sku VARCHAR(100) NULL AFTER material_code;

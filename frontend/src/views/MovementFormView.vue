@@ -33,6 +33,7 @@ const direction = ref<Direction>(
 );
 const blankItem = (): ItemInput => ({
   batchNo: "",
+  sku: "",
   materialBatch: "",
   productionNumber: "",
   subBatch: "",
@@ -247,7 +248,7 @@ function chooseLegacy(item: ItemInput,size:number){applyBoxPacking(item);item.un
 function legacySpecs(item: ItemInput){return commonSpecs(item).filter(n=>!item.product?.boxPackings?.some(p=>p.boxesPerCarton*p.unitsPerBox===n))}
 function addSpecification(item: ItemInput) {
   const packing=taskPacking(item);
-  draft.value.items.push({ ...blankItem(), productId: item.productId, product: item.product, batchNo: item.batchNo, materialBatch: item.materialBatch, subBatch: item.subBatch, unitsPerCarton: packing ? taskCartonUnits(packing) : initialCartonSpec(item.product) ?? null, quantityUnknown: item.quantityUnknown });
+  draft.value.items.push({ ...blankItem(), productId: item.productId, product: item.product, batchNo: item.batchNo, sku: item.sku, materialBatch: item.materialBatch, subBatch: item.subBatch, unitsPerCarton: packing ? taskCartonUnits(packing) : initialCartonSpec(item.product) ?? null, quantityUnknown: item.quantityUnknown });
   const added=draft.value.items[draft.value.items.length-1]!;
   if(!packing)applyBoxPacking(added,initialBoxPacking(item.product));
 }
@@ -268,6 +269,7 @@ function selectProduct(item: ItemInput, p?: Product) {
   item.tailSectionOpen = false;
   applyBoxPacking(item,initialBoxPacking(p));
   item.batchNo = p?.materialCode || "";
+  item.sku = p?.sku || "";
   const batches = p?.materialBatches || (p?.materialBatch ? [p.materialBatch] : []);
   item.materialBatch = batches.length === 1 ? batches[0] : "";
   const numbers = p?.productionNumbers || [];
@@ -375,6 +377,7 @@ function payload() {
         batchNo: x.batchNo,
         materialBatch: isNewFinishedReceipt.value ? "" : x.materialBatch || "",
         productionNumber: x.productionNumber || "",
+        sku: isFinishedReceipt.value ? x.sku || "" : "",
         subBatch: isNewFinishedReceipt.value ? "" : x.subBatch || "",
         fullCartons: Number(quantity.fullCartons) || 0,
         looseUnits: Number(quantity.looseUnits) || 0,
@@ -489,6 +492,7 @@ onMounted(async () => {
         batchNo: x.batchNo,
         materialBatch: x.materialBatch ?? m.manufactureLot ?? "",
         productionNumber: x.productionNumber ?? "",
+          sku: x.sku ?? "",
         subBatch: x.subBatch || "",
         fullCartons: x.fullCartons,
         looseUnits: x.looseUnits,
@@ -629,6 +633,10 @@ onBeforeUnmount(() => {
           </div>
           <MaterialBatchPicker v-if="!isNewFinishedReceipt" v-model="item.materialBatch" :batches="item.product?.materialBatches" :required="needsMaterialBatch" />
           <ProductionNumberPicker v-model="item.productionNumber" :numbers="item.product?.productionNumbers" :allow-unspecified="!!item.id && !item.productionNumber" />
+          <div v-if="isFinishedReceipt" class="field">
+            <label :for="`sku-${index}`">SKU</label>
+            <input :id="`sku-${index}`" class="input mono" maxlength="100" v-model.trim="item.sku" placeholder="成品 SKU" />
+          </div>
           <div v-if="isFinishedReceipt && index === 0" class="field pallet-number-field">
             <label for="pallet-no">PALLET NO</label>
             <input id="pallet-no" class="input mono" type="number" min="1" step="1" inputmode="numeric" :value="draft.palletNo ?? ''" placeholder="手动输入起始托盘号" @input="changePalletNo" />
