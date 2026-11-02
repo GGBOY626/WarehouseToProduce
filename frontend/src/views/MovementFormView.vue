@@ -21,7 +21,7 @@ import { calculateQuantity, quantityError, cartonCount } from "../utils/quantity
 import { availableCartonSpecs, initialCartonSpec } from "../utils/cartonSpecs";
 import { initialBoxPacking, applyBoxPacking, syncBoxQuantity } from "../utils/boxPacking";
 import { taskCartonUnits, unitsForBoxes, boxesForUnits, fullCartonsForPalletSelection, tailCartonsOnOpen } from "../utils/taskPackaging";
-import { taskProductChoices } from "../utils/taskProductChoices";
+import { movementProductChoices } from "../utils/taskProductChoices";
 import { preparePhoto } from "../utils/photo";
 const route = useRoute(),
   router = useRouter();
@@ -228,11 +228,8 @@ const palletRangeText = computed(() => {
 });
 async function loadProductChoices(query: string, item: ItemInput): Promise<Product[]> {
   const search = query.trim();
-  const [catalog, productIds] = await Promise.all([
-    productsApi.search(search, false, productUsage.value),
-    productionTasksApi.productChoices(productUsage.value),
-  ]);
-  return taskProductChoices(catalog, productIds, item.productId);
+  const catalog = await productsApi.search(search, false, productUsage.value);
+  return movementProductChoices(catalog, item.productId);
 }
 function returnChanged() {
   draft.value.items = [blankItem()];
