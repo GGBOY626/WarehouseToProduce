@@ -120,7 +120,7 @@ public class ProductionTaskService {
     }
     @Transactional(readOnly=true)
     public List<Long> productChoices(MovementEnums.Direction direction){
-        return tasks.search(null).stream().filter(t->linkStatusAllowed(t,direction)).flatMap(task->{
+        return tasks.search(ProductionTask.Status.IN_PROGRESS).stream().flatMap(task->{
             if(direction==MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE)
                 return task.getOutputProduct()==null?java.util.stream.Stream.<Long>empty():java.util.stream.Stream.of(task.getOutputProduct().canonicalId());
             return task.getTargets().stream().map(target->target.getProduct()).filter(product->product.getMovementDirection()==ProductUsage.WAREHOUSE_TO_PRODUCTION).map(Product::canonicalId);

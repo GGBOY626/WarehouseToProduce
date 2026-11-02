@@ -2,10 +2,10 @@
 import {ref,shallowRef,watch} from 'vue';
 const props=defineProps<{modelValue?:number;label:string;placeholder:string;load:(q:string)=>Promise<T[]>;display?:(item:T)=>string}>();
 const emit=defineEmits<{(e:'update:modelValue',value:number|undefined):void;(e:'select',value:T|undefined):void}>();
-const query=ref('');const results=shallowRef<T[]>([]);const open=ref(false);let timer:number|undefined;
-watch(()=>props.modelValue,async id=>{if(id&&!query.value){const all=await props.load('');const selected=all.find(x=>x.id===id);if(selected)query.value=props.display?.(selected)||selected.name;}},{immediate:true});
-function search(){open.value=true;window.clearTimeout(timer);timer=window.setTimeout(async()=>results.value=await props.load(query.value),180)}
-function choose(item:T){query.value=props.display?.(item)||item.name;emit('update:modelValue',item.id);emit('select',item);open.value=false}
+const query=ref('');const results=shallowRef<T[]>([]);const open=ref(false);let timer:number|undefined;let request=0;
+watch(()=>props.modelValue,async id=>{if(id&&!query.value){const all=await props.load('');if(id!==props.modelValue||query.value)return;const selected=all.find(x=>x.id===id);if(selected)query.value=props.display?.(selected)||selected.name;}},{immediate:true});
+function search(){open.value=true;window.clearTimeout(timer);const current=++request;timer=window.setTimeout(async()=>{const matches=await props.load(query.value);if(current===request)results.value=matches},180)}
+function choose(item:T){request++;window.clearTimeout(timer);query.value=props.display?.(item)||item.name;emit('update:modelValue',item.id);emit('select',item);open.value=false}
 function clearIfChanged(){if(!props.modelValue)return;emit('update:modelValue',undefined);emit('select',undefined)}
 function closeLater(){window.setTimeout(()=>open.value=false,150)}
 </script>

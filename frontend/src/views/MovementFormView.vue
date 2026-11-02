@@ -228,8 +228,15 @@ const palletRangeText = computed(() => {
 });
 async function loadProductChoices(query: string, item: ItemInput): Promise<Product[]> {
   const search = query.trim();
-  const catalog = await productsApi.search(search, false, productUsage.value);
-  return movementProductChoices(catalog, item.productId);
+  if (search) {
+    const catalog = await productsApi.search(search, false, productUsage.value);
+    return movementProductChoices(catalog, item.productId);
+  }
+  const [catalog, taskProductIds] = await Promise.all([
+    productsApi.search('', false, productUsage.value),
+    productionTasksApi.productChoices(productUsage.value),
+  ]);
+  return movementProductChoices(catalog, item.productId, taskProductIds);
 }
 function returnChanged() {
   draft.value.items = [blankItem()];
