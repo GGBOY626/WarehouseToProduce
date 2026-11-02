@@ -23,8 +23,10 @@ public class ProductionTaskService {
     private final ProductService products;
     @Value("${app.business-zone:Pacific/Auckland}") private String zone;
 
-    public record TargetRequest(@NotNull Long productId,@Positive long targetQuantity,@Size(max=100) String materialBatch) {
-        public TargetRequest(Long productId,long targetQuantity){this(productId,targetQuantity,null);}
+    public record TargetRequest(@NotNull Long productId,@Positive long targetQuantity,@Size(max=100) String materialBatch,
+                                Boolean found,@Size(max=255) String foundLocation) {
+        public TargetRequest(Long productId,long targetQuantity){this(productId,targetQuantity,null,null,null);}
+        public TargetRequest(Long productId,long targetQuantity,String materialBatch){this(productId,targetQuantity,materialBatch,null,null);}
     }
     public record BatchSelection(@NotNull Long productId,@Size(max=100) String materialBatch) {
         public BatchSelection { materialBatch=materialBatch==null||materialBatch.isBlank()?null:materialBatch.trim(); }
@@ -62,7 +64,8 @@ public class ProductionTaskService {
     public record TargetResponse(Long productId,String productName,String materialCode,String baseUnit,long targetQuantity,Integer shortageCartonSize,
                                  long completedQuantity,int progressPercent,long issuedQuantity,long returnedQuantity,
                                  long shortageQuantity,int unknownQuantityCount,boolean materialTarget,BigDecimal estimatedUsedQuantity,
-                                 BigDecimal theoreticalUsedQuantity,BigDecimal theoreticalReturnQuantity,String materialBatch,List<BatchResponse> batches) {}
+                                 BigDecimal theoreticalUsedQuantity,BigDecimal theoreticalReturnQuantity,String materialBatch,List<BatchResponse> batches,
+                                 boolean found,String foundLocation) {}
     public record BatchResponse(String materialBatch,String subBatch,long issuedQuantity,long returnedQuantity,long netQuantity,int unknownQuantityCount) {}
     public record MovementResponse(Long id,String recordNo,MovementEnums.Direction direction,boolean returnMovement,
                                    Instant movementTime,int totalCartons,long totalQuantity,List<String> productNames,MovementEnums.Status status,int unknownQuantityCount,String quantityUnit,List<MovementMaterialResponse> items) {}
@@ -200,10 +203,12 @@ public class ProductionTaskService {
         if(inputs==null||inputs.isEmpty())throw BusinessException.badRequest("TASK_TARGET_REQUIRED","请至少添加一个目标产品。");
         Set<BatchSelection> seen=new HashSet<>();
         Map<Long,Long> quantities=new LinkedHashMap<>();
+        Map<Long,TargetRequest> requests=new LinkedHashMap<>();
         for(TargetRequest input:inputs){
             if(input==null||input.productId()==null||input.targetQuantity()<=0)
                 throw BusinessException.badRequest("TASK_TARGET_INVALID","每个物料须填写大于零的需求总数。");
             long productId=products.getAny(input.productId()).canonicalId();
+            requests.put(productId,input);
             if(!seen.add(new BatchSelection(productId,input.materialBatch())))throw BusinessException.badRequest("TASK_TARGET_DUPLICATE","同一物料请合计填写，不要重复添加。");
             try { quantities.merge(productId,input.targetQuantity(),Math::addExact); }
             catch(ArithmeticException ex){throw BusinessException.badRequest("TASK_QUANTITY_OVERFLOW","需求数量超出范围。");}
@@ -215,6 +220,11 @@ public class ProductionTaskService {
             Product product=products.getForMovement(input.getKey(),ProductUsage.WAREHOUSE_TO_PRODUCTION,editing&&target!=null);
             if(target==null){target=new ProductionTaskTarget();target.setTask(t);}
             target.setProduct(product);target.setMaterialBatch("");target.setTargetQuantity(input.getValue());target.setSortOrder(updated.size());updated.add(target);
+            TargetRequest request=requests.get(input.getKey());
+            if(request.found()!=null){
+                target.setFound(request.found());
+                target.setFoundLocation(blank(request.foundLocation()));
+            }
         }
         boolean configured=r.outputBoxesPerCarton()!=null||r.outputUnitsPerBox()!=null||r.outputQuantityBasis()!=null||r.primaryMaterialProductId()!=null;
         if(configured&&(r.outputProductId()==null||r.outputBoxesPerCarton()==null||r.outputBoxesPerCarton()<=0||r.outputUnitsPerBox()==null||r.outputUnitsPerBox()<=0||r.outputQuantityBasis()==null||r.primaryMaterialProductId()==null))
@@ -295,7 +305,8 @@ public class ProductionTaskService {
                     material?(int)Math.max(0,Math.min(100,completed*100.0/required)):0,
                     issued,returned,Math.max(0,required-completed),unknown,material,t.getOutputProduct()==null||!material?null:BigDecimal.valueOf(outputReceived).multiply(BigDecimal.valueOf(required))
                             .divide(BigDecimal.valueOf(t.getTargetOutputQuantity()),6,RoundingMode.HALF_UP),null,null,null,
-                    batches.entrySet().stream().map(e->new BatchResponse(e.getKey().batch(),e.getKey().subBatch(),e.getValue()[0],e.getValue()[1],e.getValue()[0]-e.getValue()[1],(int)e.getValue()[2])).toList());
+                    batches.entrySet().stream().map(e->new BatchResponse(e.getKey().batch(),e.getKey().subBatch(),e.getValue()[0],e.getValue()[1],e.getValue()[0]-e.getValue()[1],(int)e.getValue()[2])).toList(),
+                    entry.getValue().getFirst().isFound(),entry.getValue().getFirst().getFoundLocation());
         }).toList();
         List<TargetResponse> targets;
         List<TargetResponse> materialTargets=baseTargets.stream().filter(TargetResponse::materialTarget).toList();
@@ -305,7 +316,7 @@ public class ProductionTaskService {
             if(!target.materialTarget()||capacityRatio==null)return target;
             BigDecimal theoreticalUsed=BigDecimal.valueOf(target.targetQuantity()).multiply(capacityRatio).setScale(6,RoundingMode.HALF_UP).stripTrailingZeros();
             BigDecimal theoreticalReturn=BigDecimal.valueOf(target.issuedQuantity()).subtract(theoreticalUsed).max(BigDecimal.ZERO).setScale(0,RoundingMode.HALF_UP);
-            return new TargetResponse(target.productId(),target.productName(),target.materialCode(),target.baseUnit(),target.targetQuantity(),target.shortageCartonSize(),target.completedQuantity(),target.progressPercent(),target.issuedQuantity(),target.returnedQuantity(),target.shortageQuantity(),target.unknownQuantityCount(),target.materialTarget(),target.estimatedUsedQuantity(),theoreticalUsed,theoreticalReturn,target.materialBatch(),target.batches());
+            return new TargetResponse(target.productId(),target.productName(),target.materialCode(),target.baseUnit(),target.targetQuantity(),target.shortageCartonSize(),target.completedQuantity(),target.progressPercent(),target.issuedQuantity(),target.returnedQuantity(),target.shortageQuantity(),target.unknownQuantityCount(),target.materialTarget(),target.estimatedUsedQuantity(),theoreticalUsed,theoreticalReturn,target.materialBatch(),target.batches(),target.found(),target.foundLocation());
         }).toList();
         TargetResponse primary=t.getPrimaryMaterial()==null?null:targets.stream().filter(x->x.productId().equals(t.getPrimaryMaterial().canonicalId())).findFirst().orElse(null);
         BigDecimal produced=t.getOutputQuantityBasis()==null?null:BigDecimal.valueOf(received).multiply(BigDecimal.valueOf(t.getOutputQuantityBasis()==ProductionTask.OutputQuantityBasis.BOX?t.getOutputUnitsPerBox():1));

@@ -11,10 +11,10 @@ import SearchPicker from "./SearchPicker.vue";
 const props = defineProps<{ task?: ProductionTask }>();
 const emit = defineEmits<{ saved: [task: ProductionTask]; cancel: [] }>();
 let nextKey = 0;
-const newTarget = () => ({ key: nextKey++, productId: undefined as number | undefined, productName: "", targetQuantity: 0, baseUnit: "" });
+const newTarget = () => ({ key: nextKey++, productId: undefined as number | undefined, productName: "", targetQuantity: 0, baseUnit: "", found: false, foundLocation: "" });
 const form = ref({
   name: props.task?.name || "",
-  targets: props.task?.targets.map(t => ({ key: nextKey++, productId: t.productId as number | undefined, productName: t.productName, targetQuantity: t.targetQuantity, baseUnit: t.baseUnit || "" })) || [newTarget()],
+  targets: props.task?.targets.map(t => ({ key: nextKey++, productId: t.productId as number | undefined, productName: t.productName, targetQuantity: t.targetQuantity, baseUnit: t.baseUnit || "", found: !!t.found, foundLocation: t.foundLocation || "" })) || [newTarget()],
   plannedDate: props.task?.plannedDate || today(),
   orderNo: props.task?.orderNo || "", feishuNo: props.task?.feishuNo || "",
   plannedQuantity: (props.task?.plannedQuantity ?? '') as number | '', productBatch: props.task?.productBatch || "",
@@ -76,6 +76,7 @@ async function deleteExistingPhoto(photo: Photo) {
 }
 onBeforeUnmount(() => files.value.forEach(file => URL.revokeObjectURL(file.url)));
 function selectMaterial(target: ReturnType<typeof newTarget>, p?: Product) {
+  target.found = false; target.foundLocation = "";
   target.baseUnit = p?.baseUnit || ""; target.productName = p?.name || "";
 }
 function selectOutput(p?: Product) {
@@ -119,7 +120,7 @@ async function save(asPreview = false) {
       outputBoxesPerCarton: packed ? boxesPerCarton.value : null, outputUnitsPerBox: packed ? unitsPerBox.value : null,
       outputQuantityBasis: packed ? quantityBasis.value : null, primaryMaterialProductId: packed ? primaryId.value : null,
       outputCartonsPerPallet: packed && cartonsPerPallet.value ? cartonsPerPallet.value : null,
-      targets: targets.map(t => ({ productId: t.productId, targetQuantity: t.targetQuantity })) };
+      targets: targets.map(t => ({ productId: t.productId, targetQuantity: t.targetQuantity, found: t.found, foundLocation: t.foundLocation.trim() || null })) };
     const taskId = props.task?.id ?? savedTask.value?.id;
     savedTask.value = taskId ? await productionTasksApi.update(taskId, payload) : asPreview ? await createProductionTaskPreview(payload) : await productionTasksApi.create(payload);
     existingPhotos.value = [...(savedTask.value.photos || existingPhotos.value)];
@@ -150,8 +151,13 @@ async function save(asPreview = false) {
           :display="p => `${p.name} · ${p.materialCode}`" @select="p => selectMaterial(target, p)" />
         <label class="field"><span>需求总数 * {{ target.baseUnit ? `（${target.baseUnit}）` : '' }}</span><input class="input" type="number" min="1" step="1" required v-model.number="target.targetQuantity" /></label>
         <button type="button" class="btn btn-secondary" :disabled="form.targets.length === 1" :aria-label="`移除物料 ${index + 1}`" @click="form.targets.splice(index, 1)">移除</button>
+        <div class="material-finding">
+          <label class="found-toggle"><input type="checkbox" v-model="target.found" :aria-label="`物料 ${index + 1} 已找到`" /> 已找到</label>
+          <label class="field"><span>找到位置（可选）</span><input class="input" maxlength="255" v-model.trim="target.foundLocation" :aria-label="`物料 ${index + 1} 找到位置`" placeholder="例如：原料库 A 区 3 号架" /></label>
+        </div>
       </div>
       <button type="button" class="btn btn-secondary" @click="form.targets.push(newTarget())">＋ 添加所需物料</button>
+      <p class="hint">找货记录可选，即使全部物料都未标记已找到，也可以直接开始生产。</p>
       <label class="output-choice"><input type="checkbox" v-model="outputEnabled" :disabled="hasReceipts" /> 关联出货物料（车间 → 仓库，可稍后设置）</label>
       <div v-if="outputEnabled" class="output-plan">
         <fieldset :disabled="hasReceipts">
@@ -212,6 +218,7 @@ async function save(asPreview = false) {
 </template>
 <style scoped>
 .forecast-config{display:grid;gap:12px;border-top:1px solid var(--line);padding-top:14px}
+.material-finding{grid-column:1/-1;display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:12px}.found-toggle{display:flex;align-items:center;gap:8px;font-size:14px}.found-toggle input{width:18px;height:18px}@media(max-width:600px){.material-finding{grid-template-columns:minmax(0,1fr)}}
 .output-choice{display:flex;align-items:center;gap:8px}.output-choice input{width:18px;height:18px}.output-plan{display:grid;gap:12px;padding:14px;background:#f3f7f8;border-radius:8px}.task-form,fieldset{display:grid;gap:16px}.task-form{margin-top:16px}fieldset{padding:0;border:0;min-width:0}.target-row{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr) auto;gap:12px;align-items:end;border-bottom:1px solid #e5ecee;padding-bottom:16px}.target-row>*{min-width:0}fieldset>.btn{justify-self:start}.form-actions{display:flex;gap:10px}.form-alert{color:#8f1d25}.hint{margin:0}@media(max-width:600px){.target-row{grid-template-columns:minmax(0,1fr)}.target-row>.btn{justify-self:start}}
 .task-photo-section{display:grid;gap:10px}.photo-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}.photo-heading h3{margin:0;font-size:14px;font-weight:650}.photo-heading span{color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums}.task-photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:8px}.task-photo-grid figure{position:relative;aspect-ratio:1;margin:0;overflow:hidden;border:1px solid var(--line);border-radius:6px;background:#eef2f3}.task-photo-grid figure>a,.task-photo-grid figure>img{display:block;width:100%;height:100%}.task-photo-grid img{width:100%;height:100%;object-fit:cover}.photo-remove{position:absolute;top:4px;right:4px;display:grid;place-items:center;width:28px;height:28px;border:0;border-radius:50%;background:rgba(0,0,0,.7);color:#fff;font-size:19px;line-height:1;cursor:pointer}.photo-remove:disabled{opacity:.5}.pending-photo>span{position:absolute;left:0;right:0;bottom:0;padding:4px;background:rgba(0,0,0,.72);color:white;text-align:center;font-size:10px}.pending-photo>span.failed{background:#8f1d25}.photo-actions{display:flex;flex-wrap:wrap;gap:8px}.photo-actions label{position:relative;overflow:hidden;cursor:pointer}
 @media(max-width:600px){.task-photo-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}

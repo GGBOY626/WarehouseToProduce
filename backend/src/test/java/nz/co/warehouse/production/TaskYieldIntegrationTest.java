@@ -86,6 +86,7 @@ class TaskYieldIntegrationTest {
     @Test void previewDoesNotLinkUntilManuallyStarted(){
         var task=tasks.createPreview(plan(20000,1,ProductionTask.OutputQuantityBasis.UNIT));
         assertThat(task.status()).isEqualTo(ProductionTask.Status.PREVIEW);
+        assertThat(task.targets()).allMatch(target->!target.found()&&target.foundLocation()==null);
         assertThat(tasks.linkable(List.of(raw),MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,false))
                 .extracting(ProductionTaskService.LinkOption::id).doesNotContain(task.id());
         var selection=List.of(new ProductionTaskService.BatchSelection(raw,"22677"));
@@ -94,9 +95,37 @@ class TaskYieldIntegrationTest {
 
         var started=tasks.startProduction(task.id());
         assertThat(started.status()).isEqualTo(ProductionTask.Status.IN_PROGRESS);
+        assertThat(started.targets()).allMatch(target->!target.found());
         assertThat(tasks.getLinkableBatches(task.id(),selection,MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,false).getId())
                 .isEqualTo(task.id());
         assertThatThrownBy(()->tasks.startProduction(task.id())).hasMessageContaining("任务预告");
+    }
+    @Test void previewPersistsIndependentFindingRecordsAndAllowsStartingWithUnfoundMaterials(){
+        Long third=product(ProductUsage.WAREHOUSE_TO_PRODUCTION,"个");
+        var request=new ProductionTaskService.SaveRequest(null,null,LocalDate.now(),null,null,List.of(
+                new ProductionTaskService.TargetRequest(raw,100,null,true,"  A 区 3 号架  "),
+                new ProductionTaskService.TargetRequest(inner,200,null,false,"待核对 B 区"),
+                new ProductionTaskService.TargetRequest(third,300,null,false,null)));
+        var task=tasks.createPreview(request);
+        var detail=tasks.detail(task.id());
+        assertThat(detail.targets()).extracting(ProductionTaskService.TargetResponse::found).containsExactly(true,false,false);
+        assertThat(detail.targets()).extracting(ProductionTaskService.TargetResponse::foundLocation).containsExactly("A 区 3 号架","待核对 B 区",null);
+        assertThat(jdbc.queryForObject("SELECT found_location FROM production_task_target WHERE production_task_id=? AND product_id=?",String.class,task.id(),raw)).isEqualTo("A 区 3 号架");
+        var legacyRequest=new ProductionTaskService.SaveRequest(null,null,LocalDate.now(),null,null,List.of(
+                new ProductionTaskService.TargetRequest(raw,110),new ProductionTaskService.TargetRequest(inner,210),new ProductionTaskService.TargetRequest(third,310)));
+        var preserved=tasks.update(task.id(),legacyRequest);
+        assertThat(preserved.targets().getFirst().found()).isTrue();
+        assertThat(preserved.targets().getFirst().foundLocation()).isEqualTo("A 区 3 号架");
+        var clearRequest=new ProductionTaskService.SaveRequest(null,null,LocalDate.now(),null,null,List.of(
+                new ProductionTaskService.TargetRequest(raw,110,null,false,null),
+                new ProductionTaskService.TargetRequest(inner,210,null,false,null),
+                new ProductionTaskService.TargetRequest(third,310,null,false,null)));
+        tasks.update(task.id(),clearRequest);
+        var started=tasks.startProduction(task.id());
+        assertThat(started.status()).isEqualTo(ProductionTask.Status.IN_PROGRESS);
+        assertThat(started.targets()).allMatch(target->!target.found()&&target.foundLocation()==null);
+        assertThat(tasks.list(null)).filteredOn(row->row.id().equals(task.id())).singleElement()
+                .satisfies(row->assertThat(row.targets()).allMatch(target->!target.found()));
     }
     @Test void taskHistoryKeepsEachDeliveryPackagingAndDirection(){
         var task=tasks.create(plan(20000,30,ProductionTask.OutputQuantityBasis.BOX));

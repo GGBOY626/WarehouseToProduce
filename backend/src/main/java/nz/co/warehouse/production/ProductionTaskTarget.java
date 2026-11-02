@@ -13,4 +13,7 @@ public class ProductionTaskTarget {
     @Column(name="material_batch",nullable=false,length=100) private String materialBatch = "";
     @Column(name="target_quantity",nullable=false) private long targetQuantity;
     @Column(name="sort_order",nullable=false) private int sortOrder;
+    @org.hibernate.annotations.ColumnDefault("false")
+    @Column(name="found",nullable=false) private boolean found;
+    @Column(name="found_location",length=255) private String foundLocation;
 }

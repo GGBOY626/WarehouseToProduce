@@ -7,6 +7,7 @@ defineEmits<{ select: [target: ProductionTaskTarget] }>();
   <div class="target-list">
     <div v-for="(target,index) in targets" :key="`${target.productId}:${target.materialBatch}:${index}`" class="target-summary" :class="{card:cards,'material-card':cards}">
       <div class="target-title"><button v-if="interactive" type="button" class="material-link" @click="$emit('select',target)">{{target.productName}} <span>查看流转 ›</span></button><strong v-else>{{target.productName}}</strong></div>
+      <p class="found-status" :class="{ 'is-found': target.found }">{{ target.found ? '已找到' : '尚未标记已找到' }}<template v-if="target.foundLocation"> · {{ target.foundLocation }}</template></p>
       <p v-if="!target.materialTarget" class="shortage">此目标属于旧版成品入库产品，请编辑任务，改选仓库 → 生产车间的物料。</p>
       <template v-else>
         <div class="target-values"><span>{{cards ? '已发料 / 所需' : '净发料 / 所需'}}</span><b>{{(cards ? target.issuedQuantity : target.completedQuantity).toLocaleString()}} / {{target.targetQuantity.toLocaleString()}} {{target.baseUnit || '个'}}</b></div>
@@ -45,6 +46,7 @@ defineEmits<{ select: [target: ProductionTaskTarget] }>();
 .material-link{border:0;background:none;padding:4px 0;color:#174a68;font:inherit;font-weight:700;text-align:left;cursor:pointer}.material-link span{font-size:12px;font-weight:400;margin-left:8px}.material-link:hover{text-decoration:underline}.material-link:focus-visible{outline:2px solid #267566;outline-offset:4px}
 .batch-breakdown{font-size:13px;color:#52626b}.batch-breakdown summary{cursor:pointer;padding:6px 0}.batch-row{display:flex;flex-wrap:wrap;justify-content:space-between;gap:6px;padding:6px 0;border-top:1px solid #e5ecee}
 .shortage,.ready{margin:0;font-size:14px;font-weight:700}.shortage{color:#9b3d17}.ready{color:#267566}.quantities{color:#66747c}
+.found-status{margin:0;color:var(--muted);font-size:12px}.found-status.is-found{color:#267566;font-weight:650}
 .target-list{display:grid;gap:14px;min-width:0}.target-summary{display:grid;gap:7px;min-width:0}.material-card{padding:16px;gap:10px}.material-quantities{display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;font-size:12px;color:var(--muted)}.material-quantities b{font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums}.target-title{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}.target-title strong{overflow-wrap:anywhere}.target-title small{color:#66747c;overflow-wrap:anywhere}.target-title span{margin-left:auto;color:#267566;font-weight:700}.target-values{display:flex;flex-wrap:wrap;justify-content:space-between;gap:6px;font-size:13px}.target-values span{color:#66747c}.target-values b{font-variant-numeric:tabular-nums}.progress{height:4px;background:#e5ecee;border-radius:3px;overflow:hidden}.progress i{display:block;height:100%;background:#267566}
 .return-summary{font-size:13px;color:var(--orange);line-height:1.6}.return-summary p{margin:3px 0}.return-summary small{color:var(--muted)}
 </style>

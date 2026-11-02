@@ -194,6 +194,7 @@ export interface ProductionTaskTarget {
   issuedQuantity: number; returnedQuantity: number; shortageQuantity: number;
   unknownQuantityCount: number; materialTarget: boolean; estimatedUsedQuantity?: number | null;
   theoreticalUsedQuantity?: number | null; theoreticalReturnQuantity?: number | null;
+  found: boolean; foundLocation?: string | null;
 }
 export interface Packaging { type: 'FULL' | 'TAIL'; unitsPerCarton: number | null; cartons: number }
 export interface MaterialSummary {
