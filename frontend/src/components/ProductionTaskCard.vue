@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import type { ProductionTask, ProductionTaskStatus } from '../types';
 import { taskWarnings } from '../utils/taskAttention';
 import FinishedReceiptSummary from './FinishedReceiptSummary.vue';
 import { taskIssuedMaterials } from '../utils/taskIssuedMaterials';
+import PhotoLightbox from './PhotoLightbox.vue';
 
 const props = defineProps<{ task: ProductionTask; expanded: boolean }>();
 const emit = defineEmits<{ toggle: [] }>();
@@ -18,6 +19,7 @@ const productionPercent = computed(() => props.task.output?.quantityBasis ? prop
 const issued = computed(() => taskIssuedMaterials(props.task));
 const visiblePhotos = computed(() => (props.task.photos || []).slice(0, 4));
 const hiddenPhotoCount = computed(() => Math.max(0, (props.task.photos?.length || 0) - visiblePhotos.value.length));
+const photoLightbox = ref<InstanceType<typeof PhotoLightbox>>();
 </script>
 
 <template>
@@ -34,9 +36,9 @@ const hiddenPhotoCount = computed(() => Math.max(0, (props.task.photos?.length |
     </header>
     <p class="task-dates">开始日期 {{ task.startDate || '暂无发料记录' }}<template v-if="task.status==='COMPLETED'"> · 结束日期 {{ task.endDate || '暂无成品回仓记录' }}</template></p>
     <div v-if="visiblePhotos.length" class="task-photos" aria-label="生产照片">
-      <a v-for="photo in visiblePhotos" :key="photo.id" :href="photo.url" target="_blank" rel="noopener" :aria-label="`打开照片：${photo.originalName}`" @click.stop>
+      <button v-for="(photo, index) in visiblePhotos" :key="photo.id" type="button" :aria-label="`查看照片 ${index + 1}：${photo.originalName}`" @click.stop="photoLightbox?.open(index, $event.currentTarget as HTMLElement)">
         <img :src="photo.url" :alt="photo.originalName" loading="lazy" width="92" height="72" />
-      </a>
+      </button>
       <span v-if="hiddenPhotoCount">另有 {{ hiddenPhotoCount }} 张</span>
     </div>
 
@@ -89,6 +91,7 @@ const hiddenPhotoCount = computed(() => Math.max(0, (props.task.photos?.length |
       </button>
     </section>
     <ul v-if="warnings.length" class="task-warnings" aria-label="其他需关注事项"><li v-for="warning in warnings" :key="warning"><span aria-hidden="true">!</span>{{ warning }}</li></ul>
+    <PhotoLightbox ref="photoLightbox" :photos="task.photos || []" />
   </article>
 </template>
 
@@ -97,8 +100,8 @@ const hiddenPhotoCount = computed(() => Math.max(0, (props.task.photos?.length |
 .task-card:hover{border-color:#b9c5ca;box-shadow:0 4px 12px rgba(20,39,50,.07)}
 .task-card:active{border-color:var(--blue2)}
 .task-photos{position:relative;z-index:2;display:flex;align-items:center;flex-wrap:wrap;gap:7px;margin:0 0 14px}
-.task-photos a{display:block;width:92px;height:72px;flex:0 0 auto;overflow:hidden;border:1px solid var(--line);border-radius:6px;background:#eef2f3}
-.task-photos a:focus-visible{outline:2px solid var(--blue2);outline-offset:2px}
+.task-photos button{display:block;width:92px;height:72px;flex:0 0 auto;padding:0;overflow:hidden;border:1px solid var(--line);border-radius:6px;background:#eef2f3;cursor:zoom-in}
+.task-photos button:focus-visible{outline:2px solid var(--blue2);outline-offset:2px}
 .task-photos img{display:block;width:100%;height:100%;object-fit:cover}
 .task-photos>span{color:var(--muted);font-size:11px}
 .task-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}

@@ -7,6 +7,7 @@ import type { Photo, Product, ProductionTask, BoxPacking } from "../types";
 import { initialBoxPacking } from "../utils/boxPacking";
 import { preparePhoto } from "../utils/photo";
 import { today } from "../utils/time";
+import PhotoLightbox from "./PhotoLightbox.vue";
 import SearchPicker from "./SearchPicker.vue";
 const props = defineProps<{ task?: ProductionTask }>();
 const emit = defineEmits<{ saved: [task: ProductionTask]; cancel: [] }>();
@@ -38,6 +39,7 @@ const packagingLocked = computed(() => hasReceipts.value && !!props.task?.output
 const saving = ref(false), message = ref("");
 const savedTask = ref<ProductionTask>();
 const existingPhotos = ref<Photo[]>([...(props.task?.photos || [])]);
+const photoLightbox = ref<InstanceType<typeof PhotoLightbox>>();
 const files = ref<{ file: File; url: string; status: 'preparing' | 'ready' | 'uploading' | 'uploaded' | 'prepare-failed' | 'upload-failed'; progress: number }[]>([]);
 const photoCount = computed(() => existingPhotos.value.length + files.value.filter(file => file.status !== 'uploaded').length);
 const photoSlots = computed(() => Math.max(0, 10 - photoCount.value));
@@ -194,8 +196,8 @@ async function save(asPreview = false) {
     <section class="task-photo-section" aria-labelledby="task-photo-title">
       <div class="photo-heading"><h3 id="task-photo-title">生产照片</h3><span>{{ photoCount }} / 10</span></div>
       <div v-if="existingPhotos.length || files.some(file => file.status !== 'uploaded')" class="task-photo-grid">
-        <figure v-for="photo in existingPhotos" :key="photo.id">
-          <a :href="photo.url" target="_blank" rel="noopener"><img :src="photo.url" :alt="photo.originalName" loading="lazy" /></a>
+        <figure v-for="(photo, index) in existingPhotos" :key="photo.id">
+          <button type="button" class="photo-open" :aria-label="`查看照片 ${index + 1}：${photo.originalName}`" @click="photoLightbox?.open(index, $event.currentTarget as HTMLElement)"><img :src="photo.url" :alt="photo.originalName" loading="lazy" /></button>
           <button type="button" class="photo-remove" :disabled="saving || deletingPhotoId === photo.id" :aria-label="`删除${photo.originalName}`" @click="deleteExistingPhoto(photo)">×</button>
         </figure>
         <figure v-for="(file, index) in files.filter(item => item.status !== 'uploaded')" :key="file.url" class="pending-photo">
@@ -212,6 +214,7 @@ async function save(asPreview = false) {
         <label class="btn btn-secondary">从相册选择<input class="sr-only" type="file" accept="image/*" multiple :disabled="saving" @change="pickPhotos" /></label>
       </div>
     </section>
+    <PhotoLightbox ref="photoLightbox" :photos="existingPhotos" />
     <p v-if="message" class="form-alert" role="alert">{{ message }}</p>
     <div class="form-actions"><template v-if="task"><button class="btn btn-primary" :disabled="saving">{{ saving ? '保存中…' : '保存修改' }}</button></template><template v-else><button type="button" class="btn btn-primary" :disabled="saving" @click="save(false)">{{ saving ? '保存中…' : '创建进行中任务' }}</button><button type="button" class="btn btn-secondary" :disabled="saving" @click="save(true)">{{ saving ? '保存中…' : '创建任务预告' }}</button></template><button type="button" class="btn btn-secondary" :disabled="saving" @click="emit('cancel')">取消</button></div>
   </form>
@@ -220,6 +223,6 @@ async function save(asPreview = false) {
 .forecast-config{display:grid;gap:12px;border-top:1px solid var(--line);padding-top:14px}
 .material-finding{grid-column:1/-1;display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:12px}.found-toggle{display:flex;align-items:center;gap:8px;font-size:14px}.found-toggle input{width:18px;height:18px}@media(max-width:600px){.material-finding{grid-template-columns:minmax(0,1fr)}}
 .output-choice{display:flex;align-items:center;gap:8px}.output-choice input{width:18px;height:18px}.output-plan{display:grid;gap:12px;padding:14px;background:#f3f7f8;border-radius:8px}.task-form,fieldset{display:grid;gap:16px}.task-form{margin-top:16px}fieldset{padding:0;border:0;min-width:0}.target-row{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr) auto;gap:12px;align-items:end;border-bottom:1px solid #e5ecee;padding-bottom:16px}.target-row>*{min-width:0}fieldset>.btn{justify-self:start}.form-actions{display:flex;gap:10px}.form-alert{color:#8f1d25}.hint{margin:0}@media(max-width:600px){.target-row{grid-template-columns:minmax(0,1fr)}.target-row>.btn{justify-self:start}}
-.task-photo-section{display:grid;gap:10px}.photo-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}.photo-heading h3{margin:0;font-size:14px;font-weight:650}.photo-heading span{color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums}.task-photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:8px}.task-photo-grid figure{position:relative;aspect-ratio:1;margin:0;overflow:hidden;border:1px solid var(--line);border-radius:6px;background:#eef2f3}.task-photo-grid figure>a,.task-photo-grid figure>img{display:block;width:100%;height:100%}.task-photo-grid img{width:100%;height:100%;object-fit:cover}.photo-remove{position:absolute;top:4px;right:4px;display:grid;place-items:center;width:28px;height:28px;border:0;border-radius:50%;background:rgba(0,0,0,.7);color:#fff;font-size:19px;line-height:1;cursor:pointer}.photo-remove:disabled{opacity:.5}.pending-photo>span{position:absolute;left:0;right:0;bottom:0;padding:4px;background:rgba(0,0,0,.72);color:white;text-align:center;font-size:10px}.pending-photo>span.failed{background:#8f1d25}.photo-actions{display:flex;flex-wrap:wrap;gap:8px}.photo-actions label{position:relative;overflow:hidden;cursor:pointer}
+.task-photo-section{display:grid;gap:10px}.photo-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}.photo-heading h3{margin:0;font-size:14px;font-weight:650}.photo-heading span{color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums}.task-photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:8px}.task-photo-grid figure{position:relative;aspect-ratio:1;margin:0;overflow:hidden;border:1px solid var(--line);border-radius:6px;background:#eef2f3}.task-photo-grid .photo-open{display:block;width:100%;height:100%;padding:0;border:0;background:transparent;cursor:zoom-in}.task-photo-grid .photo-open:focus-visible{outline:2px solid var(--blue);outline-offset:-2px}.task-photo-grid img{display:block;width:100%;height:100%;object-fit:cover}.photo-remove{position:absolute;top:4px;right:4px;display:grid;place-items:center;width:28px;height:28px;border:0;border-radius:50%;background:rgba(0,0,0,.7);color:#fff;font-size:19px;line-height:1;cursor:pointer}.photo-remove:disabled{opacity:.5}.pending-photo>span{position:absolute;left:0;right:0;bottom:0;padding:4px;background:rgba(0,0,0,.72);color:white;text-align:center;font-size:10px}.pending-photo>span.failed{background:#8f1d25}.photo-actions{display:flex;flex-wrap:wrap;gap:8px}.photo-actions label{position:relative;overflow:hidden;cursor:pointer}
 @media(max-width:600px){.task-photo-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
 </style>

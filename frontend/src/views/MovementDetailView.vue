@@ -14,12 +14,14 @@ import { useAuth } from "../auth";
 import MaterialSummary from "../components/MaterialSummary.vue";
 import PackagingBreakdown from "../components/PackagingBreakdown.vue";
 import CopyButton from "../components/CopyButton.vue";
+import PhotoLightbox from "../components/PhotoLightbox.vue";
 const route = useRoute(),
   router = useRouter(),
   id = Number(route.params.id);
 const data = ref<MovementDetail>(),
   message = ref(""),
   uploading = ref(false);
+const photoLightbox = ref<InstanceType<typeof PhotoLightbox>>();
 const { authenticated } = useAuth();
 async function load() {
   try {
@@ -222,11 +224,13 @@ onMounted(()=>void load());
           <span class="hint">{{ data.photos.length }} / 10</span>
         </div>
         <div v-if="data.photos.length" class="photo-grid">
-          <figure v-for="p in data.photos" :key="p.id">
-            <a :href="p.url" target="_blank"
-              ><img :src="p.url" :alt="p.originalName" /></a
-            ><button
+          <figure v-for="(p, index) in data.photos" :key="p.id">
+            <button type="button" class="photo-open" :aria-label="`查看照片 ${index + 1}：${p.originalName}`" @click="photoLightbox?.open(index, $event.currentTarget as HTMLElement)">
+              <img :src="p.url" :alt="p.originalName" />
+            </button><button
               v-if="authenticated && data.status === 'ACTIVE'"
+              type="button"
+              class="photo-delete"
               @click="deletePhoto(p.id)"
               aria-label="删除照片"
             >
@@ -248,6 +252,7 @@ onMounted(()=>void load());
             @change="addPhoto"
         /></label>
       </section>
+      <PhotoLightbox ref="photoLightbox" :photos="data.photos" />
       <section class="section actions" v-if="authenticated">
         <RouterLink v-if="data.status === 'ACTIVE'" class="btn btn-secondary edit-action" :to="`/movements/${id}/edit`"
           >编辑记录</RouterLink
@@ -364,12 +369,22 @@ onMounted(()=>void load());
   border-radius: 8px;
   overflow: hidden;
 }
-.photo-grid img {
+.photo-grid .photo-open {
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: zoom-in;
+}
+.photo-grid .photo-open:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
+.photo-grid .photo-open img {
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
-.photo-grid button {
+.photo-grid .photo-delete {
   position: absolute;
   right: 4px;
   top: 4px;
@@ -380,6 +395,7 @@ onMounted(()=>void load());
   background: rgba(0, 0, 0, 0.68);
   color: #fff;
   font-size: 20px;
+  cursor: pointer;
 }
 .no-photo { margin: 4px 0; color: #78868d; font-size: 13px; }
 .upload {
