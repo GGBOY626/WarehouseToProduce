@@ -6,6 +6,7 @@ import { useAuth } from "../auth";
 import type { ProductionTask } from "../types";
 import ProductionTaskForm from "../components/ProductionTaskForm.vue";
 import ProductionTaskCard from "../components/ProductionTaskCard.vue";
+import ProductionTaskPreview from "../components/ProductionTaskPreview.vue";
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router';
 import { readTaskListState, saveTaskListState } from '../utils/taskListState';
 import { activeTask, attentionFirst } from '../utils/taskAttention';
@@ -19,16 +20,24 @@ function toggleShortages(id: number) {
 const { authenticated } = useAuth();
 const loading=ref(true);
 const tasks = ref<ProductionTask[]>([]), message = ref(""), showForm = ref(false);
+const editingPreviewIds = ref<number[]>([]);
+function previewEditing(id: number, editing: boolean) {
+  editingPreviewIds.value = editing ? [...new Set([...editingPreviewIds.value, id])] : editingPreviewIds.value.filter(value => value !== id);
+}
+function previewSaved(task: ProductionTask) {
+  tasks.value = tasks.value.map(value => value.id === task.id ? task : value);
+  if (task.status !== 'PREVIEW') previewEditing(task.id, false);
+}
 const active = computed(() => attentionFirst(tasks.value.filter(activeTask)));
 const finished = computed(() => tasks.value.filter(t => t.status === 'COMPLETED'));
 const previews = computed(() => tasks.value.filter(t => t.status === 'PREVIEW').sort((a,b) => a.createdAt.localeCompare(b.createdAt) || a.id-b.id));
 const showFinished = ref(false);
 const showPreviews = ref(false);
 const groups = computed(() => [showPreviews.value ? { title: '任务预告', tasks: previews.value } : showFinished.value ? { title: '已完成的任务', tasks: finished.value } : { title: '进行中的任务', tasks: active.value }]);
-async function load() { try { tasks.value = await productionTasksApi.list(); message.value=""; } catch (e) { message.value = errorMessage(e); } finally { loading.value=false; } }
+async function load() { try { const loaded = await productionTasksApi.list(); tasks.value = loaded.map(task => editingPreviewIds.value.includes(task.id) ? tasks.value.find(value => value.id === task.id) ?? task : task); message.value=""; } catch (e) { message.value = errorMessage(e); } finally { loading.value=false; } }
 function taskSaved(task:ProductionTask){showForm.value=false;showFinished.value=false;showPreviews.value=task.status==='PREVIEW';void load()}
 let refreshTimer: ReturnType<typeof setInterval>;
-function refreshVisible(){ if(document.visibilityState === 'visible' && !showForm.value) void load(); }
+function refreshVisible(){ if(document.visibilityState === 'visible' && !showForm.value && !editingPreviewIds.value.length) void load(); }
 onBeforeRouteLeave(() => { saveTaskListState({ scrollY: window.scrollY, expandedTaskIds: expandedTaskIds.value }); });
 let mounted = true;
 onMounted(async () => { if(overviewEntry)await router.replace({query:{...route.query,status:undefined,attention:undefined}}); await load(); if (!mounted) return; await nextTick(); window.scrollTo({ top: overviewEntry ? 0 : savedListState.scrollY, behavior: 'instant' }); refreshTimer=setInterval(refreshVisible,15000); window.addEventListener('focus',refreshVisible); });
@@ -51,10 +60,7 @@ onBeforeUnmount(() => { mounted=false; clearInterval(refreshTimer); window.remov
       <div v-if="loading" class="card empty" role="status">正在读取任务…</div>
       <div v-else-if="!group.tasks.length" class="card empty">暂无{{ group.title }}。</div>
       <div v-else-if="showPreviews" class="preview-list">
-        <article v-for="task in previews" :key="task.id" class="preview-row">
-          <RouterLink :to="`/production-tasks/${task.id}`" class="preview-info"><strong>{{task.name}}</strong><span>计划日期 {{task.plannedDate}}<template v-if="task.orderNo"> · 订单号 {{task.orderNo}}</template><template v-if="task.feishuNo"> · 飞书号 {{task.feishuNo}}</template></span><span v-if="task.plannedQuantity || task.productBatch">{{task.plannedQuantity ? `计划数量 ${task.plannedQuantity.toLocaleString()}` : ''}}{{task.plannedQuantity&&task.productBatch?' · ':''}}{{task.productBatch ? `产品批次 ${task.productBatch}` : ''}}</span></RouterLink>
-          <RouterLink :to="`/production-tasks/${task.id}`" class="btn btn-secondary">找货确认 {{task.targets.filter(target=>target.found).length}} / {{task.targets.length}} ›</RouterLink>
-        </article>
+        <ProductionTaskPreview v-for="task in previews" :key="task.id" :task="task" :authenticated="authenticated" @saved="previewSaved" @editing="previewEditing(task.id, $event)" />
       </div>
       <div v-else class="task-list">
         <ProductionTaskCard v-for="task in group.tasks" :key="task.id" :task="task" :expanded="expandedTaskIds.includes(task.id)" @toggle="toggleShortages(task.id)" />
@@ -76,6 +82,6 @@ onBeforeUnmount(() => { mounted=false; clearInterval(refreshTimer); window.remov
 .task-filter button:active{border-color:var(--blue2)}
 .task-filter button:focus-visible{outline:2px solid var(--blue2);outline-offset:2px}
 .task-section{margin-top:24px}.section-head{margin-bottom:12px}.section-title{font-size:15px;font-weight:650}.task-count{color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums}
-.task-list,.preview-list{display:grid;gap:10px}.preview-row{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 16px;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius)}.preview-info{display:grid;gap:5px;min-width:0;color:inherit;text-decoration:none}.preview-info strong{font-size:14px;overflow-wrap:anywhere}.preview-info span{font-size:12px;color:var(--muted);overflow-wrap:anywhere}.preview-row>.btn{flex-shrink:0}.form-alert{color:var(--red)}
-@media(max-width:600px){.task-page{padding-top:20px}.page-heading{gap:10px;margin-bottom:18px}.page-title{font-size:23px}.page-heading>.btn{min-height:44px;padding:8px 12px;font-size:13px}.page-lead{max-width:28em;font-size:12px}.task-toolbar{padding:10px 12px;gap:5px}.task-filter{width:100%}.task-filter button{flex:1;min-height:42px;padding-inline:8px;gap:5px;font-size:12px}.task-section{margin-top:20px}.task-list{gap:12px}.preview-row{align-items:flex-start;padding:12px;gap:8px}.preview-row>.btn{min-height:40px;padding:7px 10px;font-size:12px}}
+.task-list,.preview-list{display:grid;gap:10px}.form-alert{color:var(--red)}
+@media(max-width:600px){.task-page{padding-top:20px}.page-heading{gap:10px;margin-bottom:18px}.page-title{font-size:23px}.page-heading>.btn{min-height:44px;padding:8px 12px;font-size:13px}.page-lead{max-width:28em;font-size:12px}.task-toolbar{padding:10px 12px;gap:5px}.task-filter{width:100%}.task-filter button{flex:1;min-height:42px;padding-inline:8px;gap:5px;font-size:12px}.task-section{margin-top:20px}.task-list{gap:12px}}
 </style>

@@ -133,7 +133,7 @@ onMounted(()=>void load());
         <RouterLink class="btn btn-primary" to="/movements/new/warehouse-to-production">新增出库</RouterLink>
         <RouterLink class="btn btn-secondary" to="/movements/new/production-to-warehouse">新增入库</RouterLink>
       </nav>
-      <section class="card card-pad facts">
+      <section class="card card-pad facts" :class="{'needs-task-link': !data.productionTaskId}">
         <div
           :class="[
             'direction-strip',
@@ -150,6 +150,7 @@ onMounted(()=>void load());
           </div>
         </dl>
         <RouterLink v-if="data.productionTaskId" class="task-link" :to="`/production-tasks/${data.productionTaskId}`">生产任务：{{ data.productionTaskName }} ›</RouterLink>
+        <p v-if="!data.productionTaskId" class="task-link-warning"><strong>! 未关联生产任务</strong></p>
         <p v-if="data.remarks" class="remark">{{ data.remarks }}</p>
         <div v-if="data.status === 'VOID'" class="void-box">
           作废原因：{{ data.voidReason }}
@@ -267,6 +268,9 @@ onMounted(()=>void load());
   </div>
 </template>
 <style scoped>
+.facts.needs-task-link{border:2px solid #c9362b;border-left-width:6px;background:#fff0ed}
+.task-link-warning{padding:10px 12px;border-radius:6px;background:#b42318;color:#fff;font-size:15px}
+
 .continue-actions{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:0 0 16px}.continue-actions span{margin-right:4px;color:var(--muted);font-size:13px;font-weight:650}
 .detail-packing{margin-top:10px}.detail-packing p{font-size:13px;margin:0 0 4px}
 .trace-reference { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:22px; color:var(--muted); font-size:12px; overflow-wrap:anywhere; }

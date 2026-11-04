@@ -17,6 +17,9 @@ const tasks=[
   {...task(5,'包装核对 · 暂无生产数据',[{...material('主料',0),unknownQuantityCount:1}],null),output:undefined},
   {...task(6,'关节饮 · 九月完成任务',[material('主料',0)],100),status:'COMPLETED',progressPercent:100},
   {...task(7,'已取消测试任务',[]),status:'CANCELLED'},
+  {...task(8,'待找货预告',[material('预告主料',100,400,1),material('预告外盒',100,400,2)]),status:'PREVIEW'},
+  {...task(9,'已找齐预告',[{...material('已找到主料',100),found:true}]),status:'PREVIEW'},
+  {...task(10,'无物料预告',[]),status:'PREVIEW'},
 ];
 const packed=(cartons,boxes='0',units='0',fraction=null,pallets=null,palletCartons=null)=>({cartons,boxes,units,fraction,pallets,palletCartons});
 const forecast=(expected,received,remaining,progressPercent,excess=null)=>({status:'READY',messages:[],knownReceivedQuantity:'55440',expected,received,remaining,excess,progressPercent,receivedIncomplete:false});
@@ -35,6 +38,20 @@ createServer(async(req,res)=>{
   if(pathname==='/api/auth/status')return json({authenticated:true,username:'UI QA'});
   if(pathname==='/api/products')return json(products.filter(p=>!new URL(req.url,'http://localhost').searchParams.get('direction')||p.movementDirection===new URL(req.url,'http://localhost').searchParams.get('direction')));
   if(pathname==='/api/production-tasks')return json(tasks);
+  const action=pathname.match(/^\/api\/production-tasks\/(\d+)\/(findings|start)$/);
+  if(action && req.method==='PATCH'){
+    const current=tasks.find(t=>t.id===Number(action[1]));
+    if(!current || current.status!=='PREVIEW'){res.statusCode=400;return json({message:'只有任务预告可以操作'});}
+    if(action[2]==='findings'){
+      let body='';for await(const chunk of req)body+=chunk;
+      const {findings}=JSON.parse(body);
+      current.targets=current.targets.map(target=>({...target,...findings.find(row=>row.productId===target.productId)}));
+    }else{
+      if(!current.targets.length||current.targets.some(target=>!target.found)){res.statusCode=400;return json({message:'请先确认全部物料已找到'});}
+      current.status='IN_PROGRESS';
+    }
+    return json(current);
+  }
   if(/^\/api\/production-tasks\/\d+$/.test(pathname))return json(tasks.find(t=>t.id===Number(pathname.split('/').at(-1))));
   if(pathname.startsWith('/api/'))return json([]);
   const file=pathname.startsWith('/assets/')?resolve(dist,pathname.slice(1)):resolve(dist,'index.html');
