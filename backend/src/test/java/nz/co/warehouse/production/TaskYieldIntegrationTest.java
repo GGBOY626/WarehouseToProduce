@@ -93,39 +93,51 @@ class TaskYieldIntegrationTest {
         assertThatThrownBy(()->tasks.getLinkableBatches(task.id(),selection,MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,false))
                 .hasMessageContaining("已结束");
 
+        assertThatThrownBy(()->tasks.startProduction(task.id())).hasMessageContaining("全部物料");
+        tasks.saveFindings(task.id(),task.targets().stream().map(target->new ProductionTaskService.FindingRequest(target.productId(),true,null)).toList());
         var started=tasks.startProduction(task.id());
         assertThat(started.status()).isEqualTo(ProductionTask.Status.IN_PROGRESS);
-        assertThat(started.targets()).allMatch(target->!target.found());
+        assertThat(started.targets()).allMatch(ProductionTaskService.TargetResponse::found);
         assertThat(tasks.getLinkableBatches(task.id(),selection,MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,false).getId())
                 .isEqualTo(task.id());
         assertThatThrownBy(()->tasks.startProduction(task.id())).hasMessageContaining("任务预告");
     }
-    @Test void previewPersistsIndependentFindingRecordsAndAllowsStartingWithUnfoundMaterials(){
+    @Test void previewRequiresSavedFindingConfirmationForEveryMaterial(){
         Long third=product(ProductUsage.WAREHOUSE_TO_PRODUCTION,"个");
         var request=new ProductionTaskService.SaveRequest(null,null,LocalDate.now(),null,null,List.of(
-                new ProductionTaskService.TargetRequest(raw,100,null,true,"  A 区 3 号架  "),
-                new ProductionTaskService.TargetRequest(inner,200,null,false,"待核对 B 区"),
-                new ProductionTaskService.TargetRequest(third,300,null,false,null)));
+                new ProductionTaskService.TargetRequest(raw,100,null,true,"A 区"),
+                new ProductionTaskService.TargetRequest(inner,200,null,true,null),
+                new ProductionTaskService.TargetRequest(third,300,null,true,null)));
         var task=tasks.createPreview(request);
-        var detail=tasks.detail(task.id());
-        assertThat(detail.targets()).extracting(ProductionTaskService.TargetResponse::found).containsExactly(true,false,false);
-        assertThat(detail.targets()).extracting(ProductionTaskService.TargetResponse::foundLocation).containsExactly("A 区 3 号架","待核对 B 区",null);
+        assertThat(task.targets()).allMatch(target->!target.found()&&target.foundLocation()==null);
+        tasks.update(task.id(),request);
+        assertThat(tasks.detail(task.id()).targets()).allMatch(target->!target.found());
+        assertThatThrownBy(()->tasks.startProduction(task.id())).hasMessageContaining("全部物料");
+        tasks.saveFindings(task.id(),List.of(
+                new ProductionTaskService.FindingRequest(raw,true,"  A 区 3 号架  "),
+                new ProductionTaskService.FindingRequest(inner,true,null),
+                new ProductionTaskService.FindingRequest(third,false,"待核对 B 区")));
+        assertThatThrownBy(()->tasks.startProduction(task.id())).hasMessageContaining("全部物料");
+        assertThat(tasks.detail(task.id()).status()).isEqualTo(ProductionTask.Status.PREVIEW);
         assertThat(jdbc.queryForObject("SELECT found_location FROM production_task_target WHERE production_task_id=? AND product_id=?",String.class,task.id(),raw)).isEqualTo("A 区 3 号架");
-        var legacyRequest=new ProductionTaskService.SaveRequest(null,null,LocalDate.now(),null,null,List.of(
-                new ProductionTaskService.TargetRequest(raw,110),new ProductionTaskService.TargetRequest(inner,210),new ProductionTaskService.TargetRequest(third,310)));
-        var preserved=tasks.update(task.id(),legacyRequest);
-        assertThat(preserved.targets().getFirst().found()).isTrue();
-        assertThat(preserved.targets().getFirst().foundLocation()).isEqualTo("A 区 3 号架");
-        var clearRequest=new ProductionTaskService.SaveRequest(null,null,LocalDate.now(),null,null,List.of(
-                new ProductionTaskService.TargetRequest(raw,110,null,false,null),
-                new ProductionTaskService.TargetRequest(inner,210,null,false,null),
-                new ProductionTaskService.TargetRequest(third,310,null,false,null)));
-        tasks.update(task.id(),clearRequest);
-        var started=tasks.startProduction(task.id());
-        assertThat(started.status()).isEqualTo(ProductionTask.Status.IN_PROGRESS);
-        assertThat(started.targets()).allMatch(target->!target.found()&&target.foundLocation()==null);
-        assertThat(tasks.list(null)).filteredOn(row->row.id().equals(task.id())).singleElement()
-                .satisfies(row->assertThat(row.targets()).allMatch(target->!target.found()));
+        var preserved=tasks.update(task.id(),request);
+        assertThat(preserved.targets()).extracting(ProductionTaskService.TargetResponse::found).containsExactly(true,true,false);
+        assertThatThrownBy(()->tasks.saveFindings(task.id(),List.of(new ProductionTaskService.FindingRequest(raw,true,null)))).hasMessageContaining("任务物料已变更");
+        var confirmed=tasks.saveFindings(task.id(),List.of(
+                new ProductionTaskService.FindingRequest(raw,true,"A 区 3 号架"),
+                new ProductionTaskService.FindingRequest(inner,true,null),
+                new ProductionTaskService.FindingRequest(third,true,"   ")));
+        assertThat(confirmed.targets()).allMatch(ProductionTaskService.TargetResponse::found);
+        assertThat(confirmed.targets().get(2).foundLocation()).isNull();
+        // Unchecking must block starting again, even after all materials were confirmed.
+        tasks.saveFindings(task.id(),List.of(
+                new ProductionTaskService.FindingRequest(raw,false,null),
+                new ProductionTaskService.FindingRequest(inner,true,null),
+                new ProductionTaskService.FindingRequest(third,true,null)));
+        assertThatThrownBy(()->tasks.startProduction(task.id())).hasMessageContaining("全部物料");
+        tasks.saveFindings(task.id(),confirmed.targets().stream().map(target->new ProductionTaskService.FindingRequest(target.productId(),true,target.foundLocation())).toList());
+        assertThat(tasks.startProduction(task.id()).status()).isEqualTo(ProductionTask.Status.IN_PROGRESS);
+        assertThatThrownBy(()->tasks.saveFindings(task.id(),List.of())).hasMessageContaining("任务预告");
     }
     @Test void taskHistoryKeepsEachDeliveryPackagingAndDirection(){
         var task=tasks.create(plan(20000,30,ProductionTask.OutputQuantityBasis.BOX));

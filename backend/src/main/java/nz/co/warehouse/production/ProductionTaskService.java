@@ -110,7 +110,27 @@ public class ProductionTaskService {
         tasks.flush();
     }
     @Transactional public Response status(long id,ProductionTask.Status status){ProductionTask t=get(id);if(t.getStatus()==ProductionTask.Status.PREVIEW||status==ProductionTask.Status.PREVIEW)throw BusinessException.badRequest("PRODUCTION_TASK_PREVIEW_TRANSITION","任务预告只能通过开始生产转为进行中。");t.setStatus(status);return response(t);}
-    @Transactional public Response startProduction(long id){ProductionTask t=get(id);if(t.getStatus()!=ProductionTask.Status.PREVIEW)throw BusinessException.badRequest("PRODUCTION_TASK_NOT_PREVIEW","只有任务预告可以开始生产。");t.setStatus(ProductionTask.Status.IN_PROGRESS);return response(t);}
+    public record FindingRequest(@NotNull Long productId,@NotNull Boolean found,@Size(max=255) String foundLocation) {}
+    public record FindingSaveRequest(@NotEmpty List<@NotNull @Valid FindingRequest> findings) {}
+    @Transactional public Response saveFindings(long id,List<FindingRequest> findings){
+        ProductionTask t=get(id);
+        if(t.getStatus()!=ProductionTask.Status.PREVIEW)throw BusinessException.badRequest("PRODUCTION_TASK_NOT_PREVIEW","只有任务预告可以确认找货。");
+        Map<Long,FindingRequest> byProduct=new HashMap<>();
+        for(FindingRequest finding:findings){
+            if(byProduct.put(finding.productId(),finding)!=null)throw BusinessException.badRequest("TASK_FINDING_INVALID","找货物料不能重复。");
+        }
+        if(byProduct.size()!=t.getTargets().size()||t.getTargets().stream().anyMatch(target->!byProduct.containsKey(target.getProduct().canonicalId())))
+            throw BusinessException.badRequest("TASK_FINDING_INVALID","任务物料已变更，请刷新后重新确认找货。");
+        t.getTargets().forEach(target->{FindingRequest finding=byProduct.get(target.getProduct().canonicalId());target.setFound(finding.found());target.setFoundLocation(blank(finding.foundLocation()));});
+        return response(t);
+    }
+    @Transactional public Response startProduction(long id){
+        ProductionTask t=get(id);
+        if(t.getStatus()!=ProductionTask.Status.PREVIEW)throw BusinessException.badRequest("PRODUCTION_TASK_NOT_PREVIEW","只有任务预告可以开始生产。");
+        if(t.getTargets().isEmpty()||t.getTargets().stream().anyMatch(target->!target.isFound()))
+            throw BusinessException.badRequest("TASK_MATERIALS_NOT_FOUND","请先在任务预告详情中确认全部物料已找到，再开始生产。");
+        t.setStatus(ProductionTask.Status.IN_PROGRESS);return response(t);
+    }
     @Transactional(readOnly=true)
     public List<LinkOption> linkable(List<Long> productIds,MovementEnums.Direction direction,boolean returned){
         Set<Long> selected=new HashSet<>(productIds);
@@ -203,12 +223,10 @@ public class ProductionTaskService {
         if(inputs==null||inputs.isEmpty())throw BusinessException.badRequest("TASK_TARGET_REQUIRED","请至少添加一个目标产品。");
         Set<BatchSelection> seen=new HashSet<>();
         Map<Long,Long> quantities=new LinkedHashMap<>();
-        Map<Long,TargetRequest> requests=new LinkedHashMap<>();
         for(TargetRequest input:inputs){
             if(input==null||input.productId()==null||input.targetQuantity()<=0)
                 throw BusinessException.badRequest("TASK_TARGET_INVALID","每个物料须填写大于零的需求总数。");
             long productId=products.getAny(input.productId()).canonicalId();
-            requests.put(productId,input);
             if(!seen.add(new BatchSelection(productId,input.materialBatch())))throw BusinessException.badRequest("TASK_TARGET_DUPLICATE","同一物料请合计填写，不要重复添加。");
             try { quantities.merge(productId,input.targetQuantity(),Math::addExact); }
             catch(ArithmeticException ex){throw BusinessException.badRequest("TASK_QUANTITY_OVERFLOW","需求数量超出范围。");}
@@ -220,11 +238,6 @@ public class ProductionTaskService {
             Product product=products.getForMovement(input.getKey(),ProductUsage.WAREHOUSE_TO_PRODUCTION,editing&&target!=null);
             if(target==null){target=new ProductionTaskTarget();target.setTask(t);}
             target.setProduct(product);target.setMaterialBatch("");target.setTargetQuantity(input.getValue());target.setSortOrder(updated.size());updated.add(target);
-            TargetRequest request=requests.get(input.getKey());
-            if(request.found()!=null){
-                target.setFound(request.found());
-                target.setFoundLocation(blank(request.foundLocation()));
-            }
         }
         boolean configured=r.outputBoxesPerCarton()!=null||r.outputUnitsPerBox()!=null||r.outputQuantityBasis()!=null||r.primaryMaterialProductId()!=null;
         if(configured&&(r.outputProductId()==null||r.outputBoxesPerCarton()==null||r.outputBoxesPerCarton()<=0||r.outputUnitsPerBox()==null||r.outputUnitsPerBox()<=0||r.outputQuantityBasis()==null||r.primaryMaterialProductId()==null))

@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onBeforeUnmount, ref } from "vue";
 import { productionTasksApi } from "../api";
-import { startProductionTask } from "../api/productionTaskActions";
 import { errorMessage } from "../api/http";
 import { useAuth } from "../auth";
 import type { ProductionTask } from "../types";
@@ -19,7 +18,6 @@ function toggleShortages(id: number) {
 }
 const { authenticated } = useAuth();
 const loading=ref(true);
-const startingPreviewId=ref<number>();
 const tasks = ref<ProductionTask[]>([]), message = ref(""), showForm = ref(false);
 const active = computed(() => attentionFirst(tasks.value.filter(activeTask)));
 const finished = computed(() => tasks.value.filter(t => t.status === 'COMPLETED'));
@@ -29,7 +27,6 @@ const showPreviews = ref(false);
 const groups = computed(() => [showPreviews.value ? { title: '任务预告', tasks: previews.value } : showFinished.value ? { title: '已完成的任务', tasks: finished.value } : { title: '进行中的任务', tasks: active.value }]);
 async function load() { try { tasks.value = await productionTasksApi.list(); message.value=""; } catch (e) { message.value = errorMessage(e); } finally { loading.value=false; } }
 function taskSaved(task:ProductionTask){showForm.value=false;showFinished.value=false;showPreviews.value=task.status==='PREVIEW';void load()}
-async function startPreview(id:number){if(startingPreviewId.value)return;startingPreviewId.value=id;message.value="";try{const updated=await startProductionTask(id);tasks.value=tasks.value.map(task=>task.id===id?updated:task);showPreviews.value=false;showFinished.value=false}catch(e){message.value=errorMessage(e)}finally{startingPreviewId.value=undefined}}
 let refreshTimer: ReturnType<typeof setInterval>;
 function refreshVisible(){ if(document.visibilityState === 'visible' && !showForm.value) void load(); }
 onBeforeRouteLeave(() => { saveTaskListState({ scrollY: window.scrollY, expandedTaskIds: expandedTaskIds.value }); });
@@ -56,7 +53,7 @@ onBeforeUnmount(() => { mounted=false; clearInterval(refreshTimer); window.remov
       <div v-else-if="showPreviews" class="preview-list">
         <article v-for="task in previews" :key="task.id" class="preview-row">
           <RouterLink :to="`/production-tasks/${task.id}`" class="preview-info"><strong>{{task.name}}</strong><span>计划日期 {{task.plannedDate}}<template v-if="task.orderNo"> · 订单号 {{task.orderNo}}</template><template v-if="task.feishuNo"> · 飞书号 {{task.feishuNo}}</template></span><span v-if="task.plannedQuantity || task.productBatch">{{task.plannedQuantity ? `计划数量 ${task.plannedQuantity.toLocaleString()}` : ''}}{{task.plannedQuantity&&task.productBatch?' · ':''}}{{task.productBatch ? `产品批次 ${task.productBatch}` : ''}}</span></RouterLink>
-          <button v-if="authenticated" type="button" class="btn btn-primary" :disabled="startingPreviewId!=null" @click="startPreview(task.id)">{{startingPreviewId===task.id?'开始中…':'开始生产'}}</button>
+          <RouterLink :to="`/production-tasks/${task.id}`" class="btn btn-secondary">找货确认 {{task.targets.filter(target=>target.found).length}} / {{task.targets.length}} ›</RouterLink>
         </article>
       </div>
       <div v-else class="task-list">

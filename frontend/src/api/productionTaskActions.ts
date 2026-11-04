@@ -6,3 +6,6 @@ export const createProductionTaskPreview = async (data: object) =>
 
 export const startProductionTask = async (id: number) =>
   (await http.patch<ProductionTask>(`/production-tasks/${id}/start`)).data;
+
+export const saveTaskFindings = async (id: number, findings: { productId: number; found: boolean; foundLocation: string | null }[]) =>
+  (await http.patch<ProductionTask>(`/production-tasks/${id}/findings`, { findings })).data;

@@ -22,6 +22,7 @@ public class ProductionTaskController {
     @DeleteMapping("/{id}") @ResponseStatus(org.springframework.http.HttpStatus.NO_CONTENT) public void delete(@PathVariable long id){service.delete(id);}
     @PatchMapping("/{id}/status") public ProductionTaskService.Response status(@PathVariable long id,@RequestParam ProductionTask.Status status){return service.status(id,status);}
     @PatchMapping("/{id}/start") public ProductionTaskService.Response startProduction(@PathVariable long id){return service.startProduction(id);}
+    @PatchMapping("/{id}/findings") public ProductionTaskService.Response saveFindings(@PathVariable long id,@Valid @RequestBody ProductionTaskService.FindingSaveRequest request){return service.saveFindings(id,request.findings());}
     @PatchMapping("/{id}/movements") public ProductionTaskService.Response linkCompletedMovement(@PathVariable long id,@RequestParam String recordNo){
         movementService.linkCompletedTask(id,recordNo);
         return service.detail(id);

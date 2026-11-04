@@ -11,11 +11,14 @@ import ProductionTaskForm from "../components/ProductionTaskForm.vue";
 import ProductionTaskOutput from "../components/ProductionTaskOutput.vue";
 import ProductionTaskTargets from "../components/ProductionTaskTargets.vue";
 import TaskMaterialHistory from "../components/TaskMaterialHistory.vue";
+import TaskFindingChecklist from "../components/TaskFindingChecklist.vue";
 import { showDateTime } from "../utils/time";
 const id=Number(useRoute().params.id), router=useRouter(), task=ref<ProductionTask>(), message=ref("");
 const photoLightbox=ref<InstanceType<typeof PhotoLightbox>>();
 const { authenticated }=useAuth();
 const editing=ref(false), changingStatus=ref(false), deleting=ref(false);
+const findingDirty=ref(false), findingBusy=ref(false);
+const readyToStart=computed(()=>!!task.value?.targets.length && task.value.targets.every(target=>target.found) && !findingDirty.value && !findingBusy.value);
 const linkDialog=ref<HTMLDialogElement>(), linkRecordNo=ref(''), linking=ref(false), linkError=ref('');
 const dialog=ref<HTMLDialogElement>(), selected=ref<{productId:number;productName:string;finished:boolean}>();
 const labels:Record<ProductionTaskStatus,string>={PREVIEW:'任务预告',PREPARING:'进行中',IN_PROGRESS:'进行中',COMPLETED:'已完成',CANCELLED:'已取消'};
@@ -33,7 +36,7 @@ function movementBoxTotal(m:ProductionTaskMovement){
 function saved(value:ProductionTask){task.value=value;editing.value=false}
 async function load(){try{task.value=await productionTasksApi.detail(id)}catch(e){message.value=errorMessage(e)}}
 async function setStatus(status:ProductionTaskStatus){if(changingStatus.value)return;changingStatus.value=true;message.value="";try{task.value=await productionTasksApi.status(id,status)}catch(e){message.value=errorMessage(e)}finally{changingStatus.value=false}}
-async function startProduction(){if(changingStatus.value)return;changingStatus.value=true;message.value="";try{task.value=await startProductionTask(id)}catch(e){message.value=errorMessage(e)}finally{changingStatus.value=false}}
+async function startProduction(){if(changingStatus.value||!readyToStart.value)return;changingStatus.value=true;message.value="";try{task.value=await startProductionTask(id)}catch(e){message.value=errorMessage(e)}finally{changingStatus.value=false}}
 async function linkCompletedRecord(){
   if(linking.value||!linkRecordNo.value.trim())return;
   linking.value=true;linkError.value='';
@@ -47,7 +50,7 @@ async function deleteTask(){
 }
 async function showHistory(product:{productId:number;productName:string},finished=false){selected.value={...product,finished};await nextTick();dialog.value?.showModal()}
 let refreshTimer: ReturnType<typeof setInterval>;
-function refreshVisible(){if(document.visibilityState==='visible'&&!editing.value&&!deleting.value&&!changingStatus.value&&!dialog.value?.open)void load()}
+function refreshVisible(){if(document.visibilityState==='visible'&&task.value?.status!=='PREVIEW'&&!editing.value&&!deleting.value&&!changingStatus.value&&!dialog.value?.open)void load()}
 onMounted(()=>{void load();refreshTimer=setInterval(refreshVisible,15000);window.addEventListener('focus',refreshVisible)});
 onBeforeUnmount(()=>{clearInterval(refreshTimer);window.removeEventListener('focus',refreshVisible)});
 </script>
@@ -62,7 +65,11 @@ onBeforeUnmount(()=>{clearInterval(refreshTimer);window.removeEventListener('foc
           <span v-if="task.orderNo">订单号 {{ task.orderNo }}</span><span v-if="task.feishuNo">飞书号 {{ task.feishuNo }}</span><span v-if="task.plannedQuantity">计划数量 {{ task.plannedQuantity.toLocaleString() }}</span><span v-if="task.productBatch">产品批次 {{ task.productBatch }}</span>
         </p>
       </div>
-      <section v-if="authenticated && !editing" class="section actions task-actions" :aria-busy="changingStatus || deleting"><button class="btn btn-secondary" :disabled="changingStatus || deleting" @click="editing=true">编辑任务</button><button v-if="task.status==='PREVIEW'" class="btn btn-primary" :disabled="changingStatus || deleting" @click="startProduction">开始生产</button><button v-if="task.status==='PREPARING'||task.status==='IN_PROGRESS'" class="btn btn-primary" :disabled="changingStatus || deleting" @click="setStatus('COMPLETED')">标记已完成</button><button v-if="task.status==='COMPLETED'" class="btn btn-secondary" :disabled="changingStatus || deleting" @click="linkError='';linkDialog?.showModal()">补关联流转记录</button><button class="btn btn-danger delete-button" :disabled="changingStatus || deleting" @click="deleteTask">{{ deleting ? '正在删除…' : '删除任务' }}</button></section>
+      <section v-if="authenticated && !editing" class="section actions task-actions" :aria-busy="changingStatus || deleting"><button class="btn btn-secondary" :disabled="changingStatus || deleting || findingBusy || findingDirty" @click="editing=true">编辑任务</button><button v-if="task.status==='PREVIEW'" class="btn btn-primary" :disabled="changingStatus || deleting || !readyToStart" aria-describedby="finding-start-hint" @click="startProduction">开始生产</button><button v-if="task.status==='PREPARING'||task.status==='IN_PROGRESS'" class="btn btn-primary" :disabled="changingStatus || deleting" @click="setStatus('COMPLETED')">标记已完成</button><button v-if="task.status==='COMPLETED'" class="btn btn-secondary" :disabled="changingStatus || deleting" @click="linkError='';linkDialog?.showModal()">补关联流转记录</button><button class="btn btn-danger delete-button" :disabled="changingStatus || deleting || findingBusy" @click="deleteTask">{{ deleting ? '正在删除…' : '删除任务' }}</button></section>
+      <template v-if="task.status==='PREVIEW' && !editing">
+        <p id="finding-start-hint" class="hint" role="status">{{ readyToStart ? '全部物料已确认找到，可以开始生产。' : '请先逐项勾选已找到并保存，全部确认后才能开始生产。' }}</p>
+        <TaskFindingChecklist :task="task" :authenticated="authenticated" :disabled="changingStatus || deleting" @saved="task=$event" @dirty="findingDirty=$event" @busy="findingBusy=$event" />
+      </template>
       <div class="progress-pair">
         <section class="progress-card material-progress" aria-labelledby="material-progress-title"><h2 id="material-progress-title">备料进度</h2><strong>{{ task.progressPercent }}<small>%</small></strong><div class="progress-track" role="progressbar" aria-label="备料进度" :aria-valuenow="task.progressPercent" :aria-valuemin="0" :aria-valuemax="100"><i :style="{width:`${task.progressPercent}%`}" /></div><p>各物料净发料 / 计划需求</p></section>
         <section class="progress-card production-progress" aria-labelledby="production-progress-title"><h2 id="production-progress-title">生产完成度</h2><strong>{{ productionPercent == null ? '—' : productionPercent }}<small v-if="productionPercent != null">%</small></strong><div class="progress-track" role="progressbar" aria-label="生产完成度" :aria-valuenow="productionPercent ?? undefined" :aria-valuetext="productionPercent == null ? '暂无可计算数据' : undefined" :aria-valuemin="0" :aria-valuemax="100"><i :style="{width:`${productionPercent || 0}%`}" /></div><p>{{ productionPercent == null ? '待净发料与包装数据齐全后计算' : '成品折算数量 / 主料净发料' }}</p></section>
