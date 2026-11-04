@@ -31,7 +31,7 @@ async function saveLink(){
 }
 </script>
 <template>
-  <article class="movement-card card" :class="{ inbound: movement.direction === 'PRODUCTION_TO_WAREHOUSE' }">
+  <article class="movement-card card" :class="{ inbound: movement.direction === 'PRODUCTION_TO_WAREHOUSE', 'needs-task-link': !taskId && movement.status === 'ACTIVE' }">
   <RouterLink :to="`/movements/${movement.id}`" class="record-link" :aria-label="`${directionLabel(movement.direction)}，${movement.items.map(i => i.productName).join('、')}，查看流转详情`">
     <div class="record-heading">
       <span class="movement-direction"><span class="direction-icon" aria-hidden="true">{{ movement.direction === 'WAREHOUSE_TO_PRODUCTION' ? '↗' : '↙' }}</span>{{ directionLabel(movement.direction) }}<span class="direction-kind">{{ movement.returnMovement ? '退回' : movement.direction === 'WAREHOUSE_TO_PRODUCTION' ? '出库' : '入库' }}</span></span>
@@ -49,7 +49,7 @@ async function saveLink(){
       <span v-if="movement.status==='VOID'" class="status neutral">已作废</span>
       <span v-if="movement.hasIssues" class="status warn">有异常</span>
       </div>
-      <div class="task-link-row"><RouterLink v-if="taskId" :to="`/production-tasks/${taskId}`" class="linked-task">已关联 · {{taskName}}</RouterLink><button v-else-if="authenticated && movement.status==='ACTIVE'" type="button" class="link-task-button" @click="openLink">＋ 关联任务</button><span v-else class="unlinked-task">未关联任务</span></div>
+      <div class="task-link-row"><RouterLink v-if="taskId" :to="`/production-tasks/${taskId}`" class="linked-task">已关联 · {{taskName}}</RouterLink><button v-else-if="authenticated && movement.status==='ACTIVE'" type="button" class="link-task-button" @click="openLink"><span aria-hidden="true">!</span> 待关联任务 · 立即关联</button><span v-else-if="movement.status==='ACTIVE'" class="unlinked-task">! 未关联任务</span><span v-else class="unlinked-task">未关联任务</span></div>
     </footer>
   <dialog ref="dialog" class="link-dialog" aria-label="关联生产任务" @cancel="busy && $event.preventDefault()">
     <form @submit.prevent="saveLink"><h2>关联生产任务</h2><p>{{movement.recordNo}}</p><p v-if="message" role="alert">{{message}}</p><p v-if="busy">正在处理…</p><template v-else><label :for="`link-task-${movement.id}`">选择任务</label><select :id="`link-task-${movement.id}`" v-model="selected" required><option :value="undefined" disabled>请选择生产任务</option><option v-for="task in options" :key="task.id" :value="task.id">{{task.name}}</option></select><p v-if="!options.length">没有匹配此记录物料的进行中任务。</p></template><div class="dialog-actions"><button type="button" class="btn btn-secondary" :disabled="busy" @click="dialog?.close()">取消</button><button class="btn btn-primary" :disabled="busy || !selected">确认关联</button></div></form>
@@ -59,6 +59,7 @@ async function saveLink(){
 <style scoped>
 .movement-card{--flow-color:var(--blue);--flow-soft:var(--soft-blue);position:relative;isolation:isolate;display:grid;gap:8px;padding:12px 16px 10px 20px;min-width:0;border-left:3px solid var(--flow-color);box-shadow:0 2px 5px rgba(20,39,50,.035)}
 .movement-card.inbound{--flow-color:var(--green);--flow-soft:var(--soft-green)}
+.movement-card.needs-task-link{border-color:#d96a5c;background:#fffafa;box-shadow:inset 3px 0 #c9362b,0 2px 5px rgba(20,39,50,.035)}
 .movement-card:hover{border-color:var(--flow-color);box-shadow:0 3px 10px rgba(20,39,50,.07)}
 .movement-card:active{background:var(--flow-soft)}
 .record-link{display:grid;gap:9px;min-width:0}
@@ -82,9 +83,11 @@ async function saveLink(){
 .photo-tag{display:inline-flex;align-items:center;gap:4px;font-size:11px}.photo-tag svg{fill:none;stroke:currentColor;stroke-width:1.3}
 .record-footer .status{min-height:20px;font-size:11px;padding:2px 6px}
 .task-link-row{min-width:0;max-width:100%;overflow-wrap:anywhere}.linked-task,.link-task-button{position:relative;z-index:2;display:inline-block;padding:4px 7px;border:1px solid transparent;border-radius:5px;background:var(--flow-soft);color:var(--flow-color);font-size:11px;cursor:pointer}
+.link-task-button{border-color:#d96a5c;background:#fff0ed;color:#a52820;font-weight:750}
+.link-task-button span{display:inline-grid;place-items:center;width:16px;height:16px;margin-right:3px;border-radius:50%;background:#c9362b;color:#fff;font-size:11px}
 .linked-task:hover,.link-task-button:hover{border-color:var(--flow-color)}
 .linked-task:focus-visible,.link-task-button:focus-visible{outline:2px solid var(--flow-color);outline-offset:2px}
-.unlinked-task{font-size:11px}
+.unlinked-task{font-size:11px;color:#a52820;font-weight:700}
 .link-dialog{width:min(460px,calc(100vw - 32px));border:1px solid var(--line);border-radius:12px;padding:24px}.link-dialog::backdrop{background:#0006}.link-dialog select{width:100%;margin:10px 0}.dialog-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:20px}
 @media(max-width:560px){.movement-card{padding:12px 12px 10px 14px}.record-heading{font-size:11px}.movement-items :deep(.compact .material-name){font-size:15px}.linked-task,.link-task-button{min-height:36px;display:inline-flex;align-items:center}.movement-items :deep(.compact .material-quantities b){font-size:15px}}
 </style>
