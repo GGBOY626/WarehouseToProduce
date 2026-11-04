@@ -33,7 +33,6 @@ async function saveLink(){
 <template>
   <article class="movement-card card" :class="{ inbound: movement.direction === 'PRODUCTION_TO_WAREHOUSE', 'needs-task-link': !taskId }">
   <RouterLink :to="`/movements/${movement.id}`" class="record-link" :aria-label="`${directionLabel(movement.direction)}，${movement.items.map(i => i.productName).join('、')}，查看流转详情`">
-    <div v-if="!taskId" class="task-link-warning"><span aria-hidden="true">!</span> 未关联生产任务</div>
     <div class="record-heading">
       <span class="movement-direction"><span class="direction-icon" aria-hidden="true">{{ movement.direction === 'WAREHOUSE_TO_PRODUCTION' ? '↗' : '↙' }}</span>{{ directionLabel(movement.direction) }}<span class="direction-kind">{{ movement.returnMovement ? '退回' : movement.direction === 'WAREHOUSE_TO_PRODUCTION' ? '出库' : '入库' }}</span></span>
       <span v-if="movement.direction==='PRODUCTION_TO_WAREHOUSE'&&!movement.returnMovement&&movement.palletNo!=null" class="pallet-tag">PALLET NO: {{ palletLabel(movement) }}</span>
@@ -65,8 +64,6 @@ async function saveLink(){
 .movement-card:active{background:var(--flow-soft)}
 .movement-card.needs-task-link{border:2px solid #c9362b;border-left-width:6px;background:#fff0ed;box-shadow:0 2px 8px rgba(169,40,32,.14)}
 .movement-card.needs-task-link:hover,.movement-card.needs-task-link:active{border-color:#a52820;background:#ffe4df;box-shadow:0 3px 12px rgba(169,40,32,.22)}
-.task-link-warning{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:5px;background:#b42318;color:#fff;font-size:14px;font-weight:750;line-height:1.5}
-.task-link-warning>span{display:inline-grid;place-items:center;width:20px;height:20px;flex-shrink:0;border:2px solid currentColor;border-radius:50%;font-weight:800}
 .record-link{display:grid;gap:9px;min-width:0}
 .record-link::after{content:"";position:absolute;inset:0;z-index:1;border-radius:var(--radius)}
 .record-link:focus-visible{outline:none}.record-link:focus-visible::after{outline:3px solid var(--flow-color);outline-offset:3px}
