@@ -95,7 +95,6 @@ public class WarehouseService {
             var i=new WarehousePallet.StockItem();i.setPallet(p);
             if(input.productId()!=null){
                 var product=products.getAny(input.productId()).canonical();var old=existing.get(product.getId());
-                if(old==null&&!product.isActive())throw BusinessException.badRequest("PRODUCT_DISABLED","新增物料不能选择已停用产品。");
                 i.setProduct(product);i.setProductName(old==null?product.getName():old.getProductName());i.setMaterialCode(old==null?product.getMaterialCode():old.getMaterialCode());
                 i.setUnit(old==null?product.getBaseUnit():old.getUnit());
             }else{

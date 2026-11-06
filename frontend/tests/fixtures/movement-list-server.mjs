@@ -39,6 +39,17 @@ createServer(async (req, res) => {
   const json = data => { res.setHeader('Content-Type', 'application/json; charset=utf-8'); res.end(JSON.stringify(data)); };
   if (path === '/api/auth/status') return json({ authenticated: true, username: 'UI QA' });
   if (path === '/api/products') return json(products.filter(p => (!url.searchParams.get('direction') || p.movementDirection === url.searchParams.get('direction')) && `${p.name} ${p.materialCode}`.includes(url.searchParams.get('q') || '')));
+  if (path === '/api/production-tasks') return json([{
+    id: 1, name: '小绿芯 · 布局核对', productId: 1, productName: '小绿芯', baseUnit: '个', targetQuantity: 66000,
+    plannedDate: '2026-10-21', status: 'IN_PROGRESS', completedQuantity: 49500, progressPercent: 75,
+    issueMovementCount: 1, returnMovementCount: 0, movements: [], targets: [],
+    output: { productId: 2, productName: '小绿芯', materialCode: 'FIN-1', baseUnit: '个', quantityBasis: 'UNIT', productionPercent: 50, unknownQuantityCount: 0, receivedQuantity: 55440, provisional: false },
+    forecast: { status: 'READY', messages: [], knownReceivedQuantity: '55440',
+      expected: { cartons: '100', boxes: '0', units: '0', fraction: null, pallets: '2', palletCartons: '20' },
+      received: { cartons: '84', boxes: '0', units: '0', fraction: null, pallets: '2', palletCartons: '4' },
+      remaining: { cartons: '16', boxes: '0', units: '0', fraction: null, pallets: '0', palletCartons: '16' },
+      excess: null, progressPercent: 84, receivedIncomplete: false },
+  }]);
   const selected = records.filter(r => (!url.searchParams.get('direction') || r.direction === url.searchParams.get('direction')) && (!url.searchParams.has('finished') || r.finished === (url.searchParams.get('finished') === 'true')) && r.items.some(i => `${i.productName} ${i.materialCode} ${i.materialBatch}`.includes(url.searchParams.get('q') || '')));
   if (path === '/api/movements') return json({ content: selected, totalElements: selected.length, totalPages: 1 });
   if (path === '/api/movements/stats/query') return json({ directions: selected.length ? [{ direction: selected[0].direction, totalCartons: selected.reduce((sum, r) => sum + r.totalCartons, 0), unknownItemCount: 0, products: selected.flatMap(r => r.items.map(i => ({ ...i, movements: [r] }))) }] : [] });

@@ -65,7 +65,7 @@ public class MovementService {
     private MovementDtos.DetailResponse linkTask(long id,long taskId,boolean completedTaskCorrection) {
         Movement m=getActiveDetail(id);
         if(m.getProductionTask()!=null)throw BusinessException.badRequest("TASK_ALREADY_LINKED","记录已关联任务，请刷新后查看。");
-        var selection=m.getItems().stream().map(i->new ProductionTaskService.BatchSelection(i.getProduct().canonicalId(),i.effectiveMaterialBatch())).toList();
+        var selection=m.getItems().stream().map(i->new ProductionTaskService.BatchSelection(i.getProduct().canonicalId(),i.effectiveMaterialBatch(),i.getBatchNo(),i.getProductionNumber())).toList();
         var task=productionTasks.getLinkableBatches(taskId,selection,m.getDirection(),m.isReturnMovement(),completedTaskCorrection);
         if(m.getDirection()==MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE&&!m.isReturnMovement()&&task.outputCartonUnits()!=null&&m.getItems().stream().anyMatch(i->i.getFullCartons()>0&&!Objects.equals(task.outputCartonUnits(),i.getUnitsPerCartonSnapshot())))
             throw BusinessException.badRequest("TASK_CARTON_SPEC_MISMATCH","满箱规格与任务包装设置不一致，请核对每箱盒数和每盒数量。");
@@ -180,7 +180,7 @@ public class MovementService {
         String receiverName=m.getReceiverPerson()!=null&&m.getReceiverPerson().getId().equals(receiver.getId())?m.getReceiverNameSnapshot():receiver.getName();
         if(m.getId()==null&&r.senderPersonId()==null)senderName=outbound?"Ray":"xiao";
         if(m.getId()==null&&r.receiverPersonId()==null)receiverName=outbound?"xiao":"Ray";
-        var oldSelection=m.getItems().stream().map(i->new ProductionTaskService.BatchSelection(i.getProduct().canonicalId(),i.effectiveMaterialBatch())).collect(java.util.stream.Collectors.toSet());
+        var oldSelection=m.getItems().stream().map(i->new ProductionTaskService.BatchSelection(i.getProduct().canonicalId(),i.effectiveMaterialBatch(),i.getBatchNo(),i.getProductionNumber())).collect(java.util.stream.Collectors.toSet());
         boolean keepTask=m.getProductionTask()!=null&&m.getProductionTask().getId().equals(r.productionTaskId())
                 &&m.getDirection()==r.direction()&&m.isReturnMovement()==r.returnMovement();
         Map<Long,String> oldBatches=new HashMap<>();
@@ -210,7 +210,7 @@ public class MovementService {
             try{cartons=Math.addExact(cartons,item.getTotalCartons());knownQuantity=Math.addExact(knownQuantity,item.getTotalUnits()==null?0:item.getTotalUnits());}
             catch(ArithmeticException ex){throw BusinessException.badRequest("QUANTITY_OVERFLOW","箱数或数量超出可保存范围。");}
         }
-        var selection=m.getItems().stream().map(i->new ProductionTaskService.BatchSelection(i.getProduct().canonicalId(),i.effectiveMaterialBatch())).toList();
+        var selection=m.getItems().stream().map(i->new ProductionTaskService.BatchSelection(i.getProduct().canonicalId(),i.effectiveMaterialBatch(),i.getBatchNo(),i.getProductionNumber())).toList();
         m.setProductionTask(r.productionTaskId()==null?null:keepTask&&oldSelection.equals(new HashSet<>(selection))?m.getProductionTask():productionTasks.getLinkableBatches(r.productionTaskId(),selection,r.direction(),r.returnMovement()));
         if(m.getProductionTask()!=null&&r.direction()==MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE&&!r.returnMovement()){
             Integer plannedUnits=m.getProductionTask().outputCartonUnits();

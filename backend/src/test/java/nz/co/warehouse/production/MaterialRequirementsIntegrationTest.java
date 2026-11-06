@@ -94,9 +94,9 @@ class MaterialRequirementsIntegrationTest {
         assertThatThrownBy(()->tasks.create(request(target(inner,0)))).hasMessageContaining("大于零");
         var task=tasks.create(request(target(inner,400)));
         assertThatThrownBy(()->tasks.update(task.id(),request(target(drink,400)))).hasMessageContaining("不适用于");
-        products.setActive(inner,false);
+        jdbc.update("update product set active=false where id=?",inner);
         assertThatCode(()->tasks.update(task.id(),request(target(inner,500)))).doesNotThrowAnyException();
-        assertThatThrownBy(()->tasks.create(request(target(inner,400)))).hasMessageContaining("停用");
+        assertThatCode(()->tasks.create(request(target(inner,400)))).doesNotThrowAnyException();
         tasks.status(task.id(),ProductionTask.Status.COMPLETED);
         assertThatThrownBy(()->move(task.id(),outer,20L,false,false)).hasMessageContaining("已完成");
     }

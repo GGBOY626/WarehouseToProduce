@@ -62,7 +62,7 @@ const photoLightbox = ref<InstanceType<typeof PhotoLightbox>>();
       <h4 :id="`issued-title-${task.id}`">已发往车间 <strong>{{ issued.cartons.toLocaleString() }} 箱</strong></h4>
       <ul v-if="issued.materials.length" class="issued-list">
         <li v-for="item in issued.materials" :key="item.productId">
-          <span>{{ item.name }}</span>
+          <span>{{ item.name }}<small v-if="item.materialBatches.length" class="issued-batches"> · 批次 {{item.materialBatches.join(' / ')}}</small></span>
           <b>{{ item.cartons.toLocaleString() }} 箱 · {{ item.quantity.toLocaleString() }} {{ item.unit }}<small v-if="item.unknownQuantityCount">（另有数量待确认）</small></b>
         </li>
       </ul>

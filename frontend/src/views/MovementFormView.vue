@@ -76,7 +76,7 @@ const initialized = ref(false);
 const palletSetupPromptIndex = ref<number | null>(null);
 const originalTask = ref<{ id: number; name: string; selection: string }>();
 const taskSelection = computed(() => JSON.stringify([direction.value, draft.value.returnMovement,
-  [...new Set(draft.value.items.map(i => JSON.stringify([i.productId,i.materialBatch || ""])))].sort()]));
+  [...new Set(draft.value.items.map(i => JSON.stringify([i.productId,i.materialBatch || "",i.batchNo||"",i.productionNumber||""])))].sort()]));
 const keepOriginalTask = computed(() => !!originalTask.value && originalTask.value.id === draft.value.productionTaskId && originalTask.value.selection === taskSelection.value);
 let taskRequest = 0;
 async function refreshTasks() {
@@ -91,7 +91,8 @@ async function refreshTasks() {
   }
   taskLoading.value = true;
   try {
-    const options = await productionTasksApi.linkable(draft.value.items.map(i => ({productId:i.productId!,materialBatch:i.materialBatch})), direction.value, draft.value.returnMovement);
+    const linkItems=draft.value.items.map(i => ({productId:i.productId!,materialBatch:i.materialBatch,materialCode:i.batchNo,productionNumber:i.productionNumber||undefined}));
+    const options = await productionTasksApi.linkable(linkItems as Parameters<typeof productionTasksApi.linkable>[0], direction.value, draft.value.returnMovement);
     if (request !== taskRequest) return;
     productionTasks.value = options;
     if (!keepOriginalTask.value && !options.some(t => t.id === draft.value.productionTaskId)) draft.value.productionTaskId = undefined;
@@ -205,6 +206,13 @@ watch(selectedTask, task => {
     item.unitsPerCarton = task.outputCartonUnits;
     quantityChanged(item);
   }
+});
+let taskDetailRequest=0;
+watch(selectedTask,async task=>{
+  const request=++taskDetailRequest;if(!task||direction.value!=='WAREHOUSE_TO_PRODUCTION')return;
+  try{const detail=await productionTasksApi.detail(task.id);if(request!==taskDetailRequest||draft.value.productionTaskId!==task.id)return;
+    for(const item of draft.value.items){const target=detail.targets.find(x=>x.productId===item.productId);const batches=target?.materialBatches||[];const codes=target?.materialCodes||[];const numbers=target?.productionNumbers||[];if(!item.id&&batches.length===1&&!item.materialBatch)item.materialBatch=batches[0];if(!item.id&&codes.length===1)item.batchNo=codes[0];if(!item.id&&numbers.length===1)item.productionNumber=numbers[0];}
+  }catch{}
 });
 const draftKey = computed(() => `movement-draft:${direction.value}`);
 const productUsage = computed<Direction>(() => draft.value.returnMovement ? "WAREHOUSE_TO_PRODUCTION" : direction.value);
@@ -622,7 +630,7 @@ onBeforeUnmount(() => {
           >
             <template #default="{ item: product }">
               <span class="product-option-name">{{ product.name }}</span>
-              <span class="product-option-meta">{{ product.materialCode }} · {{ product.movementDirection === 'WAREHOUSE_TO_PRODUCTION' ? '物料' : product.movementDirection === 'PRODUCTION_TO_WAREHOUSE' ? '成品' : '未分类' }}</span>
+              <span class="product-option-meta">{{ (product.materialCodes?.length?product.materialCodes:[product.materialCode]).join(' / ') }} · {{ product.movementDirection === 'WAREHOUSE_TO_PRODUCTION' ? '物料' : product.movementDirection === 'PRODUCTION_TO_WAREHOUSE' ? '成品' : '未分类' }}</span>
               <span v-if="product.duplicateName" class="product-option-warning">同名产品，请核对编码</span>
             </template>
           </SearchPicker>

@@ -24,12 +24,14 @@ public class ProductionTaskService {
     @Value("${app.business-zone:Pacific/Auckland}") private String zone;
 
     public record TargetRequest(@NotNull Long productId,@Positive long targetQuantity,@Size(max=100) String materialBatch,
-                                Boolean found,@Size(max=255) String foundLocation) {
-        public TargetRequest(Long productId,long targetQuantity){this(productId,targetQuantity,null,null,null);}
-        public TargetRequest(Long productId,long targetQuantity,String materialBatch){this(productId,targetQuantity,materialBatch,null,null);}
+                                Boolean found,@Size(max=255) String foundLocation,List<@Size(max=100) String> materialBatches,List<@Size(max=100) String> materialCodes,List<@Size(max=100) String> productionNumbers) {
+        public TargetRequest(Long productId,long targetQuantity){this(productId,targetQuantity,null,null,null,null,null,null);}
+        public TargetRequest(Long productId,long targetQuantity,String materialBatch){this(productId,targetQuantity,materialBatch,null,null,null,null,null);}
+        public TargetRequest(Long productId,long targetQuantity,String materialBatch,Boolean found,String foundLocation){this(productId,targetQuantity,materialBatch,found,foundLocation,null,null,null);}
     }
-    public record BatchSelection(@NotNull Long productId,@Size(max=100) String materialBatch) {
+    public record BatchSelection(@NotNull Long productId,@Size(max=100) String materialBatch,String materialCode,String productionNumber) {
         public BatchSelection { materialBatch=materialBatch==null||materialBatch.isBlank()?null:materialBatch.trim(); }
+        public BatchSelection(Long productId,String materialBatch){this(productId,materialBatch,null,null);}
     }
     public record LinkRequest(@NotEmpty List<@Valid BatchSelection> items,@NotNull MovementEnums.Direction direction,boolean returnMovement) {}
     public record SaveRequest(Long productId,Long targetQuantity,@NotNull LocalDate plannedDate,
@@ -65,7 +67,7 @@ public class ProductionTaskService {
                                  long completedQuantity,int progressPercent,long issuedQuantity,long returnedQuantity,
                                  long shortageQuantity,int unknownQuantityCount,boolean materialTarget,BigDecimal estimatedUsedQuantity,
                                  BigDecimal theoreticalUsedQuantity,BigDecimal theoreticalReturnQuantity,String materialBatch,List<BatchResponse> batches,
-                                 boolean found,String foundLocation) {}
+                                 boolean found,String foundLocation,List<String> materialBatches,List<String> materialCodes,List<String> productionNumbers) {}
     public record BatchResponse(String materialBatch,String subBatch,long issuedQuantity,long returnedQuantity,long netQuantity,int unknownQuantityCount) {}
     public record MovementResponse(Long id,String recordNo,MovementEnums.Direction direction,boolean returnMovement,
                                    Instant movementTime,int totalCartons,long totalQuantity,List<String> productNames,MovementEnums.Status status,int unknownQuantityCount,String quantityUnit,List<MovementMaterialResponse> items) {}
@@ -177,6 +179,7 @@ public class ProductionTaskService {
         return tasks.search(null).stream().filter(t->linkStatusAllowed(t,r.direction())&&matchesBatches(t,r.items(),r.direction(),r.returnMovement()))
                 .map(this::linkOption).toList();
     }
+    @Transactional(readOnly=true)
     public ProductionTask getLinkableBatches(long id,List<BatchSelection> items,MovementEnums.Direction direction,boolean returned){
         return getLinkableBatches(id,items,direction,returned,false);
     }
@@ -194,8 +197,13 @@ public class ProductionTaskService {
             Long id=products.getAny(i.productId()).canonicalId();
             if(direction==MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE&&!returned)
                 return t.getOutputProduct()!=null&&t.getOutputProduct().canonicalId().equals(id);
-            return t.getTargets().stream().anyMatch(x->x.getProduct().canonicalId().equals(id));
+            return t.getTargets().stream().anyMatch(x->x.getProduct().canonicalId().equals(id)&&matchesTargetSelection(x,i));
         });
+    }
+    private boolean matchesTargetSelection(ProductionTaskTarget target,BatchSelection item){
+        return (item.materialBatch()==null||target.getMaterialBatches().isEmpty()||target.getMaterialBatches().contains(blank(item.materialBatch())==null?"":item.materialBatch()))
+                && (item.materialCode()==null||target.getMaterialCodes().isEmpty()||target.getMaterialCodes().contains(item.materialCode()))
+                && (item.productionNumber()==null||target.getProductionNumbers().isEmpty()||target.getProductionNumbers().contains(item.productionNumber()));
     }
 
     private boolean linkStatusAllowed(ProductionTask t,MovementEnums.Direction direction){
@@ -223,13 +231,19 @@ public class ProductionTaskService {
         if(inputs==null||inputs.isEmpty())throw BusinessException.badRequest("TASK_TARGET_REQUIRED","请至少添加一个目标产品。");
         Set<BatchSelection> seen=new HashSet<>();
         Map<Long,Long> quantities=new LinkedHashMap<>();
+        Map<Long,TargetRequest> selections=new LinkedHashMap<>();
         for(TargetRequest input:inputs){
             if(input==null||input.productId()==null||input.targetQuantity()<=0)
                 throw BusinessException.badRequest("TASK_TARGET_INVALID","每个物料须填写大于零的需求总数。");
             long productId=products.getAny(input.productId()).canonicalId();
+            Product selectedProduct=products.getAny(productId);
+            validateSelection(input.materialBatches(),selectedProduct.availableBatches(),"物料批次");
+            validateSelection(input.materialCodes(),selectedProduct.availableMaterialCodes(),"物料编码");
+            validateSelection(input.productionNumbers(),selectedProduct.canonical().getProductionNumbers(),"生产编号");
             if(!seen.add(new BatchSelection(productId,input.materialBatch())))throw BusinessException.badRequest("TASK_TARGET_DUPLICATE","同一物料请合计填写，不要重复添加。");
             try { quantities.merge(productId,input.targetQuantity(),Math::addExact); }
             catch(ArithmeticException ex){throw BusinessException.badRequest("TASK_QUANTITY_OVERFLOW","需求数量超出范围。");}
+            selections.put(productId,input);
         }
         List<ProductionTaskTarget> updated=new ArrayList<>();
         for(var input:quantities.entrySet()){
@@ -238,6 +252,10 @@ public class ProductionTaskService {
             Product product=products.getForMovement(input.getKey(),ProductUsage.WAREHOUSE_TO_PRODUCTION,editing&&target!=null);
             if(target==null){target=new ProductionTaskTarget();target.setTask(t);}
             target.setProduct(product);target.setMaterialBatch("");target.setTargetQuantity(input.getValue());target.setSortOrder(updated.size());updated.add(target);
+            TargetRequest selected=selections.get(input.getKey());
+            target.getMaterialBatches().clear();if(selected.materialBatches()!=null)selected.materialBatches().stream().filter(Objects::nonNull).map(String::trim).filter(s->!s.isEmpty()).forEach(target.getMaterialBatches()::add);
+            target.getMaterialCodes().clear();if(selected.materialCodes()!=null)selected.materialCodes().stream().filter(Objects::nonNull).map(String::trim).filter(s->!s.isEmpty()).forEach(target.getMaterialCodes()::add);
+            target.getProductionNumbers().clear();if(selected.productionNumbers()!=null)selected.productionNumbers().stream().filter(Objects::nonNull).map(String::trim).filter(s->!s.isEmpty()).forEach(target.getProductionNumbers()::add);
         }
         boolean configured=r.outputBoxesPerCarton()!=null||r.outputUnitsPerBox()!=null||r.outputQuantityBasis()!=null||r.primaryMaterialProductId()!=null;
         if(configured&&(r.outputProductId()==null||r.outputBoxesPerCarton()==null||r.outputBoxesPerCarton()<=0||r.outputUnitsPerBox()==null||r.outputUnitsPerBox()<=0||r.outputQuantityBasis()==null||r.primaryMaterialProductId()==null))
@@ -279,6 +297,11 @@ public class ProductionTaskService {
         t.setRemarks(blank(r.remarks()));
         t.setOrderNo(blank(r.orderNo()));t.setFeishuNo(blank(r.feishuNo()));t.setPlannedQuantity(r.plannedQuantity());t.setProductBatch(blank(r.productBatch()));
     }
+    private void validateSelection(List<String> selected,Set<String> available,String label){
+        if(selected==null)return;
+        if(selected.size()>100||selected.stream().filter(Objects::nonNull).map(String::trim).anyMatch(value->!value.isEmpty()&&!available.contains(value)))
+            throw BusinessException.badRequest("TASK_TARGET_SELECTION_INVALID","所选"+label+"不属于该物料，请刷新后重试。");
+    }
     private Response response(ProductionTask t){
         return response(t,taskPhotos.findByTaskIdOrderByCreatedAtAsc(t.getId()).stream().map(this::photoResponse).toList());
     }
@@ -305,7 +328,7 @@ public class ProductionTaskService {
                 boolean issue=movement.getDirection()==MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION;
                 boolean isReturn=movement.getDirection()==MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE&&movement.isReturnMovement();
                 if(!issue&&!isReturn)continue;
-                for(MovementItem item:movement.getItems())if(item.getProduct().canonicalId().equals(p.getId())){
+                for(MovementItem item:movement.getItems())if(item.getProduct().canonicalId().equals(p.getId())&&matchesTargetSelection(entry.getValue().getFirst(),new BatchSelection(p.getId(),item.effectiveMaterialBatch(),item.getBatchNo(),item.getProductionNumber()))){
                     long[] batch=batches.computeIfAbsent(new BatchSelectionKey(item.effectiveMaterialBatch(),item.getSubBatch()),ignored->new long[3]);
                     if(item.getTotalUnits()==null||item.isQuantityUnknown()){unknown++;batch[2]++;}
                     else if(issue){issued=Math.addExact(issued,item.getTotalUnits());batch[0]=Math.addExact(batch[0],item.getTotalUnits());}
@@ -314,12 +337,13 @@ public class ProductionTaskService {
             }
             long completed=issued-returned;
             boolean material=p.getMovementDirection()==ProductUsage.WAREHOUSE_TO_PRODUCTION;
+            ProductionTaskTarget config=entry.getValue().getFirst();
             return new TargetResponse(p.getId(),p.getName(),p.getMaterialCode(),p.getBaseUnit(),required,p.availableCartonSpecs().stream().findFirst().orElse(null),completed,
                     material?(int)Math.max(0,Math.min(100,completed*100.0/required)):0,
                     issued,returned,Math.max(0,required-completed),unknown,material,t.getOutputProduct()==null||!material?null:BigDecimal.valueOf(outputReceived).multiply(BigDecimal.valueOf(required))
                             .divide(BigDecimal.valueOf(t.getTargetOutputQuantity()),6,RoundingMode.HALF_UP),null,null,null,
                     batches.entrySet().stream().map(e->new BatchResponse(e.getKey().batch(),e.getKey().subBatch(),e.getValue()[0],e.getValue()[1],e.getValue()[0]-e.getValue()[1],(int)e.getValue()[2])).toList(),
-                    entry.getValue().getFirst().isFound(),entry.getValue().getFirst().getFoundLocation());
+                    config.isFound(),config.getFoundLocation(),config.getMaterialBatches().stream().toList(),config.getMaterialCodes().stream().toList(),config.getProductionNumbers().stream().toList());
         }).toList();
         List<TargetResponse> targets;
         List<TargetResponse> materialTargets=baseTargets.stream().filter(TargetResponse::materialTarget).toList();
@@ -329,7 +353,7 @@ public class ProductionTaskService {
             if(!target.materialTarget()||capacityRatio==null)return target;
             BigDecimal theoreticalUsed=BigDecimal.valueOf(target.targetQuantity()).multiply(capacityRatio).setScale(6,RoundingMode.HALF_UP).stripTrailingZeros();
             BigDecimal theoreticalReturn=BigDecimal.valueOf(target.issuedQuantity()).subtract(theoreticalUsed).max(BigDecimal.ZERO).setScale(0,RoundingMode.HALF_UP);
-            return new TargetResponse(target.productId(),target.productName(),target.materialCode(),target.baseUnit(),target.targetQuantity(),target.shortageCartonSize(),target.completedQuantity(),target.progressPercent(),target.issuedQuantity(),target.returnedQuantity(),target.shortageQuantity(),target.unknownQuantityCount(),target.materialTarget(),target.estimatedUsedQuantity(),theoreticalUsed,theoreticalReturn,target.materialBatch(),target.batches(),target.found(),target.foundLocation());
+            return new TargetResponse(target.productId(),target.productName(),target.materialCode(),target.baseUnit(),target.targetQuantity(),target.shortageCartonSize(),target.completedQuantity(),target.progressPercent(),target.issuedQuantity(),target.returnedQuantity(),target.shortageQuantity(),target.unknownQuantityCount(),target.materialTarget(),target.estimatedUsedQuantity(),theoreticalUsed,theoreticalReturn,target.materialBatch(),target.batches(),target.found(),target.foundLocation(),target.materialBatches(),target.materialCodes(),target.productionNumbers());
         }).toList();
         TargetResponse primary=t.getPrimaryMaterial()==null?null:targets.stream().filter(x->x.productId().equals(t.getPrimaryMaterial().canonicalId())).findFirst().orElse(null);
         BigDecimal produced=t.getOutputQuantityBasis()==null?null:BigDecimal.valueOf(received).multiply(BigDecimal.valueOf(t.getOutputQuantityBasis()==ProductionTask.OutputQuantityBasis.BOX?t.getOutputUnitsPerBox():1));

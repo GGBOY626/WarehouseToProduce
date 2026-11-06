@@ -15,6 +15,7 @@ export interface Product {
   id: number;
   name: string;
   materialCode: string;
+  materialCodes?: string[];
   sku?: string;
   materialBatch?: string;
   materialBatches?: string[];
@@ -49,6 +50,7 @@ export interface ItemInput {
   product?: Product;
   batchNo: string;
   materialBatch?: string | null;
+  materialBatches?: string[]; materialCodes?: string[]; productionNumbers?: string[];
   productionNumber?: string | null;
   sku?: string | null;
   subBatch?: string | null;
@@ -193,6 +195,7 @@ export interface ProductionTaskTarget {
   targetQuantity: number; completedQuantity: number; progressPercent: number; shortageCartonSize?: number | null;
   issuedQuantity: number; returnedQuantity: number; shortageQuantity: number;
   unknownQuantityCount: number; materialTarget: boolean; estimatedUsedQuantity?: number | null;
+  materialBatches?: string[]; materialCodes?: string[]; productionNumbers?: string[];
   theoreticalUsedQuantity?: number | null; theoreticalReturnQuantity?: number | null;
   found: boolean; foundLocation?: string | null;
 }

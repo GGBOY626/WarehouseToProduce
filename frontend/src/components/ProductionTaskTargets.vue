@@ -28,7 +28,7 @@ defineEmits<{ select: [target: ProductionTaskTarget] }>();
       <component :is="cards ? 'details' : 'div'" :class="{'material-details':cards}">
         <summary v-if="cards">物料详情 <span>编码、退料与耗用</span></summary>
         <div class="detail-content">
-          <small>物料编码 {{target.materialCode}}</small><small v-if="target.materialBatch">物料批次 {{target.materialBatch}}</small>
+          <small>物料编码 {{target.materialCodes?.length?target.materialCodes.join(' / '):target.materialCode}}</small><small v-if="target.productionNumbers?.length">生产编号 {{target.productionNumbers.join(' / ')}}</small><small v-if="target.materialBatches?.length">物料批次 {{target.materialBatches.join(' / ')}}</small><small v-else-if="target.materialBatch">物料批次 {{target.materialBatch}}</small>
           <template v-if="target.materialTarget">
             <div v-if="cards" class="material-quantities"><span>已退料 <b>{{target.returnedQuantity.toLocaleString()}} {{target.baseUnit || '个'}}</b></span><span>净发料 <b>{{target.completedQuantity.toLocaleString()}} {{target.baseUnit || '个'}}</b></span></div>
             <small v-else class="quantities">已发 {{target.issuedQuantity.toLocaleString()}} · 已退 {{target.returnedQuantity.toLocaleString()}} {{target.baseUnit || '个'}}</small>

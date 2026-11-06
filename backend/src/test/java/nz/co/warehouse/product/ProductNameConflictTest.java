@@ -40,14 +40,18 @@ class ProductNameConflictTest {
         assertThat(products.search("", false, ProductUsage.PRODUCTION_TO_WAREHOUSE)).allMatch(p -> !p.duplicateName());
     }
 
-    @Test void inactiveMergedAndSameCodeRowsAreNotDifferentCodeConflicts() {
+    @Test void legacyInactiveProductsRemainUsableWhileMergedAliasesStayHidden() {
         var original = add("原料", "RAW", ProductUsage.WAREHOUSE_TO_PRODUCTION);
         var inactive = add("原料", "OLD", ProductUsage.WAREHOUSE_TO_PRODUCTION);
         inactive.setActive(false);
         var merged = add("原料", "ALIAS", ProductUsage.WAREHOUSE_TO_PRODUCTION);
         merged.setMergedInto(original);
         add("原料", "raw", ProductUsage.WAREHOUSE_TO_PRODUCTION);
-        assertThat(products.search("", false, null)).hasSize(2).allMatch(p -> !p.duplicateName());
+        assertThat(products.search("", false, null)).hasSize(3).allMatch(ProductDtos.Response::active);
+        assertThat(products.getForMovement(inactive.getId(), ProductUsage.WAREHOUSE_TO_PRODUCTION, false)).isSameAs(inactive);
+        assertThat(products.search("OLD", false, null)).singleElement().satisfies(p -> assertThat(p.duplicateName()).isTrue());
+        assertThatThrownBy(() -> products.create(new ProductDtos.Request("原料", "OLD", null,
+                ProductUsage.WAREHOUSE_TO_PRODUCTION, null, "个"))).hasMessageContaining("已有相同名称和物料编码的产品");
     }
 
     @Test void finishedGoodsStillWarnForDifferentCodesWithinTheirOwnClassification() {

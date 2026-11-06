@@ -15,6 +15,7 @@ export function taskIssuedMaterials(task: ProductionTask) {
     quantity: target.issuedQuantity,
     unit: target.baseUnit || '个',
     unknownQuantityCount: target.unknownQuantityCount,
+    materialBatches: [...new Set(task.movements.filter(m=>m.status==='ACTIVE'&&m.direction==='WAREHOUSE_TO_PRODUCTION').flatMap(m=>m.items.filter(i=>i.productId===target.productId).map(i=>i.materialBatch).filter((batch):batch is string=>!!batch)))],
   }));
   return { cartons: materials.reduce((sum, item) => sum + item.cartons, 0), materials };
 }

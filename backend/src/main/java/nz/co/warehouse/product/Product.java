@@ -11,6 +11,11 @@ public class Product extends PersistentEntity {
     private Long id;
     @Column(nullable = false, length = 200) private String name;
     @Column(name = "material_code", nullable = false, length = 100) private String materialCode;
+    @ElementCollection
+    @CollectionTable(name="product_material_code",joinColumns=@JoinColumn(name="product_id"))
+    @Column(name="material_code",nullable=false,length=100)
+    @org.hibernate.annotations.BatchSize(size=100)
+    private java.util.Set<String> materialCodes = new java.util.TreeSet<>();
     @Column(length = 100) private String sku;
     @Column(name = "material_batch", length = 100) private String materialBatch;
     @ElementCollection
@@ -31,6 +36,12 @@ public class Product extends PersistentEntity {
         String legacy = canonical().getMaterialBatch();
         if (legacy != null && !legacy.isBlank()) batches.add(legacy.trim());
         return batches;
+    }
+    public java.util.Set<String> availableMaterialCodes() {
+        var codes = new java.util.TreeSet<>(canonical().getMaterialCodes());
+        String legacy = canonical().getMaterialCode();
+        if (legacy != null && !legacy.isBlank()) codes.add(legacy.trim());
+        return codes;
     }
     @Enumerated(EnumType.STRING) @Column(name = "movement_direction", length = 40) private ProductUsage movementDirection;
     @Column(name = "default_units_per_carton") private Integer defaultUnitsPerCarton;

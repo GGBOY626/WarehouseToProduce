@@ -10,8 +10,8 @@ spring:
     name: warehouse-system
   datasource:
     url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:warehouse}?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC
-    username: ${DB_USERNAME:warehouse_app}
-    password: ${DB_PASSWORD:warehouse_dev_password}
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:Yoobee@2025!}
   jpa:
     open-in-view: false
     hibernate:

@@ -12,10 +12,10 @@ import SearchPicker from "./SearchPicker.vue";
 const props = defineProps<{ task?: ProductionTask }>();
 const emit = defineEmits<{ saved: [task: ProductionTask]; cancel: [] }>();
 let nextKey = 0;
-const newTarget = () => ({ key: nextKey++, productId: undefined as number | undefined, productName: "", targetQuantity: 0, baseUnit: "" });
+const newTarget = () => ({ key: nextKey++, productId: undefined as number | undefined, productName: "", targetQuantity: 0, baseUnit: "", materialBatches: [] as string[], materialCodes: [] as string[], productionNumbers: [] as string[], batchOptions: [] as string[], codeOptions: [] as string[], numberOptions: [] as string[] });
 const form = ref({
   name: props.task?.name || "",
-  targets: props.task?.targets.map(t => ({ key: nextKey++, productId: t.productId as number | undefined, productName: t.productName, targetQuantity: t.targetQuantity, baseUnit: t.baseUnit || "" })) || [newTarget()],
+  targets: props.task?.targets.map(t => ({ key: nextKey++, productId: t.productId as number | undefined, productName: t.productName, targetQuantity: t.targetQuantity, baseUnit: t.baseUnit || "", materialBatches:t.materialBatches||[], materialCodes:t.materialCodes||[], productionNumbers:t.productionNumbers||[], batchOptions:t.materialBatches||[], codeOptions:t.materialCodes||[], numberOptions:t.productionNumbers||[] })) || [newTarget()],
   plannedDate: props.task?.plannedDate || today(),
   orderNo: props.task?.orderNo || "", feishuNo: props.task?.feishuNo || "",
   plannedQuantity: (props.task?.plannedQuantity ?? '') as number | '', productBatch: props.task?.productBatch || "",
@@ -79,6 +79,8 @@ async function deleteExistingPhoto(photo: Photo) {
 onBeforeUnmount(() => files.value.forEach(file => URL.revokeObjectURL(file.url)));
 function selectMaterial(target: ReturnType<typeof newTarget>, p?: Product) {
   target.baseUnit = p?.baseUnit || ""; target.productName = p?.name || "";
+  target.batchOptions=p?.materialBatches|| (p?.materialBatch?[p.materialBatch]:[]);target.codeOptions=p?.materialCodes||[p?.materialCode].filter(Boolean) as string[];target.numberOptions=p?.productionNumbers||[];
+  target.materialBatches=[];target.materialCodes=[];target.productionNumbers=[];
 }
 function selectOutput(p?: Product) {
   outputUnit.value = p?.baseUnit || "";
@@ -121,7 +123,7 @@ async function save(asPreview = false) {
       outputBoxesPerCarton: packed ? boxesPerCarton.value : null, outputUnitsPerBox: packed ? unitsPerBox.value : null,
       outputQuantityBasis: packed ? quantityBasis.value : null, primaryMaterialProductId: packed ? primaryId.value : null,
       outputCartonsPerPallet: packed && cartonsPerPallet.value ? cartonsPerPallet.value : null,
-      targets: targets.map(t => ({ productId: t.productId, targetQuantity: t.targetQuantity })) };
+      targets: targets.map(t => ({ productId: t.productId, targetQuantity: t.targetQuantity, materialBatches:t.materialBatches, materialCodes:t.materialCodes, productionNumbers:t.productionNumbers })) };
     const taskId = props.task?.id ?? savedTask.value?.id;
     savedTask.value = taskId ? await productionTasksApi.update(taskId, payload) : asPreview ? await createProductionTaskPreview(payload) : await productionTasksApi.create(payload);
     existingPhotos.value = [...(savedTask.value.photos || existingPhotos.value)];
@@ -149,7 +151,10 @@ async function save(asPreview = false) {
       <label class="field"><span>任务名称 *</span><input class="input" v-model.trim="form.name" maxlength="100" required placeholder="例如：轻体粉第一批" /></label>
       <div v-for="(target, index) in form.targets" :key="target.key" class="target-row">
         <SearchPicker v-model="target.productId" :label="`所需物料 ${index + 1}`" placeholder="选择仓库发往车间的物料" :load="loadMaterials"
-          :display="p => `${p.name} · ${p.materialCode}`" @select="p => selectMaterial(target, p)" />
+          :display="p => `${p.name} · ${(p.materialCodes?.length?p.materialCodes:[p.materialCode]).join(' / ')}`" @select="p => selectMaterial(target, p)" />
+        <label v-if="target.codeOptions.length" class="field"><span>物料编码（可多选）</span><select class="select" v-model="target.materialCodes" multiple><option v-for="code in target.codeOptions" :key="code" :value="code">{{code}}</option></select></label>
+        <label v-if="target.numberOptions.length" class="field"><span>生产编号（可多选）</span><select class="select" v-model="target.productionNumbers" multiple><option v-for="number in target.numberOptions" :key="number" :value="number">{{number}}</option></select></label>
+        <label v-if="target.batchOptions.length" class="field"><span>物料批次（可多选）</span><select class="select" v-model="target.materialBatches" multiple><option v-for="batch in target.batchOptions" :key="batch" :value="batch">{{batch}}</option></select></label>
         <label class="field"><span>需求总数 * {{ target.baseUnit ? `（${target.baseUnit}）` : '' }}</span><input class="input" type="number" min="1" step="1" required v-model.number="target.targetQuantity" /></label>
         <button type="button" class="btn btn-secondary" :disabled="form.targets.length === 1" :aria-label="`移除物料 ${index + 1}`" @click="form.targets.splice(index, 1)">移除</button>
       </div>
