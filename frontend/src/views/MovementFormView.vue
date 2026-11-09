@@ -20,6 +20,7 @@ import { createUuid } from "../utils/uuid";
 import { calculateQuantity, quantityError, cartonCount } from "../utils/quantity";
 import { availableCartonSpecs, initialCartonSpec } from "../utils/cartonSpecs";
 import { initialBoxPacking, applyBoxPacking, syncBoxQuantity } from "../utils/boxPacking";
+import { palletPacking } from "../utils/palletPacking";
 import { taskCartonUnits, unitsForBoxes, boxesForUnits, fullCartonsForPalletSelection, tailCartonsOnOpen } from "../utils/taskPackaging";
 import { movementProductChoices } from "../utils/taskProductChoices";
 import { preparePhoto } from "../utils/photo";
@@ -113,14 +114,10 @@ function taskPacking(item: ItemInput) {
   return { boxesPerCarton: output.outputBoxesPerCarton, unitsPerBox: output.outputUnitsPerBox, quantityBasis: output.outputQuantityBasis, primaryMaterialUnit: output.outputPrimaryMaterialUnit };
 }
 function palletCartonCount(item: ItemInput) {
-  const taskCount = taskOutput(item)?.outputCartonsPerPallet;
-  if (Number.isSafeInteger(taskCount) && Number(taskCount) > 0) return Number(taskCount);
-  const packings = item.product?.boxPackings || [];
-  const matchingPacking = packings.find(packing => packing.boxesPerCarton === item.boxesPerCarton && packing.unitsPerBox === item.unitsPerBox);
-  const hasSelectedPacking = item.boxesPerCarton != null || item.unitsPerBox != null;
-  const packing = matchingPacking || (!hasSelectedPacking && packings.length === 1 ? packings[0] : undefined);
-  const count = packing?.cartonsPerPallet;
-  return Number.isSafeInteger(count) && Number(count) > 0 ? Number(count) : undefined;
+  return palletPacking(item, taskOutput(item)).cartonsPerPallet;
+}
+function needsPalletPackingSelection(item: ItemInput) {
+  return palletPacking(item, taskOutput(item)).requiresPackingSelection;
 }
 function wholePalletCartons(item: ItemInput) {
   return Number(item.wholePallets || 0) * (palletCartonCount(item) || 0);
@@ -292,6 +289,7 @@ function selectProduct(item: ItemInput, p?: Product) {
   quantityChanged(item);
 }
 function quantityChanged(item: ItemInput) {
+  if (palletCartonCount(item)) palletSetupPromptIndex.value = null;
   if (isNewFinishedReceipt.value && Number(item.wholePallets || 0) > 0 && !palletCartonCount(item)) {
     item.wholePallets = 0;
     palletSetupPromptIndex.value = draft.value.items.indexOf(item);
@@ -671,8 +669,8 @@ onBeforeUnmount(() => {
               </div>
               <small v-if="Number(item.wholePallets || 0) > 0" class="hint">标准托只填写完整托数；最后一托请在下方尾托中填写实际箱数、盒数或数量。</small>
               <div v-if="palletSetupPromptIndex === index" class="pallet-setup-prompt" role="status">
-                <p>产品尚未设置每托箱数。设置后才能按整托入库。</p>
-                <div><button type="button" class="btn btn-secondary" @click="openProductManagement">去产品管理设置</button><button type="button" class="btn btn-ghost" @click="palletSetupPromptIndex = null">待会设置</button></div>
+                <p>{{ needsPalletPackingSelection(item) ? '该产品有多套包装规格，请先选择下方本次使用的规格，再勾选整托入库。' : '当前包装规格尚未设置每托箱数。设置后才能按整托入库。' }}</p>
+                <div><button v-if="!needsPalletPackingSelection(item)" type="button" class="btn btn-secondary" @click="openProductManagement">去产品管理设置</button><button type="button" class="btn btn-ghost" @click="palletSetupPromptIndex = null">待会设置</button></div>
               </div>
             </div>
             <div v-if="boxed(item)" class="grid-2"><div class="field"><label :for="`box-count-${index}`">每箱装几盒</label><input :id="`box-count-${index}`" class="input" type="number" min="1" step="1" inputmode="numeric" v-model.number="item.boxesPerCarton" @input="quantityChanged(item)" /></div><div class="field"><label :for="`box-units-${index}`">每盒装几{{item.product?.baseUnit||'个'}}</label><input :id="`box-units-${index}`" class="input" type="number" min="1" step="1" inputmode="numeric" v-model.number="item.unitsPerBox" @input="quantityChanged(item)" /></div></div>
