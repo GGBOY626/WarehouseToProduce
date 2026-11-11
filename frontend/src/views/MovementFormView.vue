@@ -22,6 +22,7 @@ import { availableCartonSpecs, initialCartonSpec } from "../utils/cartonSpecs";
 import { initialBoxPacking, applyBoxPacking, syncBoxQuantity } from "../utils/boxPacking";
 import { palletPacking } from "../utils/palletPacking";
 import { taskCartonUnits, unitsForBoxes, boxesForUnits, fullCartonsForPalletSelection, tailCartonsOnOpen } from "../utils/taskPackaging";
+import { materialOptions, applyMaterialSelection } from "../utils/taskMaterialSelection";
 import { movementProductChoices } from "../utils/taskProductChoices";
 import { preparePhoto } from "../utils/photo";
 const route = useRoute(),
@@ -84,23 +85,26 @@ async function refreshTasks() {
   if (!initialized.value) return;
   const request = ++taskRequest;
   const ids = [...new Set(draft.value.items.map(i => i.productId))];
-  productionTasks.value = []; taskError.value = "";
+  taskError.value = "";
   if (!ids.length || ids.some(id => !id)) {
     taskLoading.value = false;
+    productionTasks.value = [];
     if (!keepOriginalTask.value) draft.value.productionTaskId = undefined;
     return;
   }
   taskLoading.value = true;
   try {
-    const linkItems=draft.value.items.map(i => ({productId:i.productId!,materialBatch:i.materialBatch,materialCode:i.batchNo,productionNumber:i.productionNumber||undefined}));
+    const linkItems=draft.value.items.map(i => ({productId:i.productId!}));
     const options = await productionTasksApi.linkable(linkItems as Parameters<typeof productionTasksApi.linkable>[0], direction.value, draft.value.returnMovement);
     if (request !== taskRequest) return;
     productionTasks.value = options;
+    if (!editId && !draft.value.productionTaskId && options.length === 1) draft.value.productionTaskId = options[0].id;
+    for (const item of draft.value.items) applyMaterialSelection(item, itemSelection(item));
     if (!keepOriginalTask.value && !options.some(t => t.id === draft.value.productionTaskId)) draft.value.productionTaskId = undefined;
   } catch (e) { if (request === taskRequest) taskError.value = errorMessage(e); }
   finally { if (request === taskRequest) taskLoading.value = false; }
 }
-watch(taskSelection, refreshTasks);
+watch(() => JSON.stringify([direction.value, draft.value.returnMovement, draft.value.items.map(item => item.productId)]), refreshTasks);
 const selectedTask = computed(() => productionTasks.value.find(task => task.id === draft.value.productionTaskId));
 const isFinishedReceipt = computed(() => direction.value === 'PRODUCTION_TO_WAREHOUSE' && !draft.value.returnMovement);
 const isNewFinishedReceipt = computed(() => !editId && direction.value === 'PRODUCTION_TO_WAREHOUSE' && !draft.value.returnMovement);
@@ -204,12 +208,13 @@ watch(selectedTask, task => {
     quantityChanged(item);
   }
 });
-let taskDetailRequest=0;
-watch(selectedTask,async task=>{
-  const request=++taskDetailRequest;if(!task||direction.value!=='WAREHOUSE_TO_PRODUCTION')return;
-  try{const detail=await productionTasksApi.detail(task.id);if(request!==taskDetailRequest||draft.value.productionTaskId!==task.id)return;
-    for(const item of draft.value.items){const target=detail.targets.find(x=>x.productId===item.productId);const batches=target?.materialBatches||[];const codes=target?.materialCodes||[];const numbers=target?.productionNumbers||[];if(!item.id&&batches.length===1&&!item.materialBatch)item.materialBatch=batches[0];if(!item.id&&codes.length===1)item.batchNo=codes[0];if(!item.id&&numbers.length===1)item.productionNumber=numbers[0];}
-  }catch{}
+function itemSelection(item: ItemInput) {
+  const task = selectedTask.value;
+  return isFinishedReceipt.value ? task?.output?.productId === item.productId ? task?.output : undefined : task?.targets?.find(target => target.productId === item.productId);
+}
+function itemOptions(item: ItemInput) { return materialOptions(item.product, itemSelection(item)); }
+watch(() => draft.value.productionTaskId, () => {
+  for (const item of draft.value.items) applyMaterialSelection(item, itemSelection(item));
 });
 const draftKey = computed(() => `movement-draft:${direction.value}`);
 const productUsage = computed<Direction>(() => draft.value.returnMovement ? "WAREHOUSE_TO_PRODUCTION" : direction.value);
@@ -257,7 +262,7 @@ function chooseLegacy(item: ItemInput,size:number){applyBoxPacking(item);item.un
 function legacySpecs(item: ItemInput){return commonSpecs(item).filter(n=>!item.product?.boxPackings?.some(p=>p.boxesPerCarton*p.unitsPerBox===n))}
 function addSpecification(item: ItemInput) {
   const packing=taskPacking(item);
-  draft.value.items.push({ ...blankItem(), productId: item.productId, product: item.product, batchNo: item.batchNo, sku: item.sku, materialBatch: item.materialBatch, subBatch: item.subBatch, unitsPerCarton: packing ? taskCartonUnits(packing) : initialCartonSpec(item.product) ?? null, quantityUnknown: item.quantityUnknown });
+  draft.value.items.push({ ...blankItem(), productId: item.productId, product: item.product, batchNo: item.batchNo, sku: item.sku, productionNumber: item.productionNumber, materialBatch: item.materialBatch, subBatch: item.subBatch, unitsPerCarton: packing ? taskCartonUnits(packing) : initialCartonSpec(item.product) ?? null, quantityUnknown: item.quantityUnknown });
   const added=draft.value.items[draft.value.items.length-1]!;
   if(!packing)applyBoxPacking(added,initialBoxPacking(item.product));
 }
@@ -277,7 +282,7 @@ function selectProduct(item: ItemInput, p?: Product) {
   item.tailCountTouched = false;
   item.tailSectionOpen = false;
   applyBoxPacking(item,initialBoxPacking(p));
-  item.batchNo = p?.materialCode || "";
+  item.batchNo = (p?.materialCodes?.length || 0) > 1 ? "" : p?.materialCode || "";
   item.sku = p?.sku || "";
   const batches = p?.materialBatches || (p?.materialBatch ? [p.materialBatch] : []);
   item.materialBatch = batches.length === 1 ? batches[0] : "";
@@ -286,6 +291,7 @@ function selectProduct(item: ItemInput, p?: Product) {
   item.manualTotal = false;
   item.quantityUnknown = isNewFinishedReceipt.value ? false : !!p?.quantityUnknown;
 
+  applyMaterialSelection(item, itemSelection(item));
   quantityChanged(item);
 }
 function quantityChanged(item: ItemInput) {
@@ -346,8 +352,8 @@ function validate() {
     const invalidQuantity = quantityError(quantity);
     if (invalidQuantity) return `产品明细 ${i + 1}：${invalidQuantity}`;
     if (!x.productId) return `请选择产品明细 ${i + 1} 的产品。`;
-    if (!isNewFinishedReceipt.value && (needsMaterialBatch.value || (x.product?.materialBatches?.length || 0) > 1) && !x.materialBatch?.trim()) return `请选择产品明细 ${i + 1} 的具体物料批次。`;
-    if ((x.product?.productionNumbers?.length || 0) > 1 && !x.productionNumber?.trim() && !x.id) return `请选择产品明细 ${i + 1} 的具体生产编号。`;
+    if ((!isNewFinishedReceipt.value && needsMaterialBatch.value || itemOptions(x).materialBatches.length > 1 || !!itemSelection(x)?.materialBatches?.length) && !x.materialBatch?.trim()) return `请选择产品明细 ${i + 1} 的具体物料批次。`;
+    if (itemOptions(x).productionNumbers.length > 1 && !x.productionNumber?.trim() && !x.id) return `请选择产品明细 ${i + 1} 的具体生产编号。`;
     if (!x.batchNo.trim()) return `请填写产品明细 ${i + 1} 的物料编码。`;
     if (
       !quantity.quantityUnknown &&
@@ -385,7 +391,7 @@ function payload() {
         tailCartons: Number(x.tailCartons) || 0,
         tailUnitsPerCarton: x.tailCartons > 0 ? Number(x.tailUnitsPerCarton) : null,
         batchNo: x.batchNo,
-        materialBatch: isNewFinishedReceipt.value ? "" : x.materialBatch || "",
+        materialBatch: x.materialBatch || "",
         productionNumber: x.productionNumber || "",
         sku: isFinishedReceipt.value ? x.sku || "" : "",
         subBatch: isNewFinishedReceipt.value ? "" : x.subBatch || "",
@@ -546,6 +552,22 @@ onMounted(async () => {
     if (!('unitsPerCarton' in item)) item.unitsPerCarton = initialCartonSpec(item.product) ?? null;
     if (item.materialBatch === undefined) item.materialBatch = draft.value.manufactureLot || "";
   }
+  const requestedTaskId = Number(route.query.taskId);
+  if (!editId && Number.isSafeInteger(requestedTaskId) && requestedTaskId > 0) {
+    try {
+      const task = await productionTasksApi.detail(requestedTaskId);
+      const catalog = await productsApi.search('', false, productUsage.value);
+      const selections = isFinishedReceipt.value ? task.output ? [task.output] : [] : task.targets;
+      draft.value.items = selections.map(selection => {
+        const item = blankItem();
+        selectProduct(item, catalog.find(product => product.id === selection.productId));
+        applyMaterialSelection(item, selection);
+        return item;
+      });
+      if (!draft.value.items.length) draft.value.items = [blankItem()];
+      draft.value.productionTaskId = task.id;
+    } catch (error) { message.value = errorMessage(error); }
+  }
   initialized.value = true;
   await refreshTasks();
   await nextTick();
@@ -637,12 +659,14 @@ onBeforeUnmount(() => {
             <label class="required">物料编码</label
             ><input
               class="input mono"
+              :list="`material-codes-${index}`"
               v-model.trim="item.batchNo"
               placeholder="选择产品后自动带入"
             />
           </div>
-          <MaterialBatchPicker v-if="!isNewFinishedReceipt" v-model="item.materialBatch" :batches="item.product?.materialBatches" :required="needsMaterialBatch" />
-          <ProductionNumberPicker v-model="item.productionNumber" :numbers="item.product?.productionNumbers" :allow-unspecified="!!item.id && !item.productionNumber" />
+          <datalist :id="`material-codes-${index}`"><option v-for="code in itemOptions(item).materialCodes" :key="code" :value="code" /></datalist>
+          <MaterialBatchPicker v-if="!isNewFinishedReceipt || itemOptions(item).materialBatches.length" v-model="item.materialBatch" :batches="itemOptions(item).materialBatches" :required="needsMaterialBatch" />
+          <ProductionNumberPicker v-model="item.productionNumber" :numbers="itemOptions(item).productionNumbers" :allow-unspecified="!!item.id && !item.productionNumber" />
           <div v-if="isFinishedReceipt" class="field">
             <label :for="`sku-${index}`">SKU</label>
             <input :id="`sku-${index}`" class="input mono" maxlength="100" v-model.trim="item.sku" placeholder="成品 SKU" />

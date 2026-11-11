@@ -40,7 +40,11 @@ public class ProductionTaskService {
                               @Positive Integer outputBoxesPerCarton,@Positive Integer outputUnitsPerBox,
                               ProductionTask.OutputQuantityBasis outputQuantityBasis,Long primaryMaterialProductId,
                               @Positive Integer outputCartonsPerPallet,@Positive Long yieldMaterialQuantity,@Positive Long yieldOutputQuantity,
-                              @Size(max=100) String orderNo,@Size(max=100) String feishuNo,@Positive Long plannedQuantity,@Size(max=100) String productBatch) {
+                              @Size(max=100) String orderNo,@Size(max=100) String feishuNo,@Positive Long plannedQuantity,@Size(max=100) String productBatch,
+                              List<@Size(max=100) String> outputMaterialBatches,List<@Size(max=100) String> outputMaterialCodes,List<@Size(max=100) String> outputProductionNumbers) {
+        public SaveRequest(Long productId,Long targetQuantity,LocalDate plannedDate,String batchNo,String remarks,List<TargetRequest> targets,Long outputProductId,Long targetOutputQuantity,String name,String outputMaterialBatch,Integer outputBoxesPerCarton,Integer outputUnitsPerBox,ProductionTask.OutputQuantityBasis outputQuantityBasis,Long primaryMaterialProductId,Integer outputCartonsPerPallet,Long yieldMaterialQuantity,Long yieldOutputQuantity,String orderNo,String feishuNo,Long plannedQuantity,String productBatch){
+            this(productId,targetQuantity,plannedDate,batchNo,remarks,targets,outputProductId,targetOutputQuantity,name,outputMaterialBatch,outputBoxesPerCarton,outputUnitsPerBox,outputQuantityBasis,primaryMaterialProductId,outputCartonsPerPallet,yieldMaterialQuantity,yieldOutputQuantity,orderNo,feishuNo,plannedQuantity,productBatch,null,null,null);
+        }
         public SaveRequest(Long productId,Long targetQuantity,LocalDate plannedDate,String batchNo,String remarks,List<TargetRequest> targets,Long outputProductId,Long targetOutputQuantity,String name,String outputMaterialBatch,Integer outputBoxesPerCarton,Integer outputUnitsPerBox,ProductionTask.OutputQuantityBasis outputQuantityBasis,Long primaryMaterialProductId,Integer outputCartonsPerPallet,Long yieldMaterialQuantity,Long yieldOutputQuantity){
             this(productId,targetQuantity,plannedDate,batchNo,remarks,targets,outputProductId,targetOutputQuantity,name,outputMaterialBatch,outputBoxesPerCarton,outputUnitsPerBox,outputQuantityBasis,primaryMaterialProductId,outputCartonsPerPallet,yieldMaterialQuantity,yieldOutputQuantity,null,null,null,null);
         }
@@ -84,10 +88,11 @@ public class ProductionTaskService {
                                  Integer boxesPerCarton,Integer unitsPerBox,ProductionTask.OutputQuantityBasis quantityBasis,
                                  Long primaryMaterialProductId,String primaryMaterialName,String primaryMaterialUnit,Long netIssuedQuantity,
                                  BigDecimal producedQuantity,BigDecimal receivedBoxes,BigDecimal productionPercent,BigDecimal lossPercent,boolean provisional,
-                                 Integer cartonsPerPallet) {}
+                                 Integer cartonsPerPallet,List<String> materialBatches,List<String> materialCodes,List<String> productionNumbers) {}
     public record LinkOption(Long id,String productName,String batchNo,ProductionTask.Status status,String name,Long outputProductId,
                              Integer outputBoxesPerCarton,Integer outputUnitsPerBox,ProductionTask.OutputQuantityBasis outputQuantityBasis,
-                             Integer outputCartonUnits,Integer outputCartonsPerPallet,String outputPrimaryMaterialUnit,int nextPalletNo) {}
+                             Integer outputCartonUnits,Integer outputCartonsPerPallet,String outputPrimaryMaterialUnit,int nextPalletNo,List<SelectionResponse> targets,SelectionResponse output) {}
+    public record SelectionResponse(Long productId,List<String> materialBatches,List<String> materialCodes,List<String> productionNumbers) {}
 
     @Transactional(readOnly=true) public List<Response> list(ProductionTask.Status status){
         List<ProductionTask> found=tasks.search(status);
@@ -151,7 +156,8 @@ public class ProductionTaskService {
     private LinkOption linkOption(ProductionTask task){
         return new LinkOption(task.getId(),task.displayName(),task.getBatchNo(),task.getStatus(),task.displayName(),
                 task.getOutputProduct()==null?null:task.getOutputProduct().canonicalId(),task.getOutputBoxesPerCarton(),task.getOutputUnitsPerBox(),
-                task.getOutputQuantityBasis(),task.outputCartonUnits(),task.getOutputCartonsPerPallet(),task.getPrimaryMaterial()==null?null:task.getPrimaryMaterial().getBaseUnit(),task.getNextPalletNo());
+                task.getOutputQuantityBasis(),task.outputCartonUnits(),task.getOutputCartonsPerPallet(),task.getPrimaryMaterial()==null?null:task.getPrimaryMaterial().getBaseUnit(),task.getNextPalletNo(),task.getTargets().stream().map(target->new SelectionResponse(target.getProduct().canonicalId(),List.copyOf(target.getMaterialBatches()),List.copyOf(target.getMaterialCodes()),List.copyOf(target.getProductionNumbers()))).toList(),
+                task.getOutputProduct()==null?null:new SelectionResponse(task.getOutputProduct().canonicalId(),List.copyOf(task.getOutputMaterialBatches()),List.copyOf(task.getOutputMaterialCodes()),List.copyOf(task.getOutputProductionNumbers())));
     }
     @Transactional
     public int allocatePalletRange(long taskId,int count,Integer requestedStart){
@@ -196,7 +202,10 @@ public class ProductionTaskService {
             if(i.productId()==null)return false;
             Long id=products.getAny(i.productId()).canonicalId();
             if(direction==MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE&&!returned)
-                return t.getOutputProduct()!=null&&t.getOutputProduct().canonicalId().equals(id);
+                return t.getOutputProduct()!=null&&t.getOutputProduct().canonicalId().equals(id)
+                        && matchesSelection(t.getOutputMaterialBatches(),i.materialBatch())
+                        && matchesSelection(t.getOutputMaterialCodes(),i.materialCode())
+                        && matchesSelection(t.getOutputProductionNumbers(),i.productionNumber());
             return t.getTargets().stream().anyMatch(x->x.getProduct().canonicalId().equals(id)&&matchesTargetSelection(x,i));
         });
     }
@@ -206,6 +215,7 @@ public class ProductionTaskService {
                 && (item.productionNumber()==null||target.getProductionNumbers().isEmpty()||target.getProductionNumbers().contains(item.productionNumber()));
     }
 
+    private boolean matchesSelection(Set<String> choices,String value){return blank(value)==null||choices.isEmpty()||choices.contains(value.trim());}
     private boolean linkStatusAllowed(ProductionTask t,MovementEnums.Direction direction){
         return t.getStatus()==ProductionTask.Status.PREPARING||t.getStatus()==ProductionTask.Status.IN_PROGRESS;
     }
@@ -284,6 +294,15 @@ public class ProductionTaskService {
         Product output=r.outputProductId()==null?null:products.getForMovement(r.outputProductId(),ProductUsage.PRODUCTION_TO_WAREHOUSE,
                 editing&&t.getOutputProduct()!=null&&t.getOutputProduct().canonicalId().equals(r.outputProductId()));
         if(output!=null&&output.isQuantityUnknown())throw BusinessException.badRequest("TASK_OUTPUT_UNIT_REQUIRED","成品产品须设置明确的数量单位。");
+        if(output!=null){
+            validateSelection(r.outputMaterialBatches(),output.availableBatches(),"物料批次");
+            validateSelection(r.outputMaterialCodes(),output.availableMaterialCodes(),"物料编码");
+            validateSelection(r.outputProductionNumbers(),output.canonical().getProductionNumbers(),"生产编号");
+        }
+        boolean sameOutput=output!=null&&t.getOutputProduct()!=null&&output.canonicalId().equals(t.getOutputProduct().canonicalId());
+        replaceSelection(t.getOutputMaterialBatches(),output==null?List.of():r.outputMaterialBatches(),sameOutput);
+        replaceSelection(t.getOutputMaterialCodes(),output==null?List.of():r.outputMaterialCodes(),sameOutput);
+        replaceSelection(t.getOutputProductionNumbers(),output==null?List.of():r.outputProductionNumbers(),sameOutput);
         t.setOutputProduct(output);t.setTargetOutputQuantity(plannedOutput);t.setOutputMaterialBatch(null);
         t.setOutputBoxesPerCarton(r.outputBoxesPerCarton());t.setOutputUnitsPerBox(r.outputUnitsPerBox());
         t.setOutputQuantityBasis(r.outputQuantityBasis());t.setPrimaryMaterial(primary);
@@ -296,6 +315,11 @@ public class ProductionTaskService {
         if(!editing || r.batchNo()!=null)t.setBatchNo(blank(r.batchNo()));
         t.setRemarks(blank(r.remarks()));
         t.setOrderNo(blank(r.orderNo()));t.setFeishuNo(blank(r.feishuNo()));t.setPlannedQuantity(r.plannedQuantity());t.setProductBatch(blank(r.productBatch()));
+    }
+    private void replaceSelection(Set<String> destination,List<String> selected,boolean preserveMissing){
+        if(selected==null&&preserveMissing)return;
+        destination.clear();
+        if(selected!=null)selected.stream().filter(Objects::nonNull).map(String::trim).filter(value->!value.isEmpty()).forEach(destination::add);
     }
     private void validateSelection(List<String> selected,Set<String> available,String label){
         if(selected==null)return;
@@ -366,7 +390,7 @@ public class ProductionTaskService {
                 (int)Math.min(100,received*100.0/t.getTargetOutputQuantity()),unknownOutput,null,
                 t.getOutputBoxesPerCarton(),t.getOutputUnitsPerBox(),t.getOutputQuantityBasis(),primary==null?null:primary.productId(),primary==null?null:primary.productName(),primary==null?null:primary.baseUnit(),primary==null?null:primary.completedQuantity(),
                 produced,boxes,productionPercent,lossPercent,t.getStatus()!=ProductionTask.Status.COMPLETED,
-                t.getOutputCartonsPerPallet());
+                t.getOutputCartonsPerPallet(),List.copyOf(t.getOutputMaterialBatches()),List.copyOf(t.getOutputMaterialCodes()),List.copyOf(t.getOutputProductionNumbers()));
         // Material readiness is independent of finished-goods receipts and production status.
         int progress=(int)targets.stream().mapToDouble(target->target.materialTarget()?Math.max(0,Math.min(100,target.completedQuantity()*100.0/target.targetQuantity())):0).average().orElse(0);
         long completed=targets.isEmpty()?0:targets.getFirst().completedQuantity();

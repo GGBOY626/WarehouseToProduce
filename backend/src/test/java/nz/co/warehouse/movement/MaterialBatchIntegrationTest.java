@@ -24,6 +24,7 @@ class MaterialBatchIntegrationTest {
     @Autowired ProductionTaskService tasks;
     @Autowired PersonService persons;
     @Autowired JdbcTemplate jdbc;
+    @Autowired com.fasterxml.jackson.databind.ObjectMapper mapper;
     ProductDtos.Response material,output;
     Long person;
     String code;
@@ -110,4 +111,47 @@ class MaterialBatchIntegrationTest {
         var edited=new MovementDtos.ItemRequest(numbered.id(),code+"-N",0,4,null,false,null,List.of(),1000,0,null,saved.items().getFirst().id(),null,"A001",null,null,null,null);
         assertThat(movements.update(saved.id(),request(MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,null,edited)).items().getFirst().productionNumber()).isEqualTo("P002");
     }
+    ProductionTaskService.SaveRequest selectedTask(List<String> batches,List<String> codes,List<String> numbers){
+        var payload=new LinkedHashMap<String,Object>();
+        payload.put("plannedDate",day.toString());
+        payload.put("targets",List.of(new ProductionTaskService.TargetRequest(material.id(),20,null,null,null,List.of("A002"),List.of(code),List.of())));
+        payload.put("outputProductId",output.id());payload.put("targetOutputQuantity",100);
+        payload.put("outputMaterialBatches",batches);payload.put("outputMaterialCodes",codes);payload.put("outputProductionNumbers",numbers);
+        return mapper.convertValue(payload,ProductionTaskService.SaveRequest.class);
+    }
+    @Test void taskSelectionsSurviveSavingAndLinkOptionsForBothDirections(){
+        products.update(output.id(),new ProductDtos.Request(code,code,null,null,ProductUsage.PRODUCTION_TO_WAREHOUSE,1000,"个",false,List.of(),List.of("F001","F002"),List.of(),List.of("P001","P002"),List.of(code,code+"-2")));
+        var saved=tasks.create(selectedTask(List.of("F002"),List.of(code+"-2"),List.of("P002")));
+        var detail=tasks.detail(saved.id());
+        assertThat(detail.output().materialBatches()).containsExactly("F002");
+        assertThat(detail.output().materialCodes()).containsExactly(code+"-2");
+        assertThat(detail.output().productionNumbers()).containsExactly("P002");
+        var issueOptions=tasks.linkableBatches(new ProductionTaskService.LinkRequest(List.of(new ProductionTaskService.BatchSelection(material.id(),null)),MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION,false));
+        assertThat(issueOptions).filteredOn(option->option.id().equals(saved.id())).singleElement().satisfies(option->{
+            assertThat(option.targets().getFirst().materialBatches()).containsExactly("A002");
+            assertThat(option.targets().getFirst().materialCodes()).containsExactly(code);
+        });
+        var receiptOptions=tasks.linkableBatches(new ProductionTaskService.LinkRequest(List.of(new ProductionTaskService.BatchSelection(output.id(),null)),MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE,false));
+        assertThat(receiptOptions).filteredOn(option->option.id().equals(saved.id())).singleElement().satisfies(option->{
+            assertThat(option.output().productionNumbers()).containsExactly("P002");
+            assertThat(option.output().materialCodes()).containsExactly(code+"-2");
+        });
+        var selected=new MovementDtos.ItemRequest(output.id(),code+"-2",0,3,null,false,null,List.of(),1000,0,null,null,null,"F002",null,null,null,"P002");
+        var receipt=movements.create(request(MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE,saved.id(),selected));
+        assertThat(receipt.items().getFirst().productionNumber()).isEqualTo("P002");
+        assertThat(receipt.items().getFirst().materialBatch()).isEqualTo("F002");
+        assertThat(receipt.items().getFirst().batchNo()).isEqualTo(code+"-2");
+        var wrongBatch=new MovementDtos.ItemRequest(output.id(),code+"-2",0,3,null,false,null,List.of(),1000,0,null,null,null,"F001",null,null,null,"P002");
+        assertThatThrownBy(()->movements.create(request(MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE,saved.id(),wrongBatch))).hasMessageContaining("不匹配");
+        tasks.update(saved.id(),selectedTask(List.of("F001","F002"),List.of(code),List.of("P001","P002")));
+        assertThat(tasks.detail(saved.id()).output().productionNumbers()).containsExactly("P001","P002");
+        tasks.update(saved.id(),selectedTask(List.of(),List.of(),List.of()));
+        assertThat(tasks.detail(saved.id()).output().productionNumbers()).isEmpty();
+    }
+    @Test void outputSelectionsMustBelongToSelectedProduct(){
+        assertThatThrownBy(()->tasks.create(selectedTask(List.of("UNKNOWN"),List.of(),List.of()))).hasMessageContaining("不属于");
+        assertThatThrownBy(()->tasks.create(selectedTask(List.of(),List.of("UNKNOWN"),List.of()))).hasMessageContaining("不属于");
+        assertThatThrownBy(()->tasks.create(selectedTask(List.of(),List.of(),List.of("UNKNOWN")))).hasMessageContaining("不属于");
+    }
+
 }

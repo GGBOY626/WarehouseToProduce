@@ -6,7 +6,9 @@ defineEmits<{ select: [] }>();
 <template>
   <div class="output-summary">
     <div class="output-heading"><button v-if="interactive" class="material-link" @click="$emit('select')">{{ output.productName }}（成品） <span>查看回仓明细 ›</span></button><strong v-else>{{ output.productName }}（成品）</strong><b v-if="!hideProgress">{{ output.quantityBasis ? (output.productionPercent == null ? '—' : `${output.productionPercent}%`) : `${output.progressPercent}%` }} <small>{{ output.quantityBasis ? '生产完成度' : '计划回仓进度' }}</small></b></div>
-    <small>物料编码 {{ output.materialCode }}</small>
+    <small>物料编码 {{ output.materialCodes?.length ? output.materialCodes.join(' / ') : output.materialCode }}</small>
+    <small v-if="output.productionNumbers?.length">生产编号 {{ output.productionNumbers.join(' / ') }}</small>
+    <small v-if="output.materialBatches?.length">物料批次 {{ output.materialBatches.join(' / ') }}</small>
     <div v-if="output.boxesPerCarton" class="output-values"><span>包装：{{ output.boxesPerCarton }} 盒/箱 × {{ output.unitsPerBox }} {{ output.primaryMaterialUnit }}/盒</span></div>
     <div class="output-values"><span>{{ output.unknownQuantityCount ? '已知回仓' : '累计回仓' }} <b>{{ output.receivedQuantity.toLocaleString() }}</b> {{ output.baseUnit }}</span><span v-if="output.receivedBoxes != null">折合 {{ output.receivedBoxes.toLocaleString(undefined, { maximumFractionDigits: 3 }) }} 盒 · {{ output.producedQuantity?.toLocaleString() }} {{ output.primaryMaterialUnit }}</span></div>
     <template v-if="output.quantityBasis">

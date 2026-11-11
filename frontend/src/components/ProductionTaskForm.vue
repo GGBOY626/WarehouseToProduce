@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { productionTasksApi, productsApi } from "../api";
 import { createProductionTaskPreview } from "../api/productionTaskActions";
 import { errorMessage } from "../api/http";
@@ -84,11 +84,42 @@ function selectMaterial(target: ReturnType<typeof newTarget>, p?: Product) {
 }
 function selectOutput(p?: Product) {
   outputUnit.value = p?.baseUnit || "";
+  outputBatchOptions.value = p?.materialBatches || (p?.materialBatch ? [p.materialBatch] : []);
+  outputCodeOptions.value = p?.materialCodes || [p?.materialCode].filter(Boolean) as string[];
+  outputNumberOptions.value = p?.productionNumbers || [];
+  outputMaterialBatches.value = outputBatchOptions.value.length === 1 ? [...outputBatchOptions.value] : [];
+  outputMaterialCodes.value = outputCodeOptions.value.length === 1 ? [...outputCodeOptions.value] : [];
+  outputProductionNumbers.value = outputNumberOptions.value.length === 1 ? [...outputNumberOptions.value] : [];
   quantityBasis.value = p?.baseUnit === '盒' ? 'BOX' : 'UNIT';
   const packing=initialBoxPacking(p);
   boxesPerCarton.value=packing?.boxesPerCarton;unitsPerBox.value=packing?.unitsPerBox;
   cartonsPerPallet.value=packing?.cartonsPerPallet??undefined;outputPackings.value=p?.boxPackings||[];packingChoice.value='';
 }
+const outputBatchOptions = ref<string[]>(props.task?.output?.materialBatches || (props.task?.output?.materialBatch ? [props.task.output.materialBatch] : []));
+const outputCodeOptions = ref<string[]>(props.task?.output?.materialCodes || (props.task?.output?.materialCode ? [props.task.output.materialCode] : []));
+const outputNumberOptions = ref<string[]>(props.task?.output?.productionNumbers || []);
+const outputMaterialBatches = ref<string[]>([...(props.task?.output?.materialBatches || [])]);
+const outputMaterialCodes = ref<string[]>([...(props.task?.output?.materialCodes || [])]);
+const outputProductionNumbers = ref<string[]>([...(props.task?.output?.productionNumbers || [])]);
+onMounted(async () => {
+  if (!props.task) return;
+  try {
+    const [materials, outputs] = await Promise.all([loadMaterials(''), loadOutputs('')]);
+    for (const target of form.value.targets) {
+      const product = materials.find(p => p.id === target.productId);
+      if (!product) continue;
+      target.codeOptions = product.materialCodes?.length ? product.materialCodes : [product.materialCode];
+      target.numberOptions = product.productionNumbers || [];
+      target.batchOptions = product.materialBatches || [];
+    }
+    const output = outputs.find(p => p.id === outputProductId.value);
+    if (output) {
+      outputCodeOptions.value = output.materialCodes?.length ? output.materialCodes : [output.materialCode];
+      outputNumberOptions.value = output.productionNumbers || [];
+      outputBatchOptions.value = output.materialBatches || [];
+    }
+  } catch (error) { message.value = errorMessage(error); }
+});
 async function loadOutputs(q: string): Promise<Product[]> {
   return (await productsApi.search(q, !!props.task, 'PRODUCTION_TO_WAREHOUSE')).filter(p => !p.quantityUnknown && (p.active || p.id === props.task?.output?.productId));
 }
@@ -123,6 +154,7 @@ async function save(asPreview = false) {
       outputBoxesPerCarton: packed ? boxesPerCarton.value : null, outputUnitsPerBox: packed ? unitsPerBox.value : null,
       outputQuantityBasis: packed ? quantityBasis.value : null, primaryMaterialProductId: packed ? primaryId.value : null,
       outputCartonsPerPallet: packed && cartonsPerPallet.value ? cartonsPerPallet.value : null,
+      outputMaterialBatches: outputMaterialBatches.value, outputMaterialCodes: outputMaterialCodes.value, outputProductionNumbers: outputProductionNumbers.value,
       targets: targets.map(t => ({ productId: t.productId, targetQuantity: t.targetQuantity, materialBatches:t.materialBatches, materialCodes:t.materialCodes, productionNumbers:t.productionNumbers })) };
     const taskId = props.task?.id ?? savedTask.value?.id;
     savedTask.value = taskId ? await productionTasksApi.update(taskId, payload) : asPreview ? await createProductionTaskPreview(payload) : await productionTasksApi.create(payload);
@@ -164,6 +196,9 @@ async function save(asPreview = false) {
         <fieldset :disabled="hasReceipts">
           <SearchPicker v-model="outputProductId" label="出货物料 / 成品" placeholder="选择车间送回仓库的物料" :load="loadOutputs" :display="p => `${p.name} · ${p.materialCode}`" @select="selectOutput" />
         </fieldset>
+          <label v-if="outputCodeOptions.length" class="field"><span>物料编码（可多选）</span><select class="select" v-model="outputMaterialCodes" multiple><option v-for="code in outputCodeOptions" :key="code" :value="code">{{code}}</option></select></label>
+          <label v-if="outputNumberOptions.length" class="field"><span>生产编号（可多选）</span><select class="select" v-model="outputProductionNumbers" multiple><option v-for="number in outputNumberOptions" :key="number" :value="number">{{number}}</option></select></label>
+          <label v-if="outputBatchOptions.length" class="field"><span>物料批次（可多选）</span><select class="select" v-model="outputMaterialBatches" multiple><option v-for="batch in outputBatchOptions" :key="batch" :value="batch">{{batch}}</option></select></label>
         <label v-if="task?.output && !task.output.boxesPerCarton" class="output-choice"><input type="checkbox" v-model="packagingEnabled" /> 补充包装换算和生产完成度</label>
         <fieldset v-if="packagingEnabled" :disabled="packagingLocked">
           <label v-if="outputPackings.length>1" class="field"><span>使用成品包装规格</span><select class="select" v-model="packingChoice" @change="choosePacking"><option value="" disabled>选择规格或在下方手动填写</option><option v-for="(p,index) in outputPackings" :key="index" :value="String(index)">{{p.boxesPerCarton}} 盒/箱 × {{p.unitsPerBox}} {{outputUnit}}/盒{{p.cartonsPerPallet ? ` · ${p.cartonsPerPallet} 箱/托盘` : ''}}</option></select></label>

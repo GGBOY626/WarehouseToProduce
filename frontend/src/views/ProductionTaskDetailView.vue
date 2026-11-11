@@ -66,6 +66,10 @@ onBeforeUnmount(()=>{clearInterval(refreshTimer);window.removeEventListener('foc
         </p>
       </div>
       <section v-if="authenticated && !editing" class="section actions task-actions" :aria-busy="changingStatus || deleting"><button class="btn btn-secondary" :disabled="changingStatus || deleting || findingBusy || findingDirty" @click="editing=true">编辑任务</button><button v-if="task.status==='PREVIEW' && readyToStart" class="btn btn-primary" :disabled="changingStatus || deleting || !readyToStart" aria-describedby="finding-start-hint" @click="startProduction">开始生产</button><button v-if="task.status==='PREPARING'||task.status==='IN_PROGRESS'" class="btn btn-primary" :disabled="changingStatus || deleting" @click="setStatus('COMPLETED')">标记已完成</button><button v-if="task.status==='COMPLETED'" class="btn btn-secondary" :disabled="changingStatus || deleting" @click="linkError='';linkDialog?.showModal()">补关联流转记录</button><button class="btn btn-danger delete-button" :disabled="changingStatus || deleting || findingBusy" @click="deleteTask">{{ deleting ? '正在删除…' : '删除任务' }}</button></section>
+      <div v-if="authenticated && !editing && (task.status === 'IN_PROGRESS' || task.status === 'PREPARING')" class="section actions">
+        <RouterLink class="btn btn-primary" :to="{path:'/movements/new/warehouse-to-production',query:{taskId:task.id}}">新增出库</RouterLink>
+        <RouterLink v-if="task.output" class="btn btn-secondary" :to="{path:'/movements/new/production-to-warehouse',query:{taskId:task.id}}">新增入库</RouterLink>
+      </div>
       <template v-if="task.status==='PREVIEW' && !editing">
         <p id="finding-start-hint" class="hint" role="status">{{ readyToStart ? '全部物料已确认找到，可以开始生产。' : '请先逐项勾选已找到并保存，全部确认后才能开始生产。' }}</p>
         <TaskFindingChecklist :task="task" :authenticated="authenticated" :disabled="changingStatus || deleting" @saved="task=$event" @dirty="findingDirty=$event" @busy="findingBusy=$event" />

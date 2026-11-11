@@ -11,6 +11,9 @@ import java.util.*;
 @Entity @Table(name="production_task")
 public class ProductionTask extends PersistentEntity {
     @Column(name="output_material_batch",length=100) private String outputMaterialBatch;
+    @ElementCollection @CollectionTable(name="production_task_output_material_batch",joinColumns=@JoinColumn(name="task_id")) @Column(name="batch_no",nullable=false,length=100) private Set<String> outputMaterialBatches=new TreeSet<>();
+    @ElementCollection @CollectionTable(name="production_task_output_material_code",joinColumns=@JoinColumn(name="task_id")) @Column(name="material_code",nullable=false,length=100) private Set<String> outputMaterialCodes=new TreeSet<>();
+    @ElementCollection @CollectionTable(name="production_task_output_production_number",joinColumns=@JoinColumn(name="task_id")) @Column(name="production_number",nullable=false,length=100) private Set<String> outputProductionNumbers=new TreeSet<>();
     @Id @GeneratedValue(strategy=GenerationType.IDENTITY) private Long id;
     @ManyToOne(fetch=FetchType.LAZY,optional=false) @JoinColumn(name="product_id") private Product product;
     @Column(name="target_quantity",nullable=false) private long targetQuantity;
