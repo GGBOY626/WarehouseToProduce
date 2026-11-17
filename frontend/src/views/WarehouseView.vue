@@ -3,10 +3,10 @@ import { computed, nextTick, onMounted, ref } from 'vue';
 import { productsApi } from '../api';
 import { warehouseApi } from '../api/warehouse';
 import { errorMessage } from '../api/http';
-import { areaLanes, laneLabels, rackOrder, emptyWarehouseFilters, filterWarehousePallets, warehouseStats, selectWarehouseLocation, changeWarehouseScope } from '../utils/warehouse';
+import { areaLanes, laneLabels, rackOrder, emptyWarehouseFilters, filterWarehousePallets, selectWarehouseLocation, changeWarehouseScope } from '../utils/warehouse';
 import { showDateTime } from '../utils/time';
 import type { Product } from '../types';
-import type { WarehousePallet, WarehouseOverview, WarehouseHistory, StockItem } from '../types/warehouse';
+import type { WarehousePallet, WarehouseOverview } from '../types/warehouse';
 import WarehousePalletForm from '../components/WarehousePalletForm.vue';
 import WarehouseLocationBoard from '../components/WarehouseLocationBoard.vue';
 import WarehousePalletCard from '../components/WarehousePalletCard.vue';
@@ -28,8 +28,6 @@ const viewMode=ref<'pallet'|'material'>('pallet');
 const materials=computed(()=>summarizeWarehouse(rackData.value.pallets,rackData.value.areas,filters.value));
 const detailDialog=ref<HTMLDialogElement>(),detailPallet=ref<WarehousePallet>();
 async function openDetail(p:WarehousePallet){detailPallet.value=rackData.value.pallets.find(row=>row.id===p.id)??p;await nextTick();detailDialog.value?.showModal()}
-const stats=computed(()=>warehouseStats(rackData.value.pallets));
-const metrics=computed(()=>[{label:'已录入托盘总数',value:stats.value.total,unit:'托',note:'所有货架位置'}, {label:'固定货架排数',value:racks.value.length,unit:'排',note:'AA 至 SS 指定货架'}, {label:'待盘点托盘数',value:stats.value.pending,unit:'托',note:'含数量未确认的物料'}]);
 const hasFilters=computed(()=>Boolean(filters.value.query||filters.value.row||areaId.value||filters.value.unknownOnly||filters.value.hideFinished||filters.value.finished!==undefined));
 function selectArea(id?:number,l=''){const area=rackData.value.areas.find(a=>a.id===id);if(area)filters.value=selectWarehouseLocation(filters.value,area,l);else clearLocation()}
 function clearLocation(){filters.value={...filters.value,kind:'',row:'',areaId:undefined,lane:''}}
@@ -47,12 +45,12 @@ async function load(){
   }catch(e){message.value=errorMessage(e)}finally{loading.value=false}
 }
 
-const formDialog=ref<HTMLDialogElement>(),formKey=ref(0),editing=ref<WarehousePallet>(),initialArea=ref<number>(),initialLane=ref('LOWER');
-async function openForm(pallet?:WarehousePallet){
+const formDialog=ref<HTMLDialogElement>(),formKey=ref(0),editing=ref<WarehousePallet>(),appendMode=ref(false),initialArea=ref<number>(),initialLane=ref('LOWER');
+async function openForm(pallet?:WarehousePallet,append=false){
   if(pallet)pallet=rackData.value.pallets.find(row=>row.id===pallet!.id)??pallet;
   if(busy.value)return;busy.value=true;message.value='';
   try{products.value=await productsApi.search('',true)}catch{products.value=[];notice.value='已有产品列表暂时无法读取，仍可手动填写产品名称。'}
-  editing.value=pallet;initialArea.value=pallet?.areaId||areaId.value||racks.value[0]?.id;initialLane.value=pallet?.lane||lane.value||'LOWER';formKey.value++;await nextTick();formDialog.value?.showModal();busy.value=false;
+  editing.value=pallet;appendMode.value=append;initialArea.value=pallet?.areaId||areaId.value||racks.value[0]?.id;initialLane.value=pallet?.lane||lane.value||'LOWER';formKey.value++;await nextTick();formDialog.value?.showModal();busy.value=false;
 }
 async function saved(pallet:WarehousePallet,continueEntry=false){
   const index=data.value.pallets.findIndex(p=>p.id===pallet.id);if(index<0)data.value.pallets.push(pallet);else data.value.pallets[index]=pallet;
@@ -67,11 +65,6 @@ async function remove(){
   catch(e){removeError.value=errorMessage(e)}finally{busy.value=false}
 }
 
-const historyDialog=ref<HTMLDialogElement>(),history=ref<WarehouseHistory>(),historyPage=ref(0),historyId=ref<number>(),historyBusy=ref(false),historyError=ref('');
-async function openHistory(id?:number){historyId.value=id;historyPage.value=0;history.value=undefined;await nextTick();historyDialog.value?.showModal();await loadHistory()}
-async function loadHistory(){historyBusy.value=true;historyError.value='';try{history.value=await warehouseApi.history(historyPage.value,historyId.value)}catch(e){historyError.value=errorMessage(e)}finally{historyBusy.value=false}}
-type HistoryState=Partial<Omit<WarehousePallet,'items'>>&{warehouseNumber?:string;warehouseName?:string;warehouseLocation?:string;name?:string;items?:(StockItem&{productionNumber?:string;materialBatch?:string})[]};
-function historyState(value?:string):HistoryState|undefined{if(!value)return;try{return JSON.parse(value)}catch{return undefined}}
 async function openLinkedPallet(){const id=Number(route.query.palletId);if(!id)return;const p=rackData.value.pallets.find(p=>p.id===id);if(p)await openDetail(p);else notice.value='对应货架托盘已不存在，请刷新后核对。'}
 function clearPalletLink(){if(route.path==='/warehouse'&&route.query.palletId){const query={...route.query};delete query.palletId;void router.replace({query})}}
 watch(()=>route.query.palletId,openLinkedPallet);
@@ -83,12 +76,9 @@ onMounted(async()=>{await load();await openLinkedPallet()});
     <nav class="warehouse-nav" aria-label="仓库管理分类"><RouterLink to="/warehouse" aria-current="page">本地仓库</RouterLink><RouterLink to="/warehouse/third-party">第三方仓库</RouterLink></nav>
     <p v-if="message" class="error-text" role="alert">{{message}} <button class="btn btn-secondary" :disabled="loading" @click="load">重试</button></p>
     <p v-if="notice" class="notice" role="status">{{notice}}<button aria-label="关闭提示" @click="notice=''">×</button></p>
-    <div class="metrics-grid" :aria-busy="loading" aria-label="仓库托盘统计">
-      <article v-for="metric in metrics" :key="metric.label" class="metric-card card"><h2>{{metric.label}}</h2><p><strong>{{loaded?metric.value.toLocaleString():'—'}}</strong><span>{{metric.unit}}</span></p><span class="metric-note">{{metric.note}}</span></article>
-    </div>
     <div class="warehouse-toolbar">
-      <details class="scope-note"><summary>登记货架库存，数量留空表示未知。<span class="note-more">查看详情</span></summary><p>这里记录固定货架上的在库情况。录入、移位、移除托盘不会自动修改生产任务或流转记录；数量留空表示未知，不算作零库存。一个托盘可包含多项物料。</p></details>
-      <div class="toolbar-actions"><button class="btn btn-ghost" :disabled="loading||busy" @click="load">{{loading?'刷新中…':'刷新'}}</button><button class="btn btn-ghost" @click="openHistory()">操作历史</button></div>
+      <p class="scope-note">记录现场库存，数量留空表示待盘点。</p>
+      <div class="toolbar-actions"><button class="btn btn-ghost" :disabled="loading||busy" @click="load">{{loading?'刷新中…':'刷新'}}</button></div>
     </div>
     <WarehouseLocationBoard :data="rackData" :filters="filters" :loading="loading" @select="selectArea" @clear="clearLocation"/>
     <AiAssistant :scope="filters"/>
@@ -107,24 +97,23 @@ onMounted(async()=>{await load();await openLinkedPallet()});
         <button v-if="filters.finished!==undefined" @click="filters.finished=undefined">{{filters.finished?'成品':'非成品'}} ×</button>
         <button class="clear-filters" @click="clearFilters">清除全部筛选</button>
       </div>
-      <div class="results-heading"><h2 id="stock-list-title">{{viewMode==='pallet'?'托盘明细':'物料汇总'}} <span role="status">{{loaded?(viewMode==='pallet'?`找到 ${visible.length} 托 / 共 ${stats.total} 托`:`当前范围 ${materials.length} 种物料`):'等待读取'}}</span></h2><div class="view-switch" role="group" aria-label="查看方式"><button :aria-pressed="viewMode==='pallet'" @click="viewMode='pallet'">按托盘查看</button><button :aria-pressed="viewMode==='material'" @click="viewMode='material'">按物料汇总</button></div></div>
+      <div class="results-heading"><h2 id="stock-list-title">{{viewMode==='pallet'?'托盘明细':'物料汇总'}} <span role="status">{{loaded?(viewMode==='pallet'?`找到 ${visible.length} 托`:`当前范围 ${materials.length} 种物料`):'等待读取'}}</span></h2><div class="view-switch" role="group" aria-label="查看方式"><button :aria-pressed="viewMode==='pallet'" @click="viewMode='pallet'">按托盘查看</button><button :aria-pressed="viewMode==='material'" @click="viewMode='material'">按物料汇总</button></div></div>
       <p v-if="loading&&!loaded" class="card empty" role="status">正在读取托盘…</p>
       <div v-else-if="!loaded" class="card empty"><strong>暂时无法读取仓库数据</strong><p>请检查网络后重试。</p><button class="btn btn-secondary" :disabled="loading" @click="load">重新加载</button></div>
       <div v-else-if="viewMode==='pallet'?!visible.length:!materials.length" class="card empty"><strong>{{hasFilters?'当前条件下没有托盘':'仓库还没有录入托盘'}}</strong><p>{{hasFilters?'该货位可能尚未录入，或托盘不符合其他筛选条件。':'可直接录入第一个托盘。'}}</p><button v-if="hasFilters" class="btn btn-secondary" @click="clearFilters">清除全部筛选</button></div>
       <WarehouseMaterialSummary v-else-if="viewMode==='material'" :materials="materials"/>
-      <div v-else class="pallet-grid"><WarehousePalletCard v-for="p in visible" :key="p.id" :pallet="p" :busy="busy||loading" @detail="openDetail(p)" @history="openHistory(p.id)" @edit="openForm(p)" @remove="requestRemove(p)"/></div>
+      <div v-else class="pallet-grid"><WarehousePalletCard v-for="p in visible" :key="p.id" :pallet="p" :busy="busy||loading" @detail="openDetail(p)" @append="openForm(p,true)" @edit="openForm(p)" @remove="requestRemove(p)"/></div>
     </section>
-    <dialog ref="detailDialog" @close="clearPalletLink" class="warehouse-dialog" aria-labelledby="pallet-detail-title"><header class="dialog-heading"><h2 id="pallet-detail-title">托盘详情</h2><button class="btn btn-secondary" @click="detailDialog?.close()">关闭</button></header><WarehousePalletCard v-if="detailPallet" :pallet="detailPallet" :busy="busy||loading" :interactive="false" @history="openHistory(detailPallet.id)" @edit="detailDialog?.close();openForm(detailPallet)" @remove="detailDialog?.close();requestRemove(detailPallet)"/></dialog>
+    <dialog ref="detailDialog" @close="clearPalletLink" class="warehouse-dialog" aria-labelledby="pallet-detail-title"><header class="dialog-heading"><h2 id="pallet-detail-title">托盘详情</h2><button class="btn btn-secondary" @click="detailDialog?.close()">关闭</button></header><WarehousePalletCard v-if="detailPallet" :pallet="detailPallet" :busy="busy||loading" :interactive="false" @append="detailDialog?.close();openForm(detailPallet,true)" @edit="detailDialog?.close();openForm(detailPallet)" @remove="detailDialog?.close();requestRemove(detailPallet)"/></dialog>
     <dialog ref="removeDialog" class="warehouse-dialog remove-dialog" aria-labelledby="remove-title" aria-describedby="remove-description" @cancel="busy&&$event.preventDefault()">
       <h2 id="remove-title">移除这个托盘？</h2>
       <div v-if="removing" class="remove-summary"><p>{{removing.location}}</p><ul><li v-for="(item,index) in removing.items" :key="index">{{item.productName}} · {{item.quantity==null?'数量未知':`${item.quantity.toLocaleString()} ${item.unit||''}`}}</li></ul></div>
-      <p id="remove-description" class="hint">移除后将释放该位置，操作历史会保留。此操作不会修改生产任务或流转记录。</p>
+      <p id="remove-description" class="hint">移除后将释放该位置。此操作不会修改生产任务或流转记录。</p>
       <p v-if="removeError" class="error-text" role="alert">{{removeError}}</p>
       <div class="confirm-actions"><button autofocus class="btn btn-secondary" :disabled="busy" @click="removeDialog?.close()">取消</button><button class="btn btn-danger" :disabled="busy" @click="remove">{{busy?'正在移除…':'确认移除托盘'}}</button></div>
     </dialog>
 
-    <dialog ref="formDialog" class="warehouse-dialog" aria-label="托盘录入与编辑" @cancel.prevent><WarehousePalletForm :key="formKey" :areas="orderedAreas" :pallets="rackData.pallets" :products="products" :pallet="editing" :initial-area-id="initialArea" :initial-lane="initialLane" @saved="saved" @cancel="formDialog?.close()"/></dialog>
-    <dialog ref="historyDialog" class="warehouse-dialog" aria-labelledby="warehouse-history-title"><header class="dialog-heading"><h2 id="warehouse-history-title">{{historyId?'托盘操作历史':'仓库操作历史'}}</h2><button class="btn btn-secondary" @click="historyDialog?.close()">关闭</button></header><p v-if="historyError" class="error-text" role="alert">{{historyError}} <button class="text-button" @click="loadHistory">重试</button></p><p v-if="historyBusy" role="status">正在读取…</p><template v-else><p v-if="!historyError&&!history?.content.length" class="empty">暂无操作历史。</p><article v-for="event in history?.content" :key="event.id" class="history-event"><time>{{showDateTime(event.createdAt)}}</time><h3>{{event.description}}</h3><span v-if="event.palletCode" class="mono">{{event.palletCode}}</span><details v-if="event.beforeState||event.afterState"><summary>查看变更前后物料</summary><div v-for="(state,index) in [historyState(event.beforeState),historyState(event.afterState)]" :key="index"><template v-if="state"><h4>{{index===0?'变更前':'变更后'}} · {{state.warehouseNumber ? state.warehouseName+' · 仓库号 '+state.warehouseNumber : state.location||state.name}}</h4><p v-if="state.warehouseLocation">仓库位置：{{state.warehouseLocation}}</p><p v-for="(item,n) in state.items" :key="n">{{item.productName}}<template v-if="item.materialCode"> · {{item.materialCode}}</template> · {{state.warehouseNumber?'生产编号':'原料批号'}} {{(state.warehouseNumber?item.productionNumber:item.rawMaterialBatch)||'未录入'}} · {{state.warehouseNumber?'物料批次':'批号'}} {{(state.warehouseNumber?item.materialBatch:item.batch)||'未录入'}} · {{item.quantity==null?'待盘点':`${item.quantity.toLocaleString()} ${item.unit||''}`}}<template v-if="item.cartons!=null"> · {{item.cartons}} 箱</template><a v-if="item.photoUrl" :href="item.photoUrl" target="_blank" rel="noopener" class="stock-photo"><img :src="item.photoUrl" :alt="`${item.productName}照片`" loading="lazy" width="112" height="90"></a></p><p v-if="state.notes">备注：{{state.notes}}</p></template></div></details></article></template><div v-if="history&&history.totalPages>1" class="history-pages"><button class="btn btn-secondary" :disabled="historyBusy||historyPage===0" @click="historyPage--;loadHistory()">上一页</button><span>{{historyPage+1}} / {{history.totalPages}}</span><button class="btn btn-secondary" :disabled="historyBusy||historyPage+1>=history.totalPages" @click="historyPage++;loadHistory()">下一页</button></div></dialog>
+    <dialog ref="formDialog" class="warehouse-dialog" aria-label="托盘录入与编辑" @cancel.prevent><WarehousePalletForm :key="formKey" :areas="orderedAreas" :pallets="rackData.pallets" :products="products" :pallet="editing" :append="appendMode" :initial-area-id="initialArea" :initial-lane="initialLane" @saved="saved" @cancel="formDialog?.close()"/></dialog>
   </div>
 </template>
 <style scoped>

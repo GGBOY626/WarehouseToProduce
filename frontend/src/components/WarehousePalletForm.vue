@@ -9,7 +9,7 @@ import SearchPicker from './SearchPicker.vue';
 import type { Product } from '../types';
 import { warehouseProductDefaults } from '../utils/warehouseProductDefaults';
 import type { WarehouseArea, WarehousePallet, PalletInput, StockItem } from '../types/warehouse';
-const props=defineProps<{areas:WarehouseArea[];pallets:WarehousePallet[];products:Product[];pallet?:WarehousePallet;initialAreaId?:number;initialLane?:string}>();
+const props=defineProps<{areas:WarehouseArea[];pallets:WarehousePallet[];products:Product[];pallet?:WarehousePallet;append?:boolean;initialAreaId?:number;initialLane?:string}>();
 const emit=defineEmits<{saved:[pallet:WarehousePallet,continueEntry:boolean];cancel:[]}>();
 const activePallet=ref(props.pallet),pallet=computed(()=>activePallet.value);
 const code=ref(props.pallet?.code || `TP-${createUuid().slice(0,8).toUpperCase()}`),areaId=ref(props.pallet?.areaId||props.initialAreaId||props.areas[0]?.id),lane=ref(props.pallet?.lane||props.initialLane||'LOWER');
@@ -20,7 +20,7 @@ let key=0;
 function blankItem():DraftItem{return {key:key++,productId:undefined,productName:'',materialCode:'',productionNumber:'',unit:'',rawMaterialBatch:'',batch:'',materialCodeOptions:[],productionNumberOptions:[],rawMaterialBatchOptions:[],batchOptions:[],quantity:null,cartons:null,unitsPerCarton:'',boxesPerCarton:'',unitsPerBox:'',finished:null}}
 function draftItem(item:StockItem):DraftItem{return {...blankItem(),...item,productId:item.productId??undefined,materialCode:item.materialCode||'',productionNumber:item.productionNumber||'',unit:item.unit||'',rawMaterialBatch:item.rawMaterialBatch||'',batch:item.batch||'',unitsPerCarton:item.unitsPerCarton??'',boxesPerCarton:item.boxesPerCarton??'',unitsPerBox:item.unitsPerBox??'',finished:item.finished??null}}
 function hasDraftContent(item:DraftItem){return Boolean(item.productId||item.productName.trim()||item.materialCode||item.productionNumber||item.rawMaterialBatch||item.batch||item.photoId||item.quantity!==null&&item.quantity!==''||item.cartons!==null&&item.cartons!=='')}
-const items=ref<DraftItem[]>(props.pallet?.items.map(draftItem)||[blankItem()]);
+const items=ref<DraftItem[]>(props.pallet&&!props.append?props.pallet.items.map(draftItem):[blankItem()]);
 const busy=ref(false),message=ref('');
 const area=computed(()=>props.areas.find(a=>a.id===areaId.value));
 const lanes=computed(()=>areaLanes(area.value));
@@ -56,7 +56,8 @@ async function save(continueEntry=false){
   if(items.value.some(i=>i.finished===null)){message.value='请为每项物料选择是成品还是非成品。';return}
   if(!areaId.value||items.value.some(i=>!i.productName.trim())){message.value='请选择库区，并填写产品名称。';return}
   if(occupied.value){message.value='该位置已有托盘，请换一个位置。';return}
-  const data:PalletInput={code:code.value.trim(),areaId:areaId.value,lane:lane.value,position:position.value,notes:notes.value,version:activePallet.value?.version,items:items.value.map(i=>({productId:i.productId,productName:i.productName.trim(),materialCode:i.materialCode.trim(),productionNumber:i.productionNumber.trim(),unit:i.unit.trim(),rawMaterialBatch:i.rawMaterialBatch.trim(),photoId:i.photoId,batch:i.batch.trim(),quantity:i.quantity===''?null:i.quantity,cartons:i.cartons===''?null:i.cartons,unitsPerCarton:i.unitsPerCarton===''?null:i.unitsPerCarton,boxesPerCarton:i.boxesPerCarton===''?null:i.boxesPerCarton,unitsPerBox:i.unitsPerBox===''?null:i.unitsPerBox,finished:i.finished!}))};
+  const allItems=props.append&&props.pallet?[...props.pallet.items.map(draftItem),...items.value]:items.value;
+  const data:PalletInput={code:code.value.trim(),areaId:areaId.value,lane:lane.value,position:position.value,notes:notes.value,version:activePallet.value?.version,items:allItems.map(i=>({productId:i.productId,productName:i.productName.trim(),materialCode:i.materialCode.trim(),productionNumber:i.productionNumber.trim(),unit:i.unit.trim(),rawMaterialBatch:i.rawMaterialBatch.trim(),photoId:i.photoId,batch:i.batch.trim(),quantity:i.quantity===''?null:i.quantity,cartons:i.cartons===''?null:i.cartons,unitsPerCarton:i.unitsPerCarton===''?null:i.unitsPerCarton,boxesPerCarton:i.boxesPerCarton===''?null:i.boxesPerCarton,unitsPerBox:i.unitsPerBox===''?null:i.unitsPerBox,finished:i.finished!}))};
   busy.value=true;
   try{
     const saved=activePallet.value?await warehouseApi.update(activePallet.value.id,data):await warehouseApi.create(data);
@@ -70,17 +71,17 @@ async function save(continueEntry=false){
 </script>
 <template>
   <form class="pallet-form" @submit.prevent="save()">
-    <header><div><span class="hint">{{pallet ? '库存与货位' : '现场录入'}}</span><h2>{{pallet ? '编辑 / 移位托盘' : '录入托盘'}}</h2></div><button class="btn btn-secondary" type="button" :disabled="busy" @click="cancel">关闭</button></header>
+    <header><div><span class="hint">{{pallet ? '库存与货位' : '现场录入'}}</span><h2>{{pallet ? (props.append?'继续追加货物':'编辑 / 移位托盘') : '录入托盘'}}</h2></div><button class="btn btn-secondary" type="button" :disabled="busy" @click="cancel">关闭</button></header>
     <p v-if="message" class="error-text" role="alert">{{message}}</p>
     <fieldset :disabled="busy"><legend class="sr-only">托盘资料</legend>
-      <div class="location-fields">
+      <div v-if="!props.append" class="location-fields">
         <div class="field"><label for="pallet-area">库区</label><select id="pallet-area" v-model="areaId" class="select" required @change="changeArea"><option v-for="a in areas" :key="a.id" :value="a.id">{{a.rackRow?`${a.rackRow} 排旁 · `:''}}{{a.name}}{{a.kind==='RACK'?' 排':''}}</option></select></div>
         <div class="field"><label for="pallet-lane">{{area?.kind==='RACK'?'层位':'排位'}}</label><select id="pallet-lane" v-model="lane" class="select" required @change="suggestPosition"><option v-for="l in lanes" :key="l" :value="l">{{laneLabels[l]}}</option></select></div>
         <div class="field"><label for="pallet-position">位置序号</label><template v-if="area?.kind==='RACK'"><select v-if="!customPosition" id="pallet-position" v-model.number="position" class="select" required><option v-for="number in rackPositions" :key="number" :value="number">{{String(number).padStart(2,'0')}}</option></select><input v-else id="pallet-position" v-model.number="position" class="input" type="number" :min="positionStart" max="18" step="1" required><button class="text-button" type="button" @click="customPosition=!customPosition">{{customPosition?'从序号列表选择':'手动输入序号'}}</button></template><input v-else id="pallet-position" v-model.number="position" class="input" type="number" min="1" max="9999" step="1" required></div>
       </div>
-      <p class="location-preview" :class="{conflict:occupied}">{{area?.kind==='RACK'?`${area.name}-${String(position).padStart(2,'0')}`:`${area?.name} / ${position} 号`}} / {{laneLabels[lane]}} <b v-if="occupied">· 已有托盘</b></p>
-      <div v-if="occupiedPallet" class="append-warning" role="alert"><span>该位置已有托盘。一个托盘可以登记多种产品，是否继续追加到现有托盘？</span><button class="btn btn-danger" type="button" @click="appendToExisting">继续追加</button></div>
-      <p class="hint">AA、BB、CC、EE 排从 05 编至 18；FF、HH、KK、LL、RR、SS 排从 01 编至 18。</p>
+      <p v-if="!props.append" class="location-preview" :class="{conflict:occupied}">{{area?.kind==='RACK'?`${area.name}-${String(position).padStart(2,'0')}`:`${area?.name} / ${position} 号`}} / {{laneLabels[lane]}} <b v-if="occupied">· 已有托盘</b></p>
+      <div v-if="!props.append&&occupiedPallet" class="append-warning" role="alert"><span>该位置已有托盘。一个托盘可以登记多种产品，是否继续追加到现有托盘？</span><button class="btn btn-danger" type="button" @click="appendToExisting">继续追加</button></div>
+      <p v-if="!props.append" class="hint">AA、BB、CC、EE 排从 05 编至 18；FF、HH、KK、LL、RR、SS 排从 01 编至 18。</p>
       <div class="section-head"><h3>托盘上的物料</h3><button class="btn btn-secondary" type="button" :disabled="items.length>=50" @click="items.push(blankItem())">＋ 添加物料</button></div>
       <p class="hint">产品名称可直接填写，也可搜索并选择产品管理中的已有产品；数量留空表示未知。</p>
       <section v-for="(item,index) in items" :key="item.key" class="stock-line">
@@ -108,7 +109,7 @@ async function save(continueEntry=false){
       </section>
       <div class="field"><label for="pallet-notes">备注</label><textarea id="pallet-notes" v-model="notes" class="textarea" maxlength="2000" placeholder="如：靠门一侧、待核对标签、零散尾箱"/></div>
     </fieldset>
-    <footer><button class="btn btn-secondary" type="button" :disabled="busy" @click="cancel">取消</button><button v-if="!pallet" class="btn btn-secondary" type="button" :disabled="busy||occupied" @click="save(true)">{{busy?'正在处理…':'保存并录入下一托盘'}}</button><button class="btn btn-primary" :disabled="busy||occupied">{{busy?'正在处理…':pallet?'保存修改':'保存托盘'}}</button></footer>
+    <footer><button class="btn btn-secondary" type="button" :disabled="busy" @click="cancel">取消</button><button v-if="!pallet" class="btn btn-secondary" type="button" :disabled="busy||occupied" @click="save(true)">{{busy?'正在处理…':'保存并录入下一托盘'}}</button><button class="btn btn-primary" :disabled="busy||occupied">{{busy?'正在处理…':pallet?(props.append?'保存追加':'保存修改'):'保存托盘'}}</button></footer>
   </form>
 </template>
 <style scoped>

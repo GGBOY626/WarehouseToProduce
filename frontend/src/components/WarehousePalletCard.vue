@@ -3,7 +3,7 @@ import { computed } from 'vue';
 import { showDateTime } from '../utils/time';
 import type { WarehousePallet } from '../types/warehouse';
 const props=withDefaults(defineProps<{pallet:WarehousePallet;busy:boolean;interactive?:boolean}>(),{interactive:true});
-const emit=defineEmits<{detail:[];history:[];edit:[];remove:[]}>();
+const emit=defineEmits<{detail:[];append:[];edit:[];remove:[]}>();
 const pending=computed(()=>props.pallet.items.some(item=>item.quantity==null));
 </script>
 <template>
@@ -21,7 +21,7 @@ const pending=computed(()=>props.pallet.items.some(item=>item.quantity==null));
       </section>
     </div>
     <p v-if="pallet.notes" class="pallet-notes">备注：{{pallet.notes}}</p>
-    <footer><time :datetime="pallet.updatedAt">更新 {{showDateTime(pallet.updatedAt)}}</time><div class="card-actions"><button class="text-button" @click="emit('history')">操作历史</button><button class="text-button edit-button" :disabled="busy" @click="emit('edit')">编辑 / 移位</button><details class="more-actions"><summary aria-label="更多操作">更多</summary><div><button class="text-button danger" :disabled="busy" @click="($event.currentTarget as HTMLElement).closest('details')?.removeAttribute('open');emit('remove')">移除托盘</button></div></details></div></footer>
+    <footer><time :datetime="pallet.updatedAt">更新 {{showDateTime(pallet.updatedAt)}}</time><div class="card-actions"><button class="text-button" :disabled="busy" @click="emit('append')">继续追加货物</button><button class="text-button edit-button" :disabled="busy" @click="emit('edit')">编辑/移位</button><button class="text-button danger" :disabled="busy" @click="emit('remove')">移除托盘</button></div></footer>
   </article>
 </template>
 <style scoped>
