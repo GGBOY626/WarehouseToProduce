@@ -71,15 +71,13 @@ class WarehouseIntegrationTest {
         assertThat(service.history(p.id(),0).content()).anySatisfy(e->assertThat(e.getBeforeState()).contains("RAW-77",photo.url()));
         mvc.perform(get(photo.url())).andExpect(status().isOk());
     }
-    @Test void photoUploadRequiresLoginRejectsNonImagesAndCleansUnsavedUploads() throws Exception {
+    @Test void photoUploadIsPublicRejectsNonImagesAndCleansUnsavedUploads() throws Exception {
         var file=new org.springframework.mock.web.MockMultipartFile("file","sample.png","image/png",image());
-        mvc.perform(multipart("/api/warehouse/photos").file(file)).andExpect(status().isUnauthorized());
-        mvc.perform(multipart("/api/warehouse/photos").file(new org.springframework.mock.web.MockMultipartFile("file","fake.jpg","image/jpeg","not an image".getBytes())).session(session())).andExpect(status().isBadRequest());
-        var result=mvc.perform(multipart("/api/warehouse/photos").file(file).session(session())).andExpect(status().isOk()).andReturn();
+        mvc.perform(multipart("/api/warehouse/photos").file(new org.springframework.mock.web.MockMultipartFile("file","fake.jpg","image/jpeg","not an image".getBytes()))).andExpect(status().isBadRequest());
+        var result=mvc.perform(multipart("/api/warehouse/photos").file(file)).andExpect(status().isOk()).andReturn();
         var photo=json.readValue(result.getResponse().getContentAsString(),WarehousePhotoService.Response.class);
         mvc.perform(get(photo.url())).andExpect(status().isOk());
-        mvc.perform(delete("/api/warehouse/photos/"+photo.id())).andExpect(status().isUnauthorized());
-        mvc.perform(delete("/api/warehouse/photos/"+photo.id()).session(session())).andExpect(status().isNoContent());
+        mvc.perform(delete("/api/warehouse/photos/"+photo.id())).andExpect(status().isNoContent());
         mvc.perform(get(photo.url())).andExpect(status().isNotFound());
         assertThatThrownBy(()->service.create(manual("Missing photo",null,photo.id(),null,5))).hasMessageContaining("照片不存在");
     }
@@ -133,18 +131,24 @@ class WarehouseIntegrationTest {
         assertThat(edited.version()).isGreaterThan(p.version());assertThat(edited.items().getFirst().quantity()).isEqualTo(1000);
         assertThat(service.history(p.id(),0).content().getFirst().getBeforeState()).contains("2000");
     }
-    @Test void publicReadAndEveryWriteRouteRequiresLogin() throws Exception {
+    @Test void warehouseWriteRoutesArePublic() throws Exception {
         var p=service.create(request(rack.getId(),"LOWER",5,null));
         mvc.perform(get("/api/warehouse")).andExpect(status().isOk()).andExpect(jsonPath("$.areas").isArray());
         mvc.perform(get("/api/warehouse/history")).andExpect(status().isOk());
         String body=json.writeValueAsString(request(rack.getId(),"LOWER",6,p.version()));
-        mvc.perform(post("/api/warehouse/pallets").contentType("application/json").content(body)).andExpect(status().isUnauthorized());
-        mvc.perform(put("/api/warehouse/pallets/"+p.id()).contentType("application/json").content(body)).andExpect(status().isUnauthorized());
-        mvc.perform(delete("/api/warehouse/pallets/"+p.id()).param("version","0")).andExpect(status().isUnauthorized());
-        mvc.perform(post("/api/warehouse/aisles").contentType("application/json").content("{}")).andExpect(status().isUnauthorized());
-        mvc.perform(put("/api/warehouse/aisles/1").contentType("application/json").content("{}")).andExpect(status().isUnauthorized());
-        mvc.perform(delete("/api/warehouse/aisles/1").param("version","0")).andExpect(status().isUnauthorized());
-        mvc.perform(post("/api/warehouse/pallets").session(session()).contentType("application/json").content(body)).andExpect(status().isOk()).andExpect(jsonPath("$.position").value(6));
+        var created=mvc.perform(post("/api/warehouse/pallets").contentType("application/json").content(body)).andExpect(status().isOk()).andExpect(jsonPath("$.position").value(6)).andReturn();
+        var saved=json.readValue(created.getResponse().getContentAsString(),WarehouseService.PalletResponse.class);
+        var edit=json.writeValueAsString(request(rack.getId(),"LOWER",7,saved.version()));
+        var updated=mvc.perform(put("/api/warehouse/pallets/"+saved.id()).contentType("application/json").content(edit)).andExpect(status().isOk()).andReturn();
+        var edited=json.readValue(updated.getResponse().getContentAsString(),WarehouseService.PalletResponse.class);
+        mvc.perform(delete("/api/warehouse/pallets/"+edited.id()).param("version",Long.toString(edited.version()))).andExpect(status().isNoContent());
+        var aisleCreated=mvc.perform(post("/api/warehouse/aisles").contentType("application/json").content(json.writeValueAsString(new WarehouseService.AreaRequest("Public aisle",2,null))))
+            .andExpect(status().isOk()).andReturn();
+        var aisle=json.readValue(aisleCreated.getResponse().getContentAsString(),WarehouseService.AreaResponse.class);
+        var aisleUpdated=mvc.perform(put("/api/warehouse/aisles/"+aisle.id()).contentType("application/json").content(json.writeValueAsString(new WarehouseService.AreaRequest("Updated public aisle",2,aisle.version()))))
+            .andExpect(status().isOk()).andReturn();
+        var updatedAisle=json.readValue(aisleUpdated.getResponse().getContentAsString(),WarehouseService.AreaResponse.class);
+        mvc.perform(delete("/api/warehouse/aisles/"+updatedAisle.id()).param("version",Long.toString(updatedAisle.version()))).andExpect(status().isNoContent());
     }
     @Test void invalidPositionQuantityAndEmptyPalletReturnBadRequest() throws Exception {
         var body=json.valueToTree(request(rack.getId(),"LOWER",1,null));

@@ -17,6 +17,8 @@ public class WriteAuthorizationInterceptor implements HandlerInterceptor {
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws IOException {
         if (READ_METHODS.contains(request.getMethod()) || request.getRequestURI().equals("/api/auth/login")) return true;
+        String path = request.getRequestURI();
+        if (path.equals("/api/warehouse") || path.startsWith("/api/warehouse/")) return true;
         var session = request.getSession(false);
         if (session != null && Boolean.TRUE.equals(session.getAttribute(AuthController.AUTH_SESSION_KEY))) return true;
         response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);

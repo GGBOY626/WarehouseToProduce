@@ -7,6 +7,18 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.*;
 
 class WarehouseUpgradeTest {
+    @Test void physicalRackMigrationAddsMissingRRAndSSRows() throws Exception {
+        String sql;
+        try(var resource=getClass().getResourceAsStream("/db/migration/V32__add_missing_physical_racks.sql")){
+            sql=new String(resource.readAllBytes(),StandardCharsets.UTF_8);
+        }
+        try(var connection=DriverManager.getConnection("jdbc:h2:mem:racks-"+UUID.randomUUID()+";MODE=MySQL");var statement=connection.createStatement()){
+            statement.execute("CREATE TABLE warehouse_area(id BIGINT AUTO_INCREMENT PRIMARY KEY,kind VARCHAR(10),name VARCHAR(60) UNIQUE,lanes INT,created_at TIMESTAMP,updated_at TIMESTAMP)");
+            statement.execute("INSERT INTO warehouse_area(kind,name,lanes,created_at,updated_at) VALUES ('RACK','AA',3,NOW(),NOW())");
+            for(String part:sql.split(";"))if(!part.isBlank())statement.execute(part);
+            for(String rack:new String[]{"AA","RR","SS"})try(var rows=statement.executeQuery("SELECT COUNT(*) FROM warehouse_area WHERE name='"+rack+"'")){rows.next();assertThat(rows.getInt(1)).isEqualTo(1);}
+        }
+    }
     @Test void aisleDataUpgradePreservesExistingPalletsAndHandlesRenamedDefault() throws Exception {
         String sql;
         try(var resource=getClass().getResourceAsStream("/db/migration/V18__warehouse_flexible_materials.sql")){

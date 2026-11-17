@@ -36,13 +36,23 @@ class ThirdPartyWarehouseIntegrationTest {
         return new ThirdPartyWarehouseService.StockRequest(warehouse.id(),number,"直接存放或已发往外仓",List.of(items),version);
     }
     ThirdPartyWarehouseService.ItemRequest linked(Long productId){return new ThirdPartyWarehouseService.ItemRequest(productId,null,null,null,null,null,100L,2);}
-    @Test void allWritesRequireLoginAndReadsArePublic() throws Exception {
+    @Test void thirdPartyWarehouseWritesArePublic() throws Exception {
         mvc.perform(get(BASE)).andExpect(status().isOk());
-        for(String path:List.of("/warehouses","/stocks")){
-            mvc.perform(post(BASE+path).contentType("application/json").content("{}")).andExpect(status().isUnauthorized());
-            mvc.perform(put(BASE+path+"/1").contentType("application/json").content("{}")).andExpect(status().isUnauthorized());
-            mvc.perform(delete(BASE+path+"/1").param("version","0")).andExpect(status().isUnauthorized());
-        }
+        var created=mvc.perform(post(BASE+"/warehouses").contentType("application/json").content(json.writeValueAsString(new ThirdPartyWarehouseService.WarehouseRequest("Public warehouse","Area 1",null))))
+            .andExpect(status().isOk()).andReturn();
+        var publicWarehouse=json.readValue(created.getResponse().getContentAsString(),ThirdPartyWarehouseService.WarehouseResponse.class);
+        var renamed=mvc.perform(put(BASE+"/warehouses/"+publicWarehouse.id()).contentType("application/json").content(json.writeValueAsString(new ThirdPartyWarehouseService.WarehouseRequest("Updated warehouse","Area 2",publicWarehouse.version()))))
+            .andExpect(status().isOk()).andReturn();
+        publicWarehouse=json.readValue(renamed.getResponse().getContentAsString(),ThirdPartyWarehouseService.WarehouseResponse.class);
+        var stockCreated=mvc.perform(post(BASE+"/stocks").contentType("application/json").content(json.writeValueAsString(new ThirdPartyWarehouseService.StockRequest(publicWarehouse.id(),"PUBLIC-001",null,List.of(manual()),null))))
+            .andExpect(status().isOk()).andReturn();
+        var publicStock=json.readValue(stockCreated.getResponse().getContentAsString(),ThirdPartyWarehouseService.StockResponse.class);
+        var stockEdit=new ThirdPartyWarehouseService.StockRequest(publicWarehouse.id(),"PUBLIC-002",null,List.of(manual()),publicStock.version());
+        var stockUpdated=mvc.perform(put(BASE+"/stocks/"+publicStock.id()).contentType("application/json").content(json.writeValueAsString(stockEdit)))
+            .andExpect(status().isOk()).andReturn();
+        publicStock=json.readValue(stockUpdated.getResponse().getContentAsString(),ThirdPartyWarehouseService.StockResponse.class);
+        mvc.perform(delete(BASE+"/stocks/"+publicStock.id()).param("version",Long.toString(publicStock.version()))).andExpect(status().isNoContent());
+        mvc.perform(delete(BASE+"/warehouses/"+publicWarehouse.id()).param("version",Long.toString(publicWarehouse.version()))).andExpect(status().isNoContent());
     }
     @Test void linkedProductsFillIdentifiersAndManualMaterialsDoNotCreateProducts() throws Exception {
         Long id=product(ProductUsage.WAREHOUSE_TO_PRODUCTION,false);

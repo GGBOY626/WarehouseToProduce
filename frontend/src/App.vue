@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {onMounted,onBeforeUnmount,ref} from 'vue';
+import {computed,onMounted,onBeforeUnmount,ref} from 'vue';
 import {useRoute,useRouter} from 'vue-router';
 import {refreshAuth,logout,useAuth} from './auth';
 
@@ -7,6 +7,7 @@ const authError=ref('');
 const route=useRoute();
 const router=useRouter();
 const {authenticated}=useAuth();
+const isWarehouseRoute=computed(()=>route.path==='/warehouse'||route.path.startsWith('/warehouse/'));
 function closeMenus(event:MouseEvent){
   document.querySelectorAll<HTMLDetailsElement>('.product-menu[open]').forEach(menu=>{if(!menu.contains(event.target as Node))menu.open=false});
 }
@@ -21,7 +22,7 @@ const current=(path:string)=>path==='/' ? route.path==='/'||route.path.startsWit
     <header class="app-header">
       <RouterLink to="/" class="brand" aria-label="返回首页"><span class="brand-mark">仓</span><span class="brand-name">仓库 ↔ 生产车间</span></RouterLink>
       <nav class="header-nav" aria-label="主要功能"><RouterLink to="/" :class="{current:current('/')}">流转记录</RouterLink><RouterLink to="/production-tasks">生产任务</RouterLink><RouterLink to="/products">产品管理</RouterLink><RouterLink to="/warehouse">仓库管理</RouterLink></nav>
-      <nav class="header-actions" aria-label="管理与账户"><RouterLink to="/reports">导出 PDF</RouterLink><button v-if="authenticated" type="button" @click="signOut">退出登录</button><RouterLink v-else to="/login">登录</RouterLink></nav>
+      <nav class="header-actions" aria-label="管理与账户"><RouterLink to="/reports">导出 PDF</RouterLink><template v-if="!isWarehouseRoute"><button v-if="authenticated" type="button" @click="signOut">退出登录</button><RouterLink v-else to="/login">登录</RouterLink></template></nav>
     </header>
     <p v-if="authError" class="toast" role="alert">{{authError}}</p>
     <main id="main-content" tabindex="-1"><RouterView/></main>
