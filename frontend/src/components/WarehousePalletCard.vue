@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { showDateTime } from '../utils/time';
 import type { WarehousePallet } from '../types/warehouse';
 const props=withDefaults(defineProps<{pallet:WarehousePallet;busy:boolean;interactive?:boolean}>(),{interactive:true});
 const emit=defineEmits<{detail:[];append:[];edit:[];remove:[]}>();
@@ -10,7 +9,7 @@ const pending=computed(()=>props.pallet.items.some(item=>item.quantity==null));
   <article class="pallet-card card" :class="{clickable:interactive!==false}">
     <button v-if="interactive!==false" class="card-detail" aria-label="查看托盘详情" @click="emit('detail')"/>
     <header><strong class="location-tag">{{pallet.location}}</strong><span class="status" :class="pending?'neutral':'ok'">{{pending?'待盘点':'已盘点'}}</span></header>
-    <p class="pallet-code">{{pallet.items.length}} 项物料</p>
+    <p v-if="pallet.items.length>1" class="pallet-code">{{pallet.items.length}} 项物料</p>
     <div class="material-list">
       <section v-for="(item,index) in pallet.items" :key="index" class="stored-item">
         <a v-if="item.photoUrl" :href="item.photoUrl" target="_blank" rel="noopener" class="stock-photo" :aria-label="`查看${item.productName}照片（新窗口）`"><img :src="item.photoUrl" :alt="`${item.productName}照片`" width="56" height="56" loading="lazy"></a>
@@ -21,7 +20,7 @@ const pending=computed(()=>props.pallet.items.some(item=>item.quantity==null));
       </section>
     </div>
     <p v-if="pallet.notes" class="pallet-notes">备注：{{pallet.notes}}</p>
-    <footer><time :datetime="pallet.updatedAt">更新 {{showDateTime(pallet.updatedAt)}}</time><div class="card-actions"><button class="text-button" :disabled="busy" @click="emit('append')">继续追加货物</button><button class="text-button edit-button" :disabled="busy" @click="emit('edit')">编辑/移位</button><button class="text-button danger" :disabled="busy" @click="emit('remove')">移除托盘</button></div></footer>
+    <footer><div class="card-actions"><button class="text-button" :disabled="busy" @click="emit('append')">继续追加货物</button><button class="text-button edit-button" :disabled="busy" @click="emit('edit')">编辑/移位</button><button class="text-button danger" :disabled="busy" @click="emit('remove')">移除托盘</button></div></footer>
   </article>
 </template>
 <style scoped>
