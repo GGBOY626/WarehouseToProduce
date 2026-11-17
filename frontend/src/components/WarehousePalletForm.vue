@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { warehouseApi } from '../api/warehouse';
+import { productsApi } from '../api';
 import { errorMessage } from '../api/http';
 import { createUuid } from '../utils/uuid';
 import { areaLanes, laneLabels, nextPosition, rackStart } from '../utils/warehouse';
 import SearchPicker from './SearchPicker.vue';
 import type { Product } from '../types';
+import { warehouseProductDefaults } from '../utils/warehouseProductDefaults';
 import type { WarehouseArea, WarehousePallet, PalletInput, StockItem } from '../types/warehouse';
 const props=defineProps<{areas:WarehouseArea[];pallets:WarehousePallet[];products:Product[];pallet?:WarehousePallet;initialAreaId?:number;initialLane?:string}>();
 const emit=defineEmits<{saved:[pallet:WarehousePallet,continueEntry:boolean];cancel:[]}>();
@@ -13,9 +15,9 @@ const activePallet=ref(props.pallet),pallet=computed(()=>activePallet.value);
 const code=ref(props.pallet?.code || `TP-${createUuid().slice(0,8).toUpperCase()}`),areaId=ref(props.pallet?.areaId||props.initialAreaId||props.areas[0]?.id),lane=ref(props.pallet?.lane||props.initialLane||'LOWER');
 const initialArea=props.areas.find(a=>a.id===areaId.value);
 const position=ref(props.pallet?.position||nextPosition(props.pallets,areaId.value!,lane.value,initialArea?.kind==='RACK'?rackStart(initialArea.name):1,initialArea?.kind==='RACK'?18:9999)),notes=ref(props.pallet?.notes||'');
-type DraftItem={key:number;productId:number|undefined;mode:'manual'|'catalog';productName:string;materialCode:string;productionNumber:string;unit:string;rawMaterialBatch:string;batch:string;quantity:number|null|'';cartons:number|null|'';unitsPerCarton:number|null|'';boxesPerCarton:number|null|'';unitsPerBox:number|null|'';finished:boolean|null;photoId?:number|null;photoUrl?:string|null};
+type DraftItem={key:number;productId:number|undefined;mode:'manual'|'catalog';productName:string;materialCode:string;productionNumber:string;unit:string;rawMaterialBatch:string;batch:string;materialCodeOptions:string[];productionNumberOptions:string[];rawMaterialBatchOptions:string[];batchOptions:string[];quantity:number|null|'';cartons:number|null|'';unitsPerCarton:number|null|'';boxesPerCarton:number|null|'';unitsPerBox:number|null|'';finished:boolean|null;photoId?:number|null;photoUrl?:string|null};
 let key=0;
-function blankItem():DraftItem{return {key:key++,productId:undefined,mode:'manual',productName:'',materialCode:'',productionNumber:'',unit:'',rawMaterialBatch:'',batch:'',quantity:null,cartons:null,unitsPerCarton:'',boxesPerCarton:'',unitsPerBox:'',finished:null}}
+function blankItem():DraftItem{return {key:key++,productId:undefined,mode:'manual',productName:'',materialCode:'',productionNumber:'',unit:'',rawMaterialBatch:'',batch:'',materialCodeOptions:[],productionNumberOptions:[],rawMaterialBatchOptions:[],batchOptions:[],quantity:null,cartons:null,unitsPerCarton:'',boxesPerCarton:'',unitsPerBox:'',finished:null}}
 function draftItem(item:StockItem):DraftItem{return {...blankItem(),...item,productId:item.productId??undefined,mode:item.productId?'catalog':'manual',materialCode:item.materialCode||'',productionNumber:item.productionNumber||'',unit:item.unit||'',rawMaterialBatch:item.rawMaterialBatch||'',batch:item.batch||'',unitsPerCarton:item.unitsPerCarton??'',boxesPerCarton:item.boxesPerCarton??'',unitsPerBox:item.unitsPerBox??'',finished:item.finished??null}}
 function hasDraftContent(item:DraftItem){return Boolean(item.productId||item.productName.trim()||item.materialCode||item.productionNumber||item.rawMaterialBatch||item.batch||item.photoId||item.quantity!==null&&item.quantity!==''||item.cartons!==null&&item.cartons!=='')}
 const items=ref<DraftItem[]>(props.pallet?.items.map(draftItem)||[blankItem()]);
@@ -31,7 +33,8 @@ function changeArea(){lane.value=area.value?.kind==='RACK'?'LOWER':'LEFT_1';cust
 function suggestPosition(){customPosition.value=false;position.value=nextPosition(props.pallets,areaId.value!,lane.value,area.value?.kind==='RACK'?rackStart(area.value.name):1,area.value?.kind==='RACK'?18:9999)}
 function setFinished(item:DraftItem,finished:boolean){
   item.finished=finished;
-  if(finished){item.productionNumber='';item.rawMaterialBatch=''}else item.batch='';
+  item.productId=undefined;item.mode='manual';item.productName='';item.unit='';item.materialCode='';item.productionNumber='';item.rawMaterialBatch='';item.batch='';
+  item.materialCodeOptions=[];item.productionNumberOptions=[];item.rawMaterialBatchOptions=[];item.batchOptions=[];
 }
 function appendToExisting(){
   const existing=occupiedPallet.value;if(!existing)return;
@@ -39,9 +42,14 @@ function appendToExisting(){
   activePallet.value=existing;code.value=existing.code;notes.value=[existing.notes,notes.value].filter(Boolean).join('\n');
   items.value=[...existing.items.map(draftItem),...additions,...(additions.length?[]:[blankItem()])];message.value='';
 }
-async function searchProducts(query:string){const q=query.normalize('NFKC').trim().toLocaleLowerCase();return props.products.filter(p=>p.active||items.value.some(item=>item.productId===p.id)).filter(p=>!q||`${p.name} ${p.materialCode}`.normalize('NFKC').toLocaleLowerCase().includes(q))}
-function product(id?:number){return props.products.find(p=>p.id===id)}
-function changedProduct(item:DraftItem){const p=product(item.productId);item.productName=p?.name||'';item.materialCode=p?.materialCode||'';item.unit=p?.baseUnit||''}
+async function searchProducts(query:string,item:DraftItem){return productsApi.search(query,true,item.finished?'PRODUCTION_TO_WAREHOUSE':'WAREHOUSE_TO_PRODUCTION')}
+function changedProduct(item:DraftItem,selected?:Product){
+  const p=selected||props.products.find(product=>product.id===item.productId);
+  item.productName=p?.name||'';item.unit=p?.baseUnit||'';
+  const defaults=warehouseProductDefaults(p,item.finished===true);
+  item.materialCodeOptions=defaults.materialCodeOptions;item.productionNumberOptions=defaults.productionNumberOptions;item.rawMaterialBatchOptions=defaults.rawMaterialBatchOptions;item.batchOptions=defaults.batchOptions;
+  item.materialCode=defaults.materialCode;item.productionNumber=defaults.productionNumber;item.rawMaterialBatch=defaults.rawMaterialBatch;item.batch=defaults.batch;
+}
 function changeMode(item:DraftItem){item.productId=undefined}
 function cancel(){if(busy.value)return;emit('cancel')}
 async function save(continueEntry=false){
@@ -82,14 +90,18 @@ async function save(continueEntry=false){
         <template v-if="item.finished!==null">
           <div class="entry-mode" role="group" :aria-label="`物料 ${index+1} 录入方式`"><button type="button" :aria-pressed="item.mode==='manual'" @click="item.mode='manual';changeMode(item)">手动输入名称</button><button type="button" :aria-pressed="item.mode==='catalog'" @click="item.mode='catalog'">选择已有产品</button></div>
           <div v-if="item.mode==='manual'" class="field"><label :for="`stock-name-${item.key}`" class="required">产品名称</label><input :id="`stock-name-${item.key}`" v-model="item.productName" class="input" required maxlength="200" placeholder="填写产品名称"></div>
-          <SearchPicker v-else v-model="item.productId" label="产品名称（选择已有产品）" placeholder="输入产品名称或物料编码" :load="searchProducts" :display="p=>`${p.name} · ${p.materialCode}`" @select="changedProduct(item)" />
+          <SearchPicker v-else v-model="item.productId" label="产品名称（选择已有产品）" :placeholder="item.finished?'搜索生产车间 → 仓库产品':'搜索仓库 → 生产车间产品'" :load="query=>searchProducts(query,item)" :display="p=>`${p.name} · ${(p.materialCodes?.length?p.materialCodes:[p.materialCode]).join(' / ')}`" @select="changedProduct(item,$event)" />
           <template v-if="item.finished">
+            <div v-if="item.batchOptions.length>1" class="field"><label :for="`stock-batch-choice-${item.key}`">产品有多个编码，请选择 BATCH</label><select :id="`stock-batch-choice-${item.key}`" class="select" :value="item.batch" @change="item.batch=($event.target as HTMLSelectElement).value"><option value="">选择 BATCH…</option><option v-for="option in item.batchOptions" :key="option" :value="option">{{option}}</option></select></div>
             <div class="field"><label :for="`stock-batch-${item.key}`">BATCH（可选）</label><input :id="`stock-batch-${item.key}`" v-model="item.batch" class="input" maxlength="100" placeholder="填写 BATCH"></div>
             <div class="field"><label :for="`stock-sku-${item.key}`">SKU（可选）</label><input :id="`stock-sku-${item.key}`" v-model="item.materialCode" class="input" maxlength="100" placeholder="填写 SKU"></div>
           </template>
           <template v-else>
+            <div v-if="item.materialCodeOptions.length>1" class="field"><label :for="`stock-code-choice-${item.key}`">产品有多个物料编码，请选择</label><select :id="`stock-code-choice-${item.key}`" class="select" :value="item.materialCode" @change="item.materialCode=($event.target as HTMLSelectElement).value"><option value="">选择物料编码…</option><option v-for="option in item.materialCodeOptions" :key="option" :value="option">{{option}}</option></select></div>
             <div class="field"><label :for="`stock-code-${item.key}`">物料编码（可选）</label><input :id="`stock-code-${item.key}`" v-model="item.materialCode" class="input" maxlength="100" placeholder="填写物料编码"></div>
+            <div v-if="item.productionNumberOptions.length>1" class="field"><label :for="`stock-production-choice-${item.key}`">产品有多个生产编号，请选择</label><select :id="`stock-production-choice-${item.key}`" class="select" :value="item.productionNumber" @change="item.productionNumber=($event.target as HTMLSelectElement).value"><option value="">选择生产编号…</option><option v-for="option in item.productionNumberOptions" :key="option" :value="option">{{option}}</option></select></div>
             <div class="field"><label :for="`stock-production-number-${item.key}`">生产编号（可选）</label><input :id="`stock-production-number-${item.key}`" v-model="item.productionNumber" class="input" maxlength="100" placeholder="填写生产编号"></div>
+            <div v-if="item.rawMaterialBatchOptions.length>1" class="field"><label :for="`stock-material-batch-choice-${item.key}`">产品有多个物料批次，请选择</label><select :id="`stock-material-batch-choice-${item.key}`" class="select" :value="item.rawMaterialBatch" @change="item.rawMaterialBatch=($event.target as HTMLSelectElement).value"><option value="">选择物料批次…</option><option v-for="option in item.rawMaterialBatchOptions" :key="option" :value="option">{{option}}</option></select></div>
             <div class="field"><label :for="`stock-material-batch-${item.key}`">物料批次（可选）</label><input :id="`stock-material-batch-${item.key}`" v-model="item.rawMaterialBatch" class="input" maxlength="100" placeholder="填写黄标五位数的号码"></div>
           </template>
           <div class="field"><label :for="`stock-quantity-${item.key}`">数量（可选）</label><input :id="`stock-quantity-${item.key}`" v-model.number="item.quantity" class="input" type="number" min="1" max="9007199254740991" step="1" placeholder="留空表示未知"></div>

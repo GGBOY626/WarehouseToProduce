@@ -98,7 +98,7 @@ public class WarehouseService {
             var i=new WarehousePallet.StockItem();i.setPallet(p);
             if(input.productId()!=null){
                 var product=products.getAny(input.productId()).canonical();var old=existing.get(product.getId());
-                i.setProduct(product);i.setProductName(old==null?product.getName():old.getProductName());i.setMaterialCode(old==null?product.getMaterialCode():old.getMaterialCode());
+                i.setProduct(product);i.setProductName(old==null?product.getName():old.getProductName());i.setMaterialCode(blank(input.materialCode())!=null?blank(input.materialCode()):old==null?product.getMaterialCode():old.getMaterialCode());
                 i.setUnit(old==null?product.getBaseUnit():old.getUnit());
             }else{
                 if(blank(input.productName())==null)throw BusinessException.badRequest("PRODUCT_NAME_REQUIRED","请输入产品名称，或选择已有产品。");

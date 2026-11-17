@@ -56,6 +56,14 @@ class WarehouseIntegrationTest {
         mvc.perform(post("/api/warehouse/pallets").session(session()).contentType("application/json").content(json.writeValueAsString(manual("  ",null,null,null,3))))
             .andExpect(status().isBadRequest());
     }
+    @Test void selectedCatalogProductKeepsWarehouseSpecificManualCodeOverride(){
+        String name="catalog-override-"+UUID.randomUUID();
+        var product=products.create(new ProductDtos.Request(name,"CATALOG-CODE",null,null,ProductUsage.WAREHOUSE_TO_PRODUCTION,null,"个",false,List.of(),List.of(),null,List.of(),List.of("CATALOG-CODE")));
+        var item=new WarehouseService.ItemRequest(product.id(),"BATCH-OVERRIDE",5L,null,null,"PALLET-SKU",null,null,null,null,null,null,null,true);
+        var saved=service.create(new WarehouseService.SaveRequest("TP-"+UUID.randomUUID(),rack.getId(),"LOWER",5,null,List.of(item),null));
+        assertThat(saved.items().getFirst().materialCode()).isEqualTo("PALLET-SKU");
+        assertThat(saved.items().getFirst().batch()).isEqualTo("BATCH-OVERRIDE");
+    }
     @Test void rawBatchAndPhotoSurviveEditsAndRemovalHistory() throws Exception {
         var file=new org.springframework.mock.web.MockMultipartFile("file","sample.png","image/png",image());
         var photo=photos.upload(file);
