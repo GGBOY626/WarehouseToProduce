@@ -8,16 +8,19 @@ import { areaLanes, laneLabels, nextPosition, rackStart } from '../utils/warehou
 import { availableCartonSpecs } from '../utils/cartonSpecs';
 import SearchPicker from './SearchPicker.vue';
 import type { Product } from '../types';
-import type { WarehouseArea, WarehousePallet, PalletInput } from '../types/warehouse';
+import type { WarehouseArea, WarehousePallet, PalletInput, StockItem } from '../types/warehouse';
 const props=defineProps<{areas:WarehouseArea[];pallets:WarehousePallet[];products:Product[];pallet?:WarehousePallet;initialAreaId?:number;initialLane?:string;continueEntry?:boolean}>();
 const emit=defineEmits<{saved:[pallet:WarehousePallet,another:boolean];cancel:[]}>();
+const activePallet=ref(props.pallet),pallet=computed(()=>activePallet.value);
 const code=ref(props.pallet?.code || `TP-${createUuid().slice(0,8).toUpperCase()}`),areaId=ref(props.pallet?.areaId||props.initialAreaId||props.areas[0]?.id),lane=ref(props.pallet?.lane||props.initialLane||'LOWER');
 const initialArea=props.areas.find(a=>a.id===areaId.value);
 const position=ref(props.pallet?.position||nextPosition(props.pallets,areaId.value!,lane.value,initialArea?.kind==='RACK'?rackStart(initialArea.name):1,initialArea?.kind==='RACK'?18:9999)),notes=ref(props.pallet?.notes||'');
 type DraftItem={key:number;productId:number|undefined;mode:'manual'|'catalog';productName:string;materialCode:string;unit:string;rawMaterialBatch:string;batch:string;quantity:number|null|'';cartons:number|null|'';unitsPerCarton:number|null|'';boxesPerCarton:number|null|'';unitsPerBox:number|null|'';finished:boolean;photoId?:number|null;photoUrl?:string|null};
 let key=0;
 function blankItem():DraftItem{return {key:key++,productId:undefined,mode:'manual',productName:'',materialCode:'',unit:'',rawMaterialBatch:'',batch:'',quantity:null,cartons:null,unitsPerCarton:'',boxesPerCarton:'',unitsPerBox:'',finished:false}}
-const items=ref<DraftItem[]>(props.pallet?.items.map(i=>({...blankItem(),...i,productId:i.productId??undefined,mode:i.productId?'catalog':'manual',materialCode:i.materialCode||'',unit:i.unit||'',rawMaterialBatch:i.rawMaterialBatch||'',batch:i.batch||'',unitsPerCarton:i.unitsPerCarton??'',boxesPerCarton:i.boxesPerCarton??'',unitsPerBox:i.unitsPerBox??'',finished:i.finished??false}))||[blankItem()]);
+function draftItem(item:StockItem):DraftItem{return {...blankItem(),...item,productId:item.productId??undefined,mode:item.productId?'catalog':'manual',materialCode:item.materialCode||'',unit:item.unit||'',rawMaterialBatch:item.rawMaterialBatch||'',batch:item.batch||'',unitsPerCarton:item.unitsPerCarton??'',boxesPerCarton:item.boxesPerCarton??'',unitsPerBox:item.unitsPerBox??'',finished:item.finished??false}}
+function hasDraftContent(item:DraftItem){return Boolean(item.productId||item.productName.trim()||item.materialCode||item.rawMaterialBatch||item.batch||item.photoId||item.quantity!==null&&item.quantity!==''||item.cartons!==null&&item.cartons!=='')}
+const items=ref<DraftItem[]>(props.pallet?.items.map(draftItem)||[blankItem()]);
 const busy=ref(false),message=ref(''),another=ref(props.continueEntry||false);
 const area=computed(()=>props.areas.find(a=>a.id===areaId.value));
 const nearbyAisles=computed(()=>props.areas.filter(a=>a.kind==='AISLE'&&a.rackRow===area.value?.name));
@@ -25,9 +28,16 @@ const lanes=computed(()=>areaLanes(area.value));
 const customPosition=ref(false);
 const positionStart=computed(()=>area.value?.kind==='RACK'?rackStart(area.value.name):1);
 const rackPositions=computed(()=>Array.from({length:19-positionStart.value},(_,index)=>positionStart.value+index));
-const occupied=computed(()=>props.pallets.some(p=>p.id!==props.pallet?.id&&p.areaId===areaId.value&&p.lane===lane.value&&p.position===position.value));
+const occupiedPallet=computed(()=>props.pallets.find(p=>p.id!==activePallet.value?.id&&p.areaId===areaId.value&&p.lane===lane.value&&p.position===position.value));
+const occupied=computed(()=>Boolean(occupiedPallet.value));
 function changeArea(){lane.value=area.value?.kind==='RACK'?'LOWER':'LEFT_1';customPosition.value=false;suggestPosition()}
 function suggestPosition(){customPosition.value=false;position.value=nextPosition(props.pallets,areaId.value!,lane.value,area.value?.kind==='RACK'?rackStart(area.value.name):1,area.value?.kind==='RACK'?18:9999)}
+function appendToExisting(){
+  const existing=occupiedPallet.value;if(!existing)return;
+  const additions=items.value.filter(hasDraftContent);
+  activePallet.value=existing;code.value=existing.code;notes.value=existing.notes||'';
+  items.value=[...existing.items.map(draftItem),...additions,...(additions.length?[]:[blankItem()])];message.value='';
+}
 async function searchProducts(query:string){const q=query.normalize('NFKC').trim().toLocaleLowerCase();return props.products.filter(p=>p.active||items.value.some(item=>item.productId===p.id)).filter(p=>!q||`${p.name} ${p.materialCode}`.normalize('NFKC').toLocaleLowerCase().includes(q))}
 function product(id?:number){return props.products.find(p=>p.id===id)}
 function changedProduct(item:DraftItem){const p=product(item.productId);item.productName=p?.name||'';item.materialCode=p?.materialCode||'';item.unit=p?.baseUnit||'';const packing=p?.boxPackings?.[0];item.boxesPerCarton=packing?.boxesPerCarton??'';item.unitsPerBox=packing?.unitsPerBox??'';item.unitsPerCarton=packing?packing.boxesPerCarton*packing.unitsPerBox:(availableCartonSpecs(p)[0]??'')}
@@ -46,9 +56,9 @@ async function save(){
   if(busy.value)return;message.value='';
   if(!areaId.value||items.value.some(i=>i.mode==='catalog'?!i.productId:!i.productName.trim())){message.value='请选择库区，并为每行物料填写产品名称或选择已有产品。';return}
   if(occupied.value){message.value='该位置已有托盘，请换一个位置。';return}
-  const data:PalletInput={code:code.value.trim(),areaId:areaId.value,lane:lane.value,position:position.value,notes:notes.value,version:props.pallet?.version,items:items.value.map(i=>({productId:i.mode==='catalog'?i.productId:undefined,productName:i.productName.trim(),materialCode:i.materialCode.trim(),unit:i.unit.trim(),rawMaterialBatch:i.rawMaterialBatch.trim(),photoId:i.photoId,batch:i.batch.trim(),quantity:i.quantity===''?null:i.quantity,cartons:i.cartons===''?null:i.cartons,unitsPerCarton:i.unitsPerCarton===''?null:i.unitsPerCarton,boxesPerCarton:i.boxesPerCarton===''?null:i.boxesPerCarton,unitsPerBox:i.unitsPerBox===''?null:i.unitsPerBox,finished:i.finished}))};
+  const data:PalletInput={code:code.value.trim(),areaId:areaId.value,lane:lane.value,position:position.value,notes:notes.value,version:activePallet.value?.version,items:items.value.map(i=>({productId:i.mode==='catalog'?i.productId:undefined,productName:i.productName.trim(),materialCode:i.materialCode.trim(),unit:i.unit.trim(),rawMaterialBatch:i.rawMaterialBatch.trim(),photoId:i.photoId,batch:i.batch.trim(),quantity:i.quantity===''?null:i.quantity,cartons:i.cartons===''?null:i.cartons,unitsPerCarton:i.unitsPerCarton===''?null:i.unitsPerCarton,boxesPerCarton:i.boxesPerCarton===''?null:i.boxesPerCarton,unitsPerBox:i.unitsPerBox===''?null:i.unitsPerBox,finished:i.finished}))};
   busy.value=true;
-  try{const saved=props.pallet?await warehouseApi.update(props.pallet.id,data):await warehouseApi.create(data);discardStaged();emit('saved',saved,another.value)}catch(e){message.value=errorMessage(e)}finally{busy.value=false}
+  try{const saved=activePallet.value?await warehouseApi.update(activePallet.value.id,data):await warehouseApi.create(data);discardStaged();emit('saved',saved,another.value)}catch(e){message.value=errorMessage(e)}finally{busy.value=false}
 }
 </script>
 <template>
@@ -56,7 +66,6 @@ async function save(){
     <header><div><span class="hint">{{pallet ? '库存与货位' : '现场录入'}}</span><h2>{{pallet ? '编辑 / 移位托盘' : '录入托盘'}}</h2></div><button class="btn btn-secondary" type="button" :disabled="busy" @click="cancel">关闭</button></header>
     <p v-if="message" class="error-text" role="alert">{{message}}</p>
     <fieldset :disabled="busy"><legend class="sr-only">托盘资料</legend>
-      <div class="field"><label for="pallet-code">托盘编号</label><input id="pallet-code" v-model="code" class="input mono" required maxlength="60"><span class="hint">可用自动编号，也可填写托盘现有标签。</span></div>
       <div class="location-fields">
         <div class="field"><label for="pallet-area">库区</label><select id="pallet-area" v-model="areaId" class="select" required @change="changeArea"><option v-for="a in areas" :key="a.id" :value="a.id">{{a.rackRow?`${a.rackRow} 排旁 · `:''}}{{a.name}}{{a.kind==='RACK'?' 排':''}}</option></select></div>
         <div class="field"><label for="pallet-lane">{{area?.kind==='RACK'?'层位':'排位'}}</label><select id="pallet-lane" v-model="lane" class="select" required @change="suggestPosition"><option v-for="l in lanes" :key="l" :value="l">{{laneLabels[l]}}</option></select></div>
@@ -64,6 +73,7 @@ async function save(){
       </div>
       <div v-if="nearbyAisles.length" class="nearby-aisles"><span class="hint">货在 {{area?.name}} 排旁边的过道？</span><button v-for="a in nearbyAisles" :key="a.id" class="btn btn-secondary" type="button" @click="areaId=a.id;changeArea()">选择 {{a.rackRow}} 排旁过道 · {{a.lanes}} 排</button></div>
       <p class="location-preview" :class="{conflict:occupied}">{{area?.kind==='RACK'?`${area.name}-${String(position).padStart(2,'0')}`:`${area?.name} / ${position} 号`}} / {{laneLabels[lane]}} <b v-if="occupied">· 已有托盘</b></p>
+      <div v-if="occupiedPallet" class="append-warning" role="alert"><span>该位置已有托盘。一个托盘可以登记多种产品，是否继续追加到现有托盘？</span><button class="btn btn-danger" type="button" @click="appendToExisting">继续追加</button></div>
       <p class="hint">AA、BB、CC、EE 排从 05 编至 18；FF、HH、KK、LL、RR、SS 排从 01 编至 18。可从建议序号中选择，也可直接填写。过道请始终朝同一方向分左右。</p>
       <div class="section-head"><h3>托盘上的物料</h3><button class="btn btn-secondary" type="button" :disabled="items.length>=50" @click="items.push(blankItem())">＋ 添加物料</button></div>
       <p class="hint">物料只需产品名称即可保存；照片、原料批号、批号和数量均可稍后补充。</p>
@@ -93,4 +103,5 @@ async function save(){
 </style>
 <style scoped>
 .entry-mode{display:flex;gap:5px;background:#e9eef0;padding:4px;border-radius:8px}.entry-mode button{flex:1;min-height:40px;border:0;border-radius:5px;background:transparent;font-size:13px;cursor:pointer}.entry-mode button[aria-pressed=true]{background:white;color:var(--blue);font-weight:700}.item-photo{display:grid;gap:8px;font-size:13px}.item-photo input{max-width:100%;min-width:0}.item-photo img{display:block;width:120px;height:100px;object-fit:cover;border:1px solid var(--line);border-radius:8px}.item-photo .btn{justify-self:start}.nearby-aisles{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.append-warning{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border:1px solid var(--red);border-radius:6px;color:var(--red);background:var(--soft-red);font-size:13px}.append-warning .btn{flex-shrink:0}@media(max-width:440px){.append-warning{align-items:flex-start;flex-direction:column}}
 </style>
