@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { taskCartonUnits, unitsForBoxes, boxesForUnits, fullCartonsForPalletSelection, tailCartonsOnOpen } from '../src/utils/taskPackaging.ts';
+import { taskCartonUnits, unitsForBoxes, boxesForUnits, setTailBoxCount, fullCartonsForPalletSelection, tailCartonsOnOpen } from '../src/utils/taskPackaging.ts';
 import { calculateQuantity, cartonCount } from '../src/utils/quantity.ts';
 
 test('28 boxes of 30 units and a three-box tail preserve actual units and cartons', () => {
@@ -11,6 +11,13 @@ test('28 boxes of 30 units and a three-box tail preserve actual units and carton
   assert.equal(calculateQuantity(row),8492);
   assert.equal(cartonCount(row),11);
   assert.equal(boxesForUnits(packing,row.tailUnitsPerCarton),3);
+});
+
+test('task tail box entry preserves the box count used by quantity validation', () => {
+  const item = {tailBoxesPerCarton:null,tailUnitsPerCarton:null};
+  setTailBoxCount(item,2,{boxesPerCarton:28,unitsPerBox:30,quantityBasis:'UNIT'});
+  assert.equal(item.tailBoxesPerCarton,2);
+  assert.equal(item.tailUnitsPerCarton,60);
 });
 test('box-based inventory records boxes without multiplying the stock quantity twice', () => {
   const packing = {boxesPerCarton:28,unitsPerBox:30,quantityBasis:'BOX'};

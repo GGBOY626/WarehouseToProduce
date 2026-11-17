@@ -21,7 +21,7 @@ import { calculateQuantity, quantityError, cartonCount } from "../utils/quantity
 import { availableCartonSpecs, initialCartonSpec } from "../utils/cartonSpecs";
 import { initialBoxPacking, applyBoxPacking, syncBoxQuantity } from "../utils/boxPacking";
 import { palletPacking } from "../utils/palletPacking";
-import { taskCartonUnits, unitsForBoxes, boxesForUnits, fullCartonsForPalletSelection, tailCartonsOnOpen } from "../utils/taskPackaging";
+import { taskCartonUnits, boxesForUnits, setTailBoxCount, fullCartonsForPalletSelection, tailCartonsOnOpen } from "../utils/taskPackaging";
 import { materialOptions, applyMaterialSelection } from "../utils/taskMaterialSelection";
 import { movementProductChoices } from "../utils/taskProductChoices";
 import { preparePhoto } from "../utils/photo";
@@ -127,8 +127,12 @@ function wholePalletCartons(item: ItemInput) {
   return Number(item.wholePallets || 0) * (palletCartonCount(item) || 0);
 }
 function quantityItem(item: ItemInput): ItemInput {
+  const packing=taskPacking(item);
   return {
     ...item,
+    boxesPerCarton: packing?.boxesPerCarton ?? item.boxesPerCarton,
+    unitsPerBox: packing ? (packing.quantityBasis === 'BOX' ? 1 : packing.unitsPerBox) : item.unitsPerBox,
+    tailBoxesPerCarton: packing && item.tailCartons > 0 ? tailBoxes(item) ?? null : item.tailBoxesPerCarton,
     fullCartons: fullCartonsForPalletSelection(Number(item.fullCartons || 0), palletCartonCount(item), isNewFinishedReceipt.value ? Number(item.wholePallets || 0) : 0),
     looseUnits: isNewFinishedReceipt.value ? 0 : Number(item.looseUnits || 0),
     quantityUnknown: isNewFinishedReceipt.value ? false : item.quantityUnknown,
@@ -197,8 +201,9 @@ function tailBoxes(item: ItemInput) {
 function setTailBoxes(item: ItemInput, event: Event) {
   const value = (event.target as HTMLInputElement).value;
   const packing = taskPacking(item);
-  if(!packing && item.unitsPerBox!=null){item.tailBoxesPerCarton=value===''?null:Number(value);quantityChanged(item);return;}
-  item.tailUnitsPerCarton = value === '' ? null : packing ? unitsForBoxes(packing, Number(value)) : Number(value);
+  const boxes=value===''?null:Number(value);
+  if(!packing && item.unitsPerBox!=null){setTailBoxCount(item,boxes);quantityChanged(item);return;}
+  setTailBoxCount(item,boxes,packing);
   quantityChanged(item);
 }
 watch(selectedTask, task => {

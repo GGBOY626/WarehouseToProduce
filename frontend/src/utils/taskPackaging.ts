@@ -12,6 +12,11 @@ export function boxesForUnits(packing: Packing, units: number): number {
   return units / (packing.quantityBasis === 'UNIT' ? packing.unitsPerBox! : 1);
 }
 
+export function setTailBoxCount(item: {tailBoxesPerCarton?: number | null; tailUnitsPerCarton?: number | null}, boxes: number | null, packing?: Packing) {
+  item.tailBoxesPerCarton = boxes;
+  item.tailUnitsPerCarton = boxes == null ? null : packing ? unitsForBoxes(packing, boxes) : boxes;
+}
+
 export function fullCartonsForPalletSelection(current: number, cartonsPerPallet: number | null | undefined, selectedCount: number): number {
   return Number.isSafeInteger(cartonsPerPallet) && Number(cartonsPerPallet) > 0 && Number.isSafeInteger(selectedCount) && selectedCount > 0
     ? current + Number(cartonsPerPallet) * selectedCount
