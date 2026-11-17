@@ -22,7 +22,7 @@ public class WarehouseService {
     private final ProductService products;
     private final ObjectMapper json;
     private final WarehousePhotoService photos;
-    public record AreaRequest(@NotBlank @Size(max=60) String name,@Min(2) @Max(4) int lanes,@PositiveOrZero Long version,@Pattern(regexp="[A-M]{2}") String rackRow) {
+    public record AreaRequest(@NotBlank @Size(max=60) String name,@Min(2) @Max(4) int lanes,@PositiveOrZero Long version,@Pattern(regexp="AA|BB|CC|EE|FF|HH|KK|LL|RR|SS") String rackRow) {
         public AreaRequest(String name,int lanes,Long version){this(name,lanes,version,null);}
     }
     public record AreaResponse(Long id,String name,WarehouseArea.Kind kind,int lanes,long version,String rackRow) {}
@@ -87,7 +87,8 @@ public class WarehouseService {
     private void apply(WarehousePallet p,SaveRequest r){
         var a=area(r.areaId());
         var allowed=a.getKind()==WarehouseArea.Kind.RACK?List.of("UPPER","MIDDLE","LOWER"):a.getLanes()==2?List.of("LEFT_1","RIGHT_1"):List.of("LEFT_1","LEFT_2","RIGHT_1","RIGHT_2");
-        if(!allowed.contains(r.lane())||(a.getKind()==WarehouseArea.Kind.RACK&&(r.position()<5||r.position()>16)))throw BusinessException.badRequest("LOCATION_INVALID",a.getKind()==WarehouseArea.Kind.RACK?"货架位置必须在 05 至 16 之间。":"过道位置无效。");
+        int rackStart=Set.of("AA","BB","CC","EE").contains(a.getName())?5:1;
+        if(!allowed.contains(r.lane())||(a.getKind()==WarehouseArea.Kind.RACK&&(r.position()<rackStart||r.position()>18)))throw BusinessException.badRequest("LOCATION_INVALID",a.getKind()==WarehouseArea.Kind.RACK?"货架位置超出该排允许范围。":"过道位置无效。");
         if(pallets.existsByAreaIdAndLaneAndPositionAndIdNot(a.getId(),r.lane(),r.position(),p.getId()==null?-1:p.getId()))throw conflict("LOCATION_OCCUPIED","这个位置已有托盘，请选择其他位置，或编辑原托盘添加物料。");
         var existing=new HashMap<Long,WarehousePallet.StockItem>();p.getItems().stream().filter(i->i.getProduct()!=null).forEach(i->existing.put(i.getProduct().canonicalId(),i));
         var items=new ArrayList<WarehousePallet.StockItem>();
@@ -109,7 +110,7 @@ public class WarehouseService {
     }
     private WarehouseArea area(long id){return areas.lockById(id).orElseThrow(()->BusinessException.notFound("AREA_NOT_FOUND","找不到库区，请刷新后重试。"));}
     private WarehousePallet pallet(long id){return pallets.findById(id).orElseThrow(()->BusinessException.notFound("PALLET_NOT_FOUND","找不到托盘，请刷新后重试。"));}
-    private void checkAisle(WarehouseArea a){if(a.getKind()!=WarehouseArea.Kind.AISLE)throw BusinessException.badRequest("RACK_FIXED","AA–MM 货架为固定库区，无需修改或删除。");}
+    private void checkAisle(WarehouseArea a){if(a.getKind()!=WarehouseArea.Kind.AISLE)throw BusinessException.badRequest("RACK_FIXED","固定库区货架无需修改或删除。");}
     private void checkLanes(int lanes){if(lanes!=2&&lanes!=4)throw BusinessException.badRequest("LANES_INVALID","过道只支持两排或四排。");}
     private void checkRackA(String rackRow,int lanes){if("AA".equals(rackRow)&&lanes!=4)throw BusinessException.badRequest("A_AISLE_FOUR_LANES","AA 排旁过道需要左一、左二、右一、右二四排。");}
     private void checkVersion(long actual,Long requested){if(requested==null||actual!=requested)throw conflict("STALE_RECORD","资料已被更新，请刷新后重新操作，避免覆盖其他人的修改。");}

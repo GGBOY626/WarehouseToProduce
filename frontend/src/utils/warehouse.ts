@@ -1,12 +1,14 @@
 import type { WarehouseArea, WarehousePallet } from '../types/warehouse';
 export const laneLabels:Record<string,string>={UPPER:'上层',MIDDLE:'中层',LOWER:'下层',LEFT_1:'左一',LEFT_2:'左二',RIGHT_1:'右一',RIGHT_2:'右二'};
+export const rackOrder=['AA','BB','CC','EE','FF','HH','KK','LL','RR','SS'];
+export const rackStart=(name?:string)=>name&&['AA','BB','CC','EE'].includes(name)?5:1;
 export function areaLanes(area?:WarehouseArea):string[]{
   if(!area)return [];
   return area.kind==='RACK'?['UPPER','MIDDLE','LOWER']:area.lanes===4?['LEFT_1','LEFT_2','RIGHT_1','RIGHT_2']:['LEFT_1','RIGHT_1'];
 }
 export function nextPosition(pallets:WarehousePallet[],areaId:number,lane:string,start=5):number{
   const used=new Set(pallets.filter(p=>p.areaId===areaId&&p.lane===lane).map(p=>p.position));
-  let position=start;while(used.has(position)&&position<=(start===5?16:9999))position++;return position;
+  let position=start;while(used.has(position)&&position<=(start===5?18:9999))position++;return position;
 }
 export function filterPallets(pallets:WarehousePallet[],query:string,areaId?:number,lane?:string,unknownOnly=false){
   const q=query.normalize('NFKC').trim().toLocaleLowerCase();

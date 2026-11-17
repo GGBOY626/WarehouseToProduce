@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { areaLanes, laneLabels } from '../utils/warehouse';
+import { areaLanes, laneLabels, rackOrder } from '../utils/warehouse';
 import type { WarehouseFilters } from '../utils/warehouse';
 import type { WarehouseOverview } from '../types/warehouse';
 const props=defineProps<{data:WarehouseOverview;filters:WarehouseFilters;loading:boolean}>();
 const emit=defineEmits<{select:[id:number,lane?:string];clear:[]}>();
-const racks=computed(()=>props.data.areas.filter(a=>a.kind==='RACK'));
+const racks=computed(()=>props.data.areas.filter(a=>a.kind==='RACK'&&rackOrder.includes(a.name)).sort((a,b)=>rackOrder.indexOf(a.name)-rackOrder.indexOf(b.name)));
 const aisles=computed(()=>props.data.areas.filter(a=>a.kind==='AISLE'));
 const expandedAisles=computed(()=>aisles.value.filter(a=>props.filters.row ? a.rackRow===props.filters.row : a.id===props.filters.areaId));
 const cells=computed(()=>{
@@ -32,9 +32,9 @@ function description(id:number,lane=''){
       <button v-if="filters.areaId||filters.row||filters.kind" class="btn btn-secondary" @click="emit('clear')">取消位置筛选</button>
       <a class="board-link" href="#stock-list-title">{{filters.areaId||filters.row||filters.kind?'查看筛选结果 ↓':'查看托盘列表 ↓'}}</a>
     </header>
-      <div class="map-legend"><span><i class="empty-key"/>未录入</span><span><i class="occupied-key"/>有托盘</span><span><i class="selected-key"/>已选位置</span><span class="mobile-scroll-hint">左右滑动查看 AA–MM</span></div>
+      <div class="map-legend"><span><i class="empty-key"/>未录入</span><span><i class="occupied-key"/>有托盘</span><span><i class="selected-key"/>已选位置</span><span class="mobile-scroll-hint">左右滑动查看货架</span></div>
     <p v-if="loading&&!data.areas.length" class="empty" role="status">正在读取货位…</p>
-    <div v-else class="rack-scroll" tabindex="0" role="region" aria-label="AA 至 MM 货架总览，可横向滚动">
+    <div v-else class="rack-scroll" tabindex="0" role="region" aria-label="货架总览，可横向滚动">
       <div class="rack-map">
         <div class="level-key" aria-hidden="true"><span>货架</span><span>上</span><span>中</span><span>下</span></div>
         <div v-for="rack in racks" :key="rack.id" class="rack-column" :class="{selected:filters.row===rack.name}">
