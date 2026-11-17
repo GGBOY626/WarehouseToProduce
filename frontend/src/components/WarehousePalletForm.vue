@@ -12,7 +12,8 @@ import type { WarehouseArea, WarehousePallet, PalletInput } from '../types/wareh
 const props=defineProps<{areas:WarehouseArea[];pallets:WarehousePallet[];products:Product[];pallet?:WarehousePallet;initialAreaId?:number;initialLane?:string;continueEntry?:boolean}>();
 const emit=defineEmits<{saved:[pallet:WarehousePallet,another:boolean];cancel:[]}>();
 const code=ref(props.pallet?.code || `TP-${createUuid().slice(0,8).toUpperCase()}`),areaId=ref(props.pallet?.areaId||props.initialAreaId||props.areas[0]?.id),lane=ref(props.pallet?.lane||props.initialLane||'LOWER');
-const position=ref(props.pallet?.position||nextPosition(props.pallets,areaId.value!,lane.value,props.areas.find(a=>a.id===areaId.value)?.kind==='RACK'?rackStart(props.areas.find(a=>a.id===areaId.value)?.name):1)),notes=ref(props.pallet?.notes||'');
+const initialArea=props.areas.find(a=>a.id===areaId.value);
+const position=ref(props.pallet?.position||nextPosition(props.pallets,areaId.value!,lane.value,initialArea?.kind==='RACK'?rackStart(initialArea.name):1,initialArea?.kind==='RACK'?18:9999)),notes=ref(props.pallet?.notes||'');
 type DraftItem={key:number;productId:number|undefined;mode:'manual'|'catalog';productName:string;materialCode:string;unit:string;rawMaterialBatch:string;batch:string;quantity:number|null|'';cartons:number|null|'';unitsPerCarton:number|null|'';boxesPerCarton:number|null|'';unitsPerBox:number|null|'';finished:boolean;photoId?:number|null;photoUrl?:string|null};
 let key=0;
 function blankItem():DraftItem{return {key:key++,productId:undefined,mode:'manual',productName:'',materialCode:'',unit:'',rawMaterialBatch:'',batch:'',quantity:null,cartons:null,unitsPerCarton:'',boxesPerCarton:'',unitsPerBox:'',finished:false}}
@@ -21,9 +22,12 @@ const busy=ref(false),message=ref(''),another=ref(props.continueEntry||false);
 const area=computed(()=>props.areas.find(a=>a.id===areaId.value));
 const nearbyAisles=computed(()=>props.areas.filter(a=>a.kind==='AISLE'&&a.rackRow===area.value?.name));
 const lanes=computed(()=>areaLanes(area.value));
+const customPosition=ref(false);
+const positionStart=computed(()=>area.value?.kind==='RACK'?rackStart(area.value.name):1);
+const rackPositions=computed(()=>Array.from({length:19-positionStart.value},(_,index)=>positionStart.value+index));
 const occupied=computed(()=>props.pallets.some(p=>p.id!==props.pallet?.id&&p.areaId===areaId.value&&p.lane===lane.value&&p.position===position.value));
-function changeArea(){lane.value=area.value?.kind==='RACK'?'LOWER':'LEFT_1';suggestPosition()}
-function suggestPosition(){position.value=nextPosition(props.pallets,areaId.value!,lane.value,area.value?.kind==='RACK'?rackStart(area.value.name):1)}
+function changeArea(){lane.value=area.value?.kind==='RACK'?'LOWER':'LEFT_1';customPosition.value=false;suggestPosition()}
+function suggestPosition(){customPosition.value=false;position.value=nextPosition(props.pallets,areaId.value!,lane.value,area.value?.kind==='RACK'?rackStart(area.value.name):1,area.value?.kind==='RACK'?18:9999)}
 async function searchProducts(query:string){const q=query.normalize('NFKC').trim().toLocaleLowerCase();return props.products.filter(p=>p.active||items.value.some(item=>item.productId===p.id)).filter(p=>!q||`${p.name} ${p.materialCode}`.normalize('NFKC').toLocaleLowerCase().includes(q))}
 function product(id?:number){return props.products.find(p=>p.id===id)}
 function changedProduct(item:DraftItem){const p=product(item.productId);item.productName=p?.name||'';item.materialCode=p?.materialCode||'';item.unit=p?.baseUnit||'';const packing=p?.boxPackings?.[0];item.boxesPerCarton=packing?.boxesPerCarton??'';item.unitsPerBox=packing?.unitsPerBox??'';item.unitsPerCarton=packing?packing.boxesPerCarton*packing.unitsPerBox:(availableCartonSpecs(p)[0]??'')}
@@ -56,7 +60,7 @@ async function save(){
       <div class="location-fields">
         <div class="field"><label for="pallet-area">库区</label><select id="pallet-area" v-model="areaId" class="select" required @change="changeArea"><option v-for="a in areas" :key="a.id" :value="a.id">{{a.rackRow?`${a.rackRow} 排旁 · `:''}}{{a.name}}{{a.kind==='RACK'?' 排':''}}</option></select></div>
         <div class="field"><label for="pallet-lane">{{area?.kind==='RACK'?'层位':'排位'}}</label><select id="pallet-lane" v-model="lane" class="select" required @change="suggestPosition"><option v-for="l in lanes" :key="l" :value="l">{{laneLabels[l]}}</option></select></div>
-        <div class="field"><label for="pallet-position">位置序号</label><input id="pallet-position" v-model.number="position" class="input" type="number" :min="area?.kind==='RACK'?rackStart(area.name):1" :max="area?.kind==='RACK'?18:9999" step="1" :list="area?.kind==='RACK'?'rack-position-options':undefined" required><datalist v-if="area?.kind==='RACK'" id="rack-position-options"><option v-for="n in 19-rackStart(area.name)" :key="n" :value="n+rackStart(area.name)-1">{{String(n+rackStart(area.name)-1).padStart(2,'0')}}</option></datalist></div>
+        <div class="field"><label for="pallet-position">位置序号</label><template v-if="area?.kind==='RACK'"><select v-if="!customPosition" id="pallet-position" v-model.number="position" class="select" required><option v-for="number in rackPositions" :key="number" :value="number">{{String(number).padStart(2,'0')}}</option></select><input v-else id="pallet-position" v-model.number="position" class="input" type="number" :min="positionStart" max="18" step="1" required><button class="text-button" type="button" @click="customPosition=!customPosition">{{customPosition?'从序号列表选择':'手动输入序号'}}</button></template><input v-else id="pallet-position" v-model.number="position" class="input" type="number" min="1" max="9999" step="1" required></div>
       </div>
       <div v-if="nearbyAisles.length" class="nearby-aisles"><span class="hint">货在 {{area?.name}} 排旁边的过道？</span><button v-for="a in nearbyAisles" :key="a.id" class="btn btn-secondary" type="button" @click="areaId=a.id;changeArea()">选择 {{a.rackRow}} 排旁过道 · {{a.lanes}} 排</button></div>
       <p class="location-preview" :class="{conflict:occupied}">{{area?.kind==='RACK'?`${area.name}-${String(position).padStart(2,'0')}`:`${area?.name} / ${position} 号`}} / {{laneLabels[lane]}} <b v-if="occupied">· 已有托盘</b></p>

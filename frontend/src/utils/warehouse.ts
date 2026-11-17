@@ -6,9 +6,9 @@ export function areaLanes(area?:WarehouseArea):string[]{
   if(!area)return [];
   return area.kind==='RACK'?['UPPER','MIDDLE','LOWER']:area.lanes===4?['LEFT_1','LEFT_2','RIGHT_1','RIGHT_2']:['LEFT_1','RIGHT_1'];
 }
-export function nextPosition(pallets:WarehousePallet[],areaId:number,lane:string,start=5):number{
+export function nextPosition(pallets:WarehousePallet[],areaId:number,lane:string,start=5,end=9999):number{
   const used=new Set(pallets.filter(p=>p.areaId===areaId&&p.lane===lane).map(p=>p.position));
-  let position=start;while(used.has(position)&&position<=(start===5?18:9999))position++;return position;
+  let position=start;while(used.has(position)&&position<end)position++;return used.has(position)?start:position;
 }
 export function filterPallets(pallets:WarehousePallet[],query:string,areaId?:number,lane?:string,unknownOnly=false){
   const q=query.normalize('NFKC').trim().toLocaleLowerCase();
