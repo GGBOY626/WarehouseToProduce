@@ -1,13 +1,15 @@
 <script setup lang="ts" generic="T extends {id:number,name:string}">
 import {ref,shallowRef,watch} from 'vue';
-const props=defineProps<{modelValue?:number;label:string;placeholder:string;load:(q:string)=>Promise<T[]>;display?:(item:T)=>string}>();
-const emit=defineEmits<{(e:'update:modelValue',value:number|undefined):void;(e:'select',value:T|undefined):void}>();
+const props=defineProps<{modelValue?:number;textValue?:string;freeText?:boolean;emptyText?:string;maxLength?:number;label:string;placeholder:string;load:(q:string)=>Promise<T[]>;display?:(item:T)=>string}>();
+const emit=defineEmits<{(e:'update:modelValue',value:number|undefined):void;(e:'update:textValue',value:string):void;(e:'select',value:T|undefined):void}>();
 const query=ref('');const results=shallowRef<T[]>([]);const open=ref(false);let timer:number|undefined;let request=0;
+watch(()=>props.textValue,value=>{if(props.freeText&&!props.modelValue)query.value=value||''},{immediate:true});
 watch(()=>props.modelValue,async id=>{if(id&&!query.value){const all=await props.load('');if(id!==props.modelValue||query.value)return;const selected=all.find(x=>x.id===id);if(selected)query.value=props.display?.(selected)||selected.name;}},{immediate:true});
 function search(){open.value=true;window.clearTimeout(timer);const current=++request;timer=window.setTimeout(async()=>{const matches=await props.load(query.value);if(current===request)results.value=matches},180)}
-function choose(item:T){request++;window.clearTimeout(timer);query.value=props.display?.(item)||item.name;emit('update:modelValue',item.id);emit('select',item);open.value=false}
+function choose(item:T){request++;window.clearTimeout(timer);query.value=props.display?.(item)||item.name;emit('update:modelValue',item.id);if(props.freeText)emit('update:textValue',item.name);emit('select',item);open.value=false}
 function clearIfChanged(){if(!props.modelValue)return;emit('update:modelValue',undefined);emit('select',undefined)}
+function input(){clearIfChanged();if(props.freeText)emit('update:textValue',query.value);search()}
 function closeLater(){window.setTimeout(()=>open.value=false,150)}
 </script>
-<template><div class="picker"><label class="required">{{label}}</label><input class="input" v-model="query" :aria-label="label" :name="label" :placeholder="placeholder" autocomplete="off" @focus="search" @input="clearIfChanged();search()" @blur="closeLater"/><div v-if="open" class="picker-menu"><button v-for="item in results" :key="item.id" type="button" @mousedown.prevent="choose(item)"><slot :item="item">{{display?.(item)||item.name}}</slot></button><div v-if="!results.length" class="picker-empty">没有找到可选资料</div></div></div></template>
+<template><div class="picker"><label class="required">{{label}}</label><input class="input" v-model="query" :aria-label="label" :name="label" :placeholder="placeholder" :maxlength="maxLength" autocomplete="off" @focus="search" @input="input" @blur="closeLater"/><div v-if="open" class="picker-menu"><button v-for="item in results" :key="item.id" type="button" @mousedown.prevent="choose(item)"><slot :item="item">{{display?.(item)||item.name}}</slot></button><div v-if="!results.length" class="picker-empty">{{emptyText||'没有找到可选资料'}}</div></div></div></template>
 <style scoped>.picker{display:grid;gap:7px;position:relative}.picker label{font-size:14px;font-weight:680}.picker-menu{position:absolute;top:78px;left:0;right:0;background:#fff;border:1px solid #b9c5ca;border-radius:9px;box-shadow:0 10px 30px rgba(23,33,38,.16);max-height:240px;overflow:auto;z-index:45}.picker-menu button{display:block;width:100%;min-height:48px;text-align:left;background:#fff;border:0;border-bottom:1px solid #edf0f2;padding:9px 12px}.picker-menu button:active{background:#e9f2f6}.picker-empty{padding:16px;color:#66747c;font-size:13px}</style>
