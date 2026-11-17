@@ -42,6 +42,7 @@ public final class AiInventory {
         var materials=new LinkedHashMap<List<String>,Material>();
         Set<Long> pallets=new HashSet<>(),pending=new HashSet<>();
         for(var p:unique.values()) {
+            if(p.kind()!=WarehouseArea.Kind.RACK)continue;
             var a=areas.get(p.areaId());
             String row=a==null?"":a.kind()==WarehouseArea.Kind.RACK?a.name():clean(a.rackRow());
             if(!matches(scope.row(),row)||!matches(filters.row(),row)||!matches(scope.kind(),p.kind().name())||!matches(filters.kind(),p.kind().name())||

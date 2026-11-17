@@ -1,29 +1,26 @@
 <script setup lang="ts">
-import { computed, ref, onBeforeUnmount } from 'vue';
+import { computed, ref } from 'vue';
 import { warehouseApi } from '../api/warehouse';
 import { errorMessage } from '../api/http';
 import { createUuid } from '../utils/uuid';
-import { preparePhoto } from '../utils/photo';
 import { areaLanes, laneLabels, nextPosition, rackStart } from '../utils/warehouse';
-import { availableCartonSpecs } from '../utils/cartonSpecs';
 import SearchPicker from './SearchPicker.vue';
 import type { Product } from '../types';
 import type { WarehouseArea, WarehousePallet, PalletInput, StockItem } from '../types/warehouse';
-const props=defineProps<{areas:WarehouseArea[];pallets:WarehousePallet[];products:Product[];pallet?:WarehousePallet;initialAreaId?:number;initialLane?:string;continueEntry?:boolean}>();
-const emit=defineEmits<{saved:[pallet:WarehousePallet,another:boolean];cancel:[]}>();
+const props=defineProps<{areas:WarehouseArea[];pallets:WarehousePallet[];products:Product[];pallet?:WarehousePallet;initialAreaId?:number;initialLane?:string}>();
+const emit=defineEmits<{saved:[pallet:WarehousePallet,continueEntry:boolean];cancel:[]}>();
 const activePallet=ref(props.pallet),pallet=computed(()=>activePallet.value);
 const code=ref(props.pallet?.code || `TP-${createUuid().slice(0,8).toUpperCase()}`),areaId=ref(props.pallet?.areaId||props.initialAreaId||props.areas[0]?.id),lane=ref(props.pallet?.lane||props.initialLane||'LOWER');
 const initialArea=props.areas.find(a=>a.id===areaId.value);
 const position=ref(props.pallet?.position||nextPosition(props.pallets,areaId.value!,lane.value,initialArea?.kind==='RACK'?rackStart(initialArea.name):1,initialArea?.kind==='RACK'?18:9999)),notes=ref(props.pallet?.notes||'');
-type DraftItem={key:number;productId:number|undefined;mode:'manual'|'catalog';productName:string;materialCode:string;unit:string;rawMaterialBatch:string;batch:string;quantity:number|null|'';cartons:number|null|'';unitsPerCarton:number|null|'';boxesPerCarton:number|null|'';unitsPerBox:number|null|'';finished:boolean;photoId?:number|null;photoUrl?:string|null};
+type DraftItem={key:number;productId:number|undefined;mode:'manual'|'catalog';productName:string;materialCode:string;productionNumber:string;unit:string;rawMaterialBatch:string;batch:string;quantity:number|null|'';cartons:number|null|'';unitsPerCarton:number|null|'';boxesPerCarton:number|null|'';unitsPerBox:number|null|'';finished:boolean|null;photoId?:number|null;photoUrl?:string|null};
 let key=0;
-function blankItem():DraftItem{return {key:key++,productId:undefined,mode:'manual',productName:'',materialCode:'',unit:'',rawMaterialBatch:'',batch:'',quantity:null,cartons:null,unitsPerCarton:'',boxesPerCarton:'',unitsPerBox:'',finished:false}}
-function draftItem(item:StockItem):DraftItem{return {...blankItem(),...item,productId:item.productId??undefined,mode:item.productId?'catalog':'manual',materialCode:item.materialCode||'',unit:item.unit||'',rawMaterialBatch:item.rawMaterialBatch||'',batch:item.batch||'',unitsPerCarton:item.unitsPerCarton??'',boxesPerCarton:item.boxesPerCarton??'',unitsPerBox:item.unitsPerBox??'',finished:item.finished??false}}
-function hasDraftContent(item:DraftItem){return Boolean(item.productId||item.productName.trim()||item.materialCode||item.rawMaterialBatch||item.batch||item.photoId||item.quantity!==null&&item.quantity!==''||item.cartons!==null&&item.cartons!=='')}
+function blankItem():DraftItem{return {key:key++,productId:undefined,mode:'manual',productName:'',materialCode:'',productionNumber:'',unit:'',rawMaterialBatch:'',batch:'',quantity:null,cartons:null,unitsPerCarton:'',boxesPerCarton:'',unitsPerBox:'',finished:null}}
+function draftItem(item:StockItem):DraftItem{return {...blankItem(),...item,productId:item.productId??undefined,mode:item.productId?'catalog':'manual',materialCode:item.materialCode||'',productionNumber:item.productionNumber||'',unit:item.unit||'',rawMaterialBatch:item.rawMaterialBatch||'',batch:item.batch||'',unitsPerCarton:item.unitsPerCarton??'',boxesPerCarton:item.boxesPerCarton??'',unitsPerBox:item.unitsPerBox??'',finished:item.finished??null}}
+function hasDraftContent(item:DraftItem){return Boolean(item.productId||item.productName.trim()||item.materialCode||item.productionNumber||item.rawMaterialBatch||item.batch||item.photoId||item.quantity!==null&&item.quantity!==''||item.cartons!==null&&item.cartons!=='')}
 const items=ref<DraftItem[]>(props.pallet?.items.map(draftItem)||[blankItem()]);
-const busy=ref(false),message=ref(''),another=ref(props.continueEntry||false);
+const busy=ref(false),message=ref('');
 const area=computed(()=>props.areas.find(a=>a.id===areaId.value));
-const nearbyAisles=computed(()=>props.areas.filter(a=>a.kind==='AISLE'&&a.rackRow===area.value?.name));
 const lanes=computed(()=>areaLanes(area.value));
 const customPosition=ref(false);
 const positionStart=computed(()=>area.value?.kind==='RACK'?rackStart(area.value.name):1);
@@ -32,37 +29,40 @@ const occupiedPallet=computed(()=>props.pallets.find(p=>p.id!==activePallet.valu
 const occupied=computed(()=>Boolean(occupiedPallet.value));
 function changeArea(){lane.value=area.value?.kind==='RACK'?'LOWER':'LEFT_1';customPosition.value=false;suggestPosition()}
 function suggestPosition(){customPosition.value=false;position.value=nextPosition(props.pallets,areaId.value!,lane.value,area.value?.kind==='RACK'?rackStart(area.value.name):1,area.value?.kind==='RACK'?18:9999)}
+function setFinished(item:DraftItem,finished:boolean){
+  item.finished=finished;
+  if(finished){item.productionNumber='';item.rawMaterialBatch=''}else item.batch='';
+}
 function appendToExisting(){
   const existing=occupiedPallet.value;if(!existing)return;
   const additions=items.value.filter(hasDraftContent);
-  activePallet.value=existing;code.value=existing.code;notes.value=existing.notes||'';
+  activePallet.value=existing;code.value=existing.code;notes.value=[existing.notes,notes.value].filter(Boolean).join('\n');
   items.value=[...existing.items.map(draftItem),...additions,...(additions.length?[]:[blankItem()])];message.value='';
 }
 async function searchProducts(query:string){const q=query.normalize('NFKC').trim().toLocaleLowerCase();return props.products.filter(p=>p.active||items.value.some(item=>item.productId===p.id)).filter(p=>!q||`${p.name} ${p.materialCode}`.normalize('NFKC').toLocaleLowerCase().includes(q))}
 function product(id?:number){return props.products.find(p=>p.id===id)}
-function changedProduct(item:DraftItem){const p=product(item.productId);item.productName=p?.name||'';item.materialCode=p?.materialCode||'';item.unit=p?.baseUnit||'';const packing=p?.boxPackings?.[0];item.boxesPerCarton=packing?.boxesPerCarton??'';item.unitsPerBox=packing?.unitsPerBox??'';item.unitsPerCarton=packing?packing.boxesPerCarton*packing.unitsPerBox:(availableCartonSpecs(p)[0]??'')}
+function changedProduct(item:DraftItem){const p=product(item.productId);item.productName=p?.name||'';item.materialCode=p?.materialCode||'';item.unit=p?.baseUnit||''}
 function changeMode(item:DraftItem){item.productId=undefined}
-const stagedPhotos=new Set<number>();let disposed=false;
-function discardStaged(){for(const id of stagedPhotos)void warehouseApi.discardPhoto(id).catch(()=>{});stagedPhotos.clear()}
-onBeforeUnmount(()=>{disposed=true;discardStaged()});
-function cancel(){if(busy.value)return;discardStaged();emit('cancel')}
-async function upload(item:DraftItem,event:Event){
-  const input=event.target as HTMLInputElement,file=input.files?.[0];if(!file)return;input.value='';message.value='';
-  if(file.size>12*1024*1024){message.value='照片不能超过 12MB，请选择较小的照片。';return}
-  busy.value=true;
-  try{const photo=await warehouseApi.uploadPhoto(await preparePhoto(file));if(disposed){await warehouseApi.discardPhoto(photo.id);return}stagedPhotos.add(photo.id);item.photoId=photo.id;item.photoUrl=photo.url}catch(e){message.value=errorMessage(e)}finally{busy.value=false}
-}
-async function save(){
+function cancel(){if(busy.value)return;emit('cancel')}
+async function save(continueEntry=false){
   if(busy.value)return;message.value='';
+  if(items.value.some(i=>i.finished===null)){message.value='请为每项物料选择是成品还是非成品。';return}
   if(!areaId.value||items.value.some(i=>i.mode==='catalog'?!i.productId:!i.productName.trim())){message.value='请选择库区，并为每行物料填写产品名称或选择已有产品。';return}
   if(occupied.value){message.value='该位置已有托盘，请换一个位置。';return}
-  const data:PalletInput={code:code.value.trim(),areaId:areaId.value,lane:lane.value,position:position.value,notes:notes.value,version:activePallet.value?.version,items:items.value.map(i=>({productId:i.mode==='catalog'?i.productId:undefined,productName:i.productName.trim(),materialCode:i.materialCode.trim(),unit:i.unit.trim(),rawMaterialBatch:i.rawMaterialBatch.trim(),photoId:i.photoId,batch:i.batch.trim(),quantity:i.quantity===''?null:i.quantity,cartons:i.cartons===''?null:i.cartons,unitsPerCarton:i.unitsPerCarton===''?null:i.unitsPerCarton,boxesPerCarton:i.boxesPerCarton===''?null:i.boxesPerCarton,unitsPerBox:i.unitsPerBox===''?null:i.unitsPerBox,finished:i.finished}))};
+  const data:PalletInput={code:code.value.trim(),areaId:areaId.value,lane:lane.value,position:position.value,notes:notes.value,version:activePallet.value?.version,items:items.value.map(i=>({productId:i.mode==='catalog'?i.productId:undefined,productName:i.productName.trim(),materialCode:i.materialCode.trim(),productionNumber:i.productionNumber.trim(),unit:i.unit.trim(),rawMaterialBatch:i.rawMaterialBatch.trim(),photoId:i.photoId,batch:i.batch.trim(),quantity:i.quantity===''?null:i.quantity,cartons:i.cartons===''?null:i.cartons,unitsPerCarton:i.unitsPerCarton===''?null:i.unitsPerCarton,boxesPerCarton:i.boxesPerCarton===''?null:i.boxesPerCarton,unitsPerBox:i.unitsPerBox===''?null:i.unitsPerBox,finished:i.finished!}))};
   busy.value=true;
-  try{const saved=activePallet.value?await warehouseApi.update(activePallet.value.id,data):await warehouseApi.create(data);discardStaged();emit('saved',saved,another.value)}catch(e){message.value=errorMessage(e)}finally{busy.value=false}
+  try{
+    const saved=activePallet.value?await warehouseApi.update(activePallet.value.id,data):await warehouseApi.create(data);
+    emit('saved',saved,continueEntry&&!activePallet.value);
+    if(continueEntry&&!activePallet.value){
+      activePallet.value=undefined;code.value=`TP-${createUuid().slice(0,8).toUpperCase()}`;notes.value='';items.value=[blankItem()];message.value='托盘已保存，请录入下一托盘。';
+      position.value=nextPosition([...props.pallets,saved],areaId.value!,lane.value,area.value?.kind==='RACK'?rackStart(area.value.name):1,area.value?.kind==='RACK'?18:9999);customPosition.value=false;
+    }
+  }catch(e){message.value=errorMessage(e)}finally{busy.value=false}
 }
 </script>
 <template>
-  <form class="pallet-form" @submit.prevent="save">
+  <form class="pallet-form" @submit.prevent="save()">
     <header><div><span class="hint">{{pallet ? '库存与货位' : '现场录入'}}</span><h2>{{pallet ? '编辑 / 移位托盘' : '录入托盘'}}</h2></div><button class="btn btn-secondary" type="button" :disabled="busy" @click="cancel">关闭</button></header>
     <p v-if="message" class="error-text" role="alert">{{message}}</p>
     <fieldset :disabled="busy"><legend class="sr-only">托盘资料</legend>
@@ -71,31 +71,33 @@ async function save(){
         <div class="field"><label for="pallet-lane">{{area?.kind==='RACK'?'层位':'排位'}}</label><select id="pallet-lane" v-model="lane" class="select" required @change="suggestPosition"><option v-for="l in lanes" :key="l" :value="l">{{laneLabels[l]}}</option></select></div>
         <div class="field"><label for="pallet-position">位置序号</label><template v-if="area?.kind==='RACK'"><select v-if="!customPosition" id="pallet-position" v-model.number="position" class="select" required><option v-for="number in rackPositions" :key="number" :value="number">{{String(number).padStart(2,'0')}}</option></select><input v-else id="pallet-position" v-model.number="position" class="input" type="number" :min="positionStart" max="18" step="1" required><button class="text-button" type="button" @click="customPosition=!customPosition">{{customPosition?'从序号列表选择':'手动输入序号'}}</button></template><input v-else id="pallet-position" v-model.number="position" class="input" type="number" min="1" max="9999" step="1" required></div>
       </div>
-      <div v-if="nearbyAisles.length" class="nearby-aisles"><span class="hint">货在 {{area?.name}} 排旁边的过道？</span><button v-for="a in nearbyAisles" :key="a.id" class="btn btn-secondary" type="button" @click="areaId=a.id;changeArea()">选择 {{a.rackRow}} 排旁过道 · {{a.lanes}} 排</button></div>
       <p class="location-preview" :class="{conflict:occupied}">{{area?.kind==='RACK'?`${area.name}-${String(position).padStart(2,'0')}`:`${area?.name} / ${position} 号`}} / {{laneLabels[lane]}} <b v-if="occupied">· 已有托盘</b></p>
       <div v-if="occupiedPallet" class="append-warning" role="alert"><span>该位置已有托盘。一个托盘可以登记多种产品，是否继续追加到现有托盘？</span><button class="btn btn-danger" type="button" @click="appendToExisting">继续追加</button></div>
-      <p class="hint">AA、BB、CC、EE 排从 05 编至 18；FF、HH、KK、LL、RR、SS 排从 01 编至 18。可从建议序号中选择，也可直接填写。过道请始终朝同一方向分左右。</p>
+      <p class="hint">AA、BB、CC、EE 排从 05 编至 18；FF、HH、KK、LL、RR、SS 排从 01 编至 18。</p>
       <div class="section-head"><h3>托盘上的物料</h3><button class="btn btn-secondary" type="button" :disabled="items.length>=50" @click="items.push(blankItem())">＋ 添加物料</button></div>
-      <p class="hint">物料只需产品名称即可保存；照片、原料批号、批号和数量均可稍后补充。</p>
+      <p class="hint">每项物料都必须选择成品类型并填写产品名称；数量留空表示未知。</p>
       <section v-for="(item,index) in items" :key="item.key" class="stock-line">
         <div class="section-head"><b>物料 {{index+1}}</b><button v-if="items.length>1" type="button" class="btn btn-ghost" :aria-label="`移除物料 ${index+1}`" @click="items.splice(index,1)">移除</button></div>
-        <div class="entry-mode" role="group" :aria-label="`物料 ${index+1} 录入方式`"><button type="button" :aria-pressed="item.mode==='manual'" @click="item.mode='manual';changeMode(item)">手动输入名称</button><button type="button" :aria-pressed="item.mode==='catalog'" @click="item.mode='catalog'">选择已有产品</button></div>
-        <div v-if="item.mode==='manual'" class="field"><label :for="`stock-name-${item.key}`" class="required">产品名称</label><input :id="`stock-name-${item.key}`" v-model="item.productName" class="input" required maxlength="200" placeholder="直接填写，例如：备用外盒"></div>
-        <SearchPicker v-else v-model="item.productId" label="已有产品" placeholder="输入产品名称或物料编码" :load="searchProducts" :display="p=>`${p.name} · ${p.materialCode}`" @select="changedProduct(item)" />
-        <div class="item-photo"><label :for="`stock-photo-${item.key}`">产品照片（可选）</label><a v-if="item.photoUrl" :href="item.photoUrl" target="_blank" rel="noopener"><img :src="item.photoUrl" :alt="item.productName||'产品照片'"></a><input :id="`stock-photo-${item.key}`" type="file" accept="image/jpeg,image/png" @change="upload(item,$event)"><span class="hint">支持 JPG、PNG，可拍照或选取相册图片。</span><button v-if="item.photoId" class="btn btn-ghost" type="button" @click="item.photoId=null;item.photoUrl=null">移除照片</button></div>
-        <div class="field"><label :for="`stock-raw-batch-${item.key}`">原料批号（可选）</label><input :id="`stock-raw-batch-${item.key}`" v-model="item.rawMaterialBatch" class="input" maxlength="100" placeholder="填写原料批号"></div>
-        <div class="field"><label :for="`stock-batch-${item.key}`">批号</label><input :id="`stock-batch-${item.key}`" v-model="item.batch" class="input" maxlength="100" :list="`batches-${item.key}`" placeholder="填写实际批号；暂不清楚可留空"><datalist :id="`batches-${item.key}`"><option v-for="batch in product(item.productId)?.materialBatches" :key="batch" :value="batch"/></datalist></div>
-        <div v-if="item.mode==='manual'" class="grid-2"><div class="field"><label :for="`stock-code-${item.key}`">物料编码（可选）</label><input :id="`stock-code-${item.key}`" v-model="item.materialCode" class="input" maxlength="100"></div><div class="field"><label :for="`stock-unit-${item.key}`">单位（可选）</label><input :id="`stock-unit-${item.key}`" v-model="item.unit" class="input" maxlength="20" placeholder="例如：个、条、盒"></div></div>
-        <label class="check-row"><input v-model="item.finished" type="checkbox">成品</label>
-        <div class="grid-2"><div class="field"><label :for="`stock-cartons-${item.key}`">库存箱数（可选）</label><input :id="`stock-cartons-${item.key}`" v-model.number="item.cartons" class="input" type="number" min="0" max="2147483647" step="1"></div><div class="field"><label :for="`stock-capacity-${item.key}`">每箱数量{{item.unit?`（${item.unit}）`:''}}</label><input :id="`stock-capacity-${item.key}`" v-model.number="item.unitsPerCarton" class="input" type="number" min="1" max="2147483647" step="1" placeholder="液体等可按单位填写"></div></div>
-        <div class="grid-2"><div class="field"><label :for="`stock-boxes-${item.key}`">每箱盒数（可选）</label><input :id="`stock-boxes-${item.key}`" v-model.number="item.boxesPerCarton" class="input" type="number" min="1" max="2147483647" step="1"></div><div class="field"><label :for="`stock-units-box-${item.key}`">每盒数量（可选）</label><input :id="`stock-units-box-${item.key}`" v-model.number="item.unitsPerBox" class="input" type="number" min="1" max="2147483647" step="1"></div></div>
-        <div class="field"><label :for="`stock-quantity-${item.key}`">数量{{item.unit ? `（${item.unit}）` : ''}}</label><input :id="`stock-quantity-${item.key}`" v-model.number="item.quantity" class="input" type="number" min="1" max="9007199254740991" step="1" placeholder="留空 = 待盘点"></div>
+        <div class="finish-choice"><span class="field-label required">是否成品</span><div><label><input v-model="item.finished" type="radio" :name="`finished-${item.key}`" :value="true" required @change="setFinished(item,true)">是，成品</label><label><input v-model="item.finished" type="radio" :name="`finished-${item.key}`" :value="false" required @change="setFinished(item,false)">不是成品</label></div></div>
+        <template v-if="item.finished!==null">
+          <div class="entry-mode" role="group" :aria-label="`物料 ${index+1} 录入方式`"><button type="button" :aria-pressed="item.mode==='manual'" @click="item.mode='manual';changeMode(item)">手动输入名称</button><button type="button" :aria-pressed="item.mode==='catalog'" @click="item.mode='catalog'">选择已有产品</button></div>
+          <div v-if="item.mode==='manual'" class="field"><label :for="`stock-name-${item.key}`" class="required">产品名称</label><input :id="`stock-name-${item.key}`" v-model="item.productName" class="input" required maxlength="200" placeholder="填写产品名称"></div>
+          <SearchPicker v-else v-model="item.productId" label="产品名称（选择已有产品）" placeholder="输入产品名称或物料编码" :load="searchProducts" :display="p=>`${p.name} · ${p.materialCode}`" @select="changedProduct(item)" />
+          <template v-if="item.finished">
+            <div class="field"><label :for="`stock-batch-${item.key}`">BATCH（可选）</label><input :id="`stock-batch-${item.key}`" v-model="item.batch" class="input" maxlength="100" placeholder="填写 BATCH"></div>
+            <div class="field"><label :for="`stock-sku-${item.key}`">SKU（可选）</label><input :id="`stock-sku-${item.key}`" v-model="item.materialCode" class="input" maxlength="100" placeholder="填写 SKU"></div>
+          </template>
+          <template v-else>
+            <div class="field"><label :for="`stock-code-${item.key}`">物料编码（可选）</label><input :id="`stock-code-${item.key}`" v-model="item.materialCode" class="input" maxlength="100" placeholder="填写物料编码"></div>
+            <div class="field"><label :for="`stock-production-number-${item.key}`">生产编号（可选）</label><input :id="`stock-production-number-${item.key}`" v-model="item.productionNumber" class="input" maxlength="100" placeholder="填写生产编号"></div>
+            <div class="field"><label :for="`stock-material-batch-${item.key}`" class="material-batch-label">物料批次（可选）</label><input :id="`stock-material-batch-${item.key}`" v-model="item.rawMaterialBatch" class="input" maxlength="100" placeholder="填写物料批次"></div>
+          </template>
+          <div class="field"><label :for="`stock-quantity-${item.key}`">数量（可选）</label><input :id="`stock-quantity-${item.key}`" v-model.number="item.quantity" class="input" type="number" min="1" max="9007199254740991" step="1" placeholder="留空表示未知"></div>
+        </template>
       </section>
-      <p class="hint">可记录库存箱数、每箱容量以及盒装规格；液体等物料可只填写单位和每箱数量。</p>
       <div class="field"><label for="pallet-notes">备注</label><textarea id="pallet-notes" v-model="notes" class="textarea" maxlength="2000" placeholder="如：靠门一侧、待核对标签、零散尾箱"/></div>
-      <label v-if="!pallet" class="check-row"><input v-model="another" type="checkbox">保存后继续录下一托盘（保留库区与层位）</label>
     </fieldset>
-    <footer><button class="btn btn-secondary" type="button" :disabled="busy" @click="cancel">取消</button><button class="btn btn-primary" :disabled="busy||occupied">{{busy?'正在处理…':pallet?'保存修改':'保存托盘'}}</button></footer>
+    <footer><button class="btn btn-secondary" type="button" :disabled="busy" @click="cancel">取消</button><button v-if="!pallet" class="btn btn-secondary" type="button" :disabled="busy||occupied" @click="save(true)">{{busy?'正在处理…':'保存并录入下一托盘'}}</button><button class="btn btn-primary" :disabled="busy||occupied">{{busy?'正在处理…':pallet?'保存修改':'保存托盘'}}</button></footer>
   </form>
 </template>
 <style scoped>
@@ -103,5 +105,5 @@ async function save(){
 </style>
 <style scoped>
 .entry-mode{display:flex;gap:5px;background:#e9eef0;padding:4px;border-radius:8px}.entry-mode button{flex:1;min-height:40px;border:0;border-radius:5px;background:transparent;font-size:13px;cursor:pointer}.entry-mode button[aria-pressed=true]{background:white;color:var(--blue);font-weight:700}.item-photo{display:grid;gap:8px;font-size:13px}.item-photo input{max-width:100%;min-width:0}.item-photo img{display:block;width:120px;height:100px;object-fit:cover;border:1px solid var(--line);border-radius:8px}.item-photo .btn{justify-self:start}.nearby-aisles{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-.append-warning{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border:1px solid var(--red);border-radius:6px;color:var(--red);background:var(--soft-red);font-size:13px}.append-warning .btn{flex-shrink:0}@media(max-width:440px){.append-warning{align-items:flex-start;flex-direction:column}}
+.append-warning{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border:1px solid var(--red);border-radius:6px;color:var(--red);background:var(--soft-red);font-size:13px}.append-warning .btn{flex-shrink:0}.finish-choice{display:grid;gap:7px}.finish-choice>div{display:flex;flex-wrap:wrap;gap:10px}.finish-choice label{display:flex;align-items:center;gap:7px;min-height:44px;padding:7px 12px;border:1px solid var(--line);border-radius:6px;cursor:pointer}.finish-choice input{width:17px;height:17px;accent-color:var(--blue)}.material-batch-label{color:#8a5b00;background:#fff3c4;padding:2px 5px;border-radius:4px}@media(max-width:440px){.append-warning{align-items:flex-start;flex-direction:column}}
 </style>

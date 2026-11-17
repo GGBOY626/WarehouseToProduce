@@ -48,7 +48,7 @@ class AiInventoryTest {
     @Test void scopeIntersectionAndItemFiltersCannotLeakOtherPalletItems(){
         var rows=List.of(pallet(1,1,item("22344",12000L),item(2L,"外盒","BOX","B2",null,"个")),pallet(2,2,item("22344",8000L)),pallet(3,3,item("22344",500L)));
         var scope=new AiDtos.Scope("22344","","A",null,"",false,null);
-        assertThat(AiInventory.summarize(new Overview(areas,rows),scope,none).materials().getFirst().quantities).containsEntry("件","12500");
+        assertThat(AiInventory.summarize(new Overview(areas,rows),scope,none).materials().getFirst().quantities).containsEntry("件","12000");
         var forbidden=new AiDtos.Filters("","","B","","",null,false);
         assertThat(AiInventory.summarize(new Overview(areas,rows),scope,forbidden).materialCount()).isZero();
         var pending=new AiDtos.Filters("关节饮","","","","",null,true);

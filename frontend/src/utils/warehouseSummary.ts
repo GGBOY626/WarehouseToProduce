@@ -33,7 +33,7 @@ export function summarizeWarehouse(pallets: WarehousePallet[], areas: WarehouseA
   for (const p of scope) p.items.forEach((item, index) => {
     if (filters.unknownOnly && item.quantity != null) return;
     if (filters.hideFinished && item.finished) return;
-    if (query && ![item.productName, item.materialCode, item.batch, item.rawMaterialBatch, p.code, p.location, p.notes]
+    if (query && ![item.productName, item.materialCode, item.productionNumber, item.batch, item.rawMaterialBatch, p.code, p.location, p.notes]
       .some(value => value?.normalize('NFKC').toLocaleLowerCase().includes(query))) return;
     const name = item.productName.trim(), code = item.materialCode?.trim() || '';
     const candidates = code ? catalog.get(signature(item)) : undefined;

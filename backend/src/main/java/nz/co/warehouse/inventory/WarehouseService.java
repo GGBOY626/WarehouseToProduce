@@ -27,15 +27,17 @@ public class WarehouseService {
     }
     public record AreaResponse(Long id,String name,WarehouseArea.Kind kind,int lanes,long version,String rackRow) {}
     public record ItemRequest(Long productId,@Size(max=100) String batch,@Positive @Max(9007199254740991L) Long quantity,@PositiveOrZero Integer cartons,
-                              @Size(max=200) String productName,@Size(max=100) String materialCode,@Size(max=20) String unit,@Size(max=100) String rawMaterialBatch,Long photoId,
+                              @Size(max=200) String productName,@Size(max=100) String materialCode,@Size(max=100) String productionNumber,@Size(max=20) String unit,@Size(max=100) String rawMaterialBatch,Long photoId,
                               @Positive Integer unitsPerCarton,@Positive Integer boxesPerCarton,@Positive Integer unitsPerBox,boolean finished) {
-        public ItemRequest(Long productId,String batch,Long quantity,Integer cartons){this(productId,batch,quantity,cartons,null,null,null,null,null,null,null,null,false);}
-        public ItemRequest(Long productId,String batch,Long quantity,Integer cartons,String productName,String materialCode,String unit,String rawMaterialBatch,Long photoId){this(productId,batch,quantity,cartons,productName,materialCode,unit,rawMaterialBatch,photoId,null,null,null,false);}
+        public ItemRequest(Long productId,String batch,Long quantity,Integer cartons){this(productId,batch,quantity,cartons,null,null,null,null,null,null,null,null,null,false);}
+        public ItemRequest(Long productId,String batch,Long quantity,Integer cartons,String productName,String materialCode,String unit,String rawMaterialBatch,Long photoId){this(productId,batch,quantity,cartons,productName,materialCode,null,unit,rawMaterialBatch,photoId,null,null,null,false);}
     }
     public record SaveRequest(@NotBlank @Size(max=60) String code,@NotNull Long areaId,@NotBlank String lane,
                               @Min(1) @Max(9999) int position,@Size(max=2000) String notes,
                               @NotEmpty @Size(max=50) List<@Valid ItemRequest> items,@PositiveOrZero Long version) {}
-    public record ItemResponse(Long productId,String productName,String materialCode,String batch,String unit,Long quantity,Integer cartons,String rawMaterialBatch,Long photoId,String photoUrl,Integer unitsPerCarton,Integer boxesPerCarton,Integer unitsPerBox,boolean finished) {}
+    public record ItemResponse(Long productId,String productName,String materialCode,String productionNumber,String batch,String unit,Long quantity,Integer cartons,String rawMaterialBatch,Long photoId,String photoUrl,Integer unitsPerCarton,Integer boxesPerCarton,Integer unitsPerBox,boolean finished) {
+        public ItemResponse(Long productId,String productName,String materialCode,String batch,String unit,Long quantity,Integer cartons,String rawMaterialBatch,Long photoId,String photoUrl,Integer unitsPerCarton,Integer boxesPerCarton,Integer unitsPerBox,boolean finished){this(productId,productName,materialCode,null,batch,unit,quantity,cartons,rawMaterialBatch,photoId,photoUrl,unitsPerCarton,boxesPerCarton,unitsPerBox,finished);}
+    }
     public record PalletResponse(Long id,String code,Long areaId,String areaName,WarehouseArea.Kind kind,String lane,int position,
                                  String location,String notes,List<ItemResponse> items,long version,Instant createdAt,Instant updatedAt) {}
     public record Overview(List<AreaResponse> areas,List<PalletResponse> pallets) {}
@@ -102,7 +104,7 @@ public class WarehouseService {
                 if(blank(input.productName())==null)throw BusinessException.badRequest("PRODUCT_NAME_REQUIRED","请输入产品名称，或选择已有产品。");
                 i.setProductName(input.productName().trim());i.setMaterialCode(blank(input.materialCode()));i.setUnit(blank(input.unit()));
             }
-            i.setRawMaterialBatch(blank(input.rawMaterialBatch()));
+            i.setProductionNumber(blank(input.productionNumber()));i.setRawMaterialBatch(blank(input.rawMaterialBatch()));
             if(input.photoId()!=null)i.setPhoto(photos.retain(input.photoId()));
             i.setBatch(blank(input.batch()));i.setQuantity(input.quantity());i.setCartons(input.cartons());i.setUnitsPerCarton(input.unitsPerCarton());i.setBoxesPerCarton(input.boxesPerCarton());i.setUnitsPerBox(input.unitsPerBox());i.setFinished(input.finished());items.add(i);
         }
@@ -120,7 +122,7 @@ public class WarehouseService {
     private PalletResponse response(WarehousePallet p){
         var a=p.getArea();String lane=switch(p.getLane()){case "UPPER"->"上层";case "MIDDLE"->"中层";case "LOWER"->"下层";case "LEFT_1"->"左一";case "LEFT_2"->"左二";case "RIGHT_1"->"右一";default->"右二";};
         String location=a.getKind()==WarehouseArea.Kind.RACK?a.getName()+"-"+String.format("%02d",p.getPosition())+" / "+lane:(a.getRackRow()==null?"":a.getRackRow()+" 排旁 · ")+a.getName()+" / "+lane+" / "+String.format("%02d",p.getPosition());
-        return new PalletResponse(p.getId(),p.getCode(),a.getId(),a.getName(),a.getKind(),p.getLane(),p.getPosition(),location,p.getNotes(),p.getItems().stream().map(i->new ItemResponse(i.getProduct()==null?null:i.getProduct().canonicalId(),i.getProductName(),i.getMaterialCode(),i.getBatch(),i.getUnit(),i.getQuantity(),i.getCartons(),i.getRawMaterialBatch(),i.getPhoto()==null?null:i.getPhoto().getId(),WarehousePhotoService.url(i.getPhoto()==null?null:i.getPhoto().getId()),i.getUnitsPerCarton(),i.getBoxesPerCarton(),i.getUnitsPerBox(),i.isFinished())).toList(),p.getVersion(),p.getCreatedAt(),p.getUpdatedAt());
+        return new PalletResponse(p.getId(),p.getCode(),a.getId(),a.getName(),a.getKind(),p.getLane(),p.getPosition(),location,p.getNotes(),p.getItems().stream().map(i->new ItemResponse(i.getProduct()==null?null:i.getProduct().canonicalId(),i.getProductName(),i.getMaterialCode(),i.getProductionNumber(),i.getBatch(),i.getUnit(),i.getQuantity(),i.getCartons(),i.getRawMaterialBatch(),i.getPhoto()==null?null:i.getPhoto().getId(),WarehousePhotoService.url(i.getPhoto()==null?null:i.getPhoto().getId()),i.getUnitsPerCarton(),i.getBoxesPerCarton(),i.getUnitsPerBox(),i.isFinished())).toList(),p.getVersion(),p.getCreatedAt(),p.getUpdatedAt());
     }
     private void audit(WarehousePallet p,String action,String description,PalletResponse before,PalletResponse after){
         var e=new WarehouseEvent();if(p!=null){e.setPalletId(p.getId());e.setPalletCode(p.getCode());}e.setAction(action);e.setDescription(description);
