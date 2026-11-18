@@ -82,6 +82,15 @@ class ThirdPartyWarehouseIntegrationTest {
         assertThat(saved.items().getFirst().batch()).isEqualTo("BATCH-88");
         assertThat(saved.items().getFirst().quantity()).isEqualTo(42L);
     }
+    @Test void finishedStockDoesNotRequireProductionNumberWhenProductHasSeveral(){
+        String code="SKU-"+UUID.randomUUID();
+        Long finishedProduct=products.create(new ProductDtos.Request("成品-"+UUID.randomUUID(),code,code,"BATCH-OLD",
+            ProductUsage.PRODUCTION_TO_WAREHOUSE,null,"个",false,List.of(),List.of("BATCH-OLD","BATCH-88"),List.of(),List.of("P-001","P-002"),List.of(code))).id();
+        var item=new ThirdPartyWarehouseService.ItemRequest(finishedProduct,null,code,null,null,null,"BATCH-88",true,42L,null);
+        var saved=service.createStock(request("finished-multiple-numbers",null,item));
+        assertThat(saved.items().getFirst().batch()).isEqualTo("BATCH-88");
+        assertThat(saved.items().getFirst().productionNumber()).isNull();
+    }
     @Test void warehouseNumberIsUniqueWithinWarehouseAndRetainedAsText(){
         var stock=service.createStock(request(" 00123-A ",null,manual()));
         assertThat(stock.warehouseNumber()).isEqualTo("00123-A");

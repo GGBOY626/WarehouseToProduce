@@ -81,8 +81,8 @@ public class ThirdPartyWarehouseService {
                 var product=products.getForMovement(input.productId(),usage,true);
                 i.setProduct(product);i.setProductName(product.getName());
                 i.setMaterialCode(resolve(input.materialCode(),product.availableMaterialCodes(),"物料编码"));
-                i.setProductionNumber(resolve(input.productionNumber(),product.getProductionNumbers(),"生产编号"));
-                i.setMaterialBatch(resolve(input.materialBatch(),product.availableBatches(),"物料批次"));
+                i.setProductionNumber(Boolean.TRUE.equals(input.finished())?null:resolve(input.productionNumber(),product.getProductionNumbers(),"生产编号"));
+                i.setMaterialBatch(Boolean.TRUE.equals(input.finished())?null:resolve(input.materialBatch(),product.availableBatches(),"物料批次"));
                 i.setBatch(blank(input.batch()));
                 i.setUnit(blank(input.unit())==null?product.getBaseUnit():input.unit().trim());
             }else{
