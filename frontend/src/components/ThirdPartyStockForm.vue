@@ -19,7 +19,7 @@ const items=ref<DraftItem[]>(props.stock?.items.map(i=>({...blank(),...i,finishe
 const busy=ref(false),message=ref('');
 function setFinished(item:DraftItem,value:boolean){item.finished=value;item.productId=null;item.productName='';item.materialCode='';item.productionNumber='';item.materialBatch='';item.batch='';item.unit=''}
 async function searchProducts(query:string,item:DraftItem){return productsApi.search(query,true,item.finished?'PRODUCTION_TO_WAREHOUSE':'WAREHOUSE_TO_PRODUCTION')}
-function changedProduct(item:DraftItem,p?:Product){item.productName=p?.name||item.productName;item.unit=p?.baseUnit||'';const d=thirdPartyProductDefaults(p);item.productId=d.productId;item.materialCode=d.materialCode;item.materialBatch=d.materialBatch;item.productionNumber=d.productionNumber}
+function changedProduct(item:DraftItem,p?:Product){item.productName=p?.name||item.productName;item.unit=p?.baseUnit||'';const d=thirdPartyProductDefaults(p);item.productId=d.productId;item.materialCode=item.finished?p?.sku||'':d.materialCode;item.batch=item.finished?(p?.materialCodes?.length===1?p.materialCodes[0]:p?.materialCode||''):'';item.materialBatch=d.materialBatch;item.productionNumber=d.productionNumber}
 async function save(){
   if(busy.value)return;message.value='';
   if(!warehouseId.value||items.value.some(i=>i.finished===null||!i.productName.trim())){message.value='请选择第三方仓库，并为每项选择成品类型、填写产品名称。';return}
