@@ -12,6 +12,7 @@ import ProductionTaskOutput from "../components/ProductionTaskOutput.vue";
 import ProductionTaskTargets from "../components/ProductionTaskTargets.vue";
 import TaskMaterialHistory from "../components/TaskMaterialHistory.vue";
 import TaskFindingChecklist from "../components/TaskFindingChecklist.vue";
+import ProductionDailyReport from "../components/ProductionDailyReport.vue";
 import { showDateTime } from "../utils/time";
 const id=Number(useRoute().params.id), router=useRouter(), task=ref<ProductionTask>(), message=ref("");
 const photoLightbox=ref<InstanceType<typeof PhotoLightbox>>();
@@ -96,6 +97,7 @@ onBeforeUnmount(()=>{clearInterval(refreshTimer);window.removeEventListener('foc
         <ProductionTaskTargets :targets="task.targets" :completed="task.status==='COMPLETED'" interactive cards @select="showHistory($event)" />
       </section>
       </div>
+      <ProductionDailyReport v-if="!editing && task.output" :task-id="task.id" :product-name="task.output.productName" :authenticated="authenticated" />
       <p v-if="task.remarks" class="remark">{{ task.remarks }}</p>
       <details class="section movement-history"><summary class="section-head"><h2 class="section-title">关联流转记录</h2><span class="hint">{{ task.movements.length }} 单</span></summary>
         <div class="direction-switch" role="group" aria-label="流转方向">

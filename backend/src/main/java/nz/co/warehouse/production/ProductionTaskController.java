@@ -8,6 +8,7 @@ import java.util.List;
 @RestController @RequestMapping("/api/production-tasks") @RequiredArgsConstructor
 public class ProductionTaskController {
     private final ProductionTaskService service;
+    private final ProductionDailyReportService dailyReports;
     private final nz.co.warehouse.movement.MovementService movementService;
     @PostMapping("/linkable") public java.util.List<ProductionTaskService.LinkOption> linkableBatches(@jakarta.validation.Valid @RequestBody ProductionTaskService.LinkRequest r){return service.linkableBatches(r);}
     @GetMapping public List<ProductionTaskService.Response> list(@RequestParam(required=false) ProductionTask.Status status){return service.list(status);}
@@ -16,6 +17,8 @@ public class ProductionTaskController {
             @RequestParam List<Long> productIds,@RequestParam nz.co.warehouse.movement.MovementEnums.Direction direction,
             @RequestParam(defaultValue="false") boolean returnMovement){return service.linkable(productIds,direction,returnMovement);}
     @GetMapping("/{id}") public ProductionTaskService.Response detail(@PathVariable long id){return service.detail(id);}
+    @GetMapping("/{id}/daily-reports") public List<ProductionDailyReportService.Response> dailyReports(@PathVariable long id){return dailyReports.list(id);}
+    @PutMapping("/{id}/daily-reports") public ProductionDailyReportService.Response saveDailyReport(@PathVariable long id,@Valid @RequestBody ProductionDailyReportService.SaveRequest request){return dailyReports.save(id,request);}
     @PostMapping public ProductionTaskService.Response create(@Valid @RequestBody ProductionTaskService.SaveRequest r){return service.create(r);}
     @PostMapping("/preview") public ProductionTaskService.Response createPreview(@Valid @RequestBody ProductionTaskService.SaveRequest r){return service.createPreview(r);}
     @PutMapping("/{id}") public ProductionTaskService.Response update(@PathVariable long id,@Valid @RequestBody ProductionTaskService.SaveRequest r){return service.update(id,r);}

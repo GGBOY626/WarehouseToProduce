@@ -184,6 +184,10 @@ export interface ProductionTask {
   output?: ProductionTaskOutput;
   photos?: Photo[];
 }
+export interface ProductionDailyReport {
+  id: number; taskId: number; reportDate: string; productName: string;
+  groupACartons: number; groupBCartons: number; totalCartons: number; updatedAt: string;
+}
 export interface PackedQuantity { cartons: string; boxes: string; units: string; fraction: string | null; pallets: string | null; palletCartons: string | null }
 export interface FinishedReceiptForecast {
   status: 'READY' | 'NEEDS_CONFIGURATION' | 'NEEDS_REVIEW'; messages: string[];

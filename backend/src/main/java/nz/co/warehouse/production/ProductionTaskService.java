@@ -17,6 +17,7 @@ import java.util.*;
 @Service @RequiredArgsConstructor
 public class ProductionTaskService {
     private final ProductionTaskRepository tasks;
+    private final ProductionDailyReportRepository dailyReports;
     private final ProductionTaskPhotoRepository taskPhotos;
     private final ProductionTaskPhotoService taskPhotoService;
     private final MovementRepository movements;
@@ -285,12 +286,17 @@ public class ProductionTaskService {
         if((r.outputProductId()==null)!=(plannedOutput==null)||
                 (plannedOutput!=null&&plannedOutput<=0))
             throw BusinessException.badRequest("TASK_OUTPUT_INVALID","请同时填写成品产品及大于零的计划产量。");
-        // An output identity already used by receipts cannot be replaced: its history must remain meaningful.
-        if(editing&&t.getOutputProduct()!=null&&(!Objects.equals(t.getOutputProduct().canonicalId(),r.outputProductId())||t.getOutputBoxesPerCarton()!=null&&(!Objects.equals(t.getOutputBoxesPerCarton(),r.outputBoxesPerCarton())||!Objects.equals(t.getOutputUnitsPerBox(),r.outputUnitsPerBox())||t.getOutputQuantityBasis()!=r.outputQuantityBasis()||!Objects.equals(t.getPrimaryMaterial()==null?null:t.getPrimaryMaterial().canonicalId(),primary==null?null:primary.getId())))&&
+        // Keep the output identity stable once receipts or daily reports refer to it.
+        boolean outputChanged=!Objects.equals(t.getOutputProduct()==null?null:t.getOutputProduct().canonicalId(),r.outputProductId())||
+                t.getOutputBoxesPerCarton()!=null&&(!Objects.equals(t.getOutputBoxesPerCarton(),r.outputBoxesPerCarton())||
+                !Objects.equals(t.getOutputUnitsPerBox(),r.outputUnitsPerBox())||t.getOutputQuantityBasis()!=r.outputQuantityBasis()||
+                !Objects.equals(t.getPrimaryMaterial()==null?null:t.getPrimaryMaterial().canonicalId(),primary==null?null:primary.getId()));
+        boolean hasFinishedHistory=editing&&t.getOutputProduct()!=null&&(dailyReports.existsByTaskId(t.getId())||
                 movements.findByProductionTaskIdOrderByMovementTimeAsc(t.getId()).stream().anyMatch(m->
                     m.getDirection()==MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE&&!m.isReturnMovement()&&
-                    m.getItems().stream().anyMatch(i->i.getProduct().canonicalId().equals(t.getOutputProduct().canonicalId()))))
-            throw BusinessException.badRequest("TASK_OUTPUT_IN_USE","已有成品回仓记录，不能更换成品、包装换算或主料，请新建任务。");
+                    m.getItems().stream().anyMatch(i->i.getProduct().canonicalId().equals(t.getOutputProduct().canonicalId()))));
+        if(editing&&t.getOutputProduct()!=null&&outputChanged&&hasFinishedHistory)
+            throw BusinessException.badRequest("TASK_OUTPUT_IN_USE","已有成品回仓记录或生产日报，不能更换成品、包装换算或主料，请新建任务。");
         Product output=r.outputProductId()==null?null:products.getForMovement(r.outputProductId(),ProductUsage.PRODUCTION_TO_WAREHOUSE,
                 editing&&t.getOutputProduct()!=null&&t.getOutputProduct().canonicalId().equals(r.outputProductId()));
         if(output!=null&&output.isQuantityUnknown())throw BusinessException.badRequest("TASK_OUTPUT_UNIT_REQUIRED","成品产品须设置明确的数量单位。");

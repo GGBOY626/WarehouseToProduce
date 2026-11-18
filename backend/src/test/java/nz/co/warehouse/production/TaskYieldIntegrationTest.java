@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.*;
 @Sql(statements="CREATE TABLE IF NOT EXISTS movement_daily_sequence (sequence_date DATE PRIMARY KEY, next_value INT NOT NULL)")
 class TaskYieldIntegrationTest {
     @Autowired ProductionTaskService tasks;
+    @Autowired ProductionDailyReportService dailyReports;
     @Autowired MovementService movements;
     @Autowired ProductService products;
     @Autowired PersonService persons;
@@ -66,6 +67,41 @@ class TaskYieldIntegrationTest {
         var voided=move(null,raw,"22677",100,false);
         historicalVoid(voided.id(),"test");
         assertThatThrownBy(()->movements.linkTask(voided.id(),task.id()));
+    }
+    @Test void dailyReportStoresExactGroupCartonsAndUpdatesOneEntryPerTaskAndDate() throws Exception {
+        var task=tasks.create(plan(20000,1,ProductionTask.OutputQuantityBasis.UNIT));
+        var date=LocalDate.of(2026,11,18);
+        var first=dailyReports.save(task.id(),new ProductionDailyReportService.SaveRequest(date,3L,5L));
+        assertThat(first.productName()).isEqualTo(task.output().productName());
+        assertThat(first.totalCartons()).isEqualTo(8L);
+        var corrected=dailyReports.save(task.id(),new ProductionDailyReportService.SaveRequest(date,2L,0L));
+        assertThat(corrected.id()).isEqualTo(first.id());
+        assertThat(corrected.groupACartons()).isEqualTo(2L);
+        assertThat(corrected.groupBCartons()).isZero();
+        dailyReports.save(task.id(),new ProductionDailyReportService.SaveRequest(date.plusDays(1),1L,4L));
+        assertThat(dailyReports.list(task.id())).extracting(ProductionDailyReportService.Response::reportDate)
+            .containsExactly(date.plusDays(1),date);
+
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put("/api/production-tasks/"+task.id()+"/daily-reports")
+                .contentType("application/json").content("{\"reportDate\":\"2026-11-18\",\"groupACartons\":-1,\"groupBCartons\":0}"))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isUnauthorized());
+        var session=new org.springframework.mock.web.MockHttpSession();
+        session.setAttribute(nz.co.warehouse.auth.AuthController.AUTH_SESSION_KEY,true);
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put("/api/production-tasks/"+task.id()+"/daily-reports")
+                .session(session).contentType("application/json").content("{\"reportDate\":\"2026-11-18\",\"groupACartons\":-1,\"groupBCartons\":0}"))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isBadRequest());
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put("/api/production-tasks/"+task.id()+"/daily-reports")
+                .session(session).contentType("application/json").content("{\"reportDate\":\"2026-11-18\",\"groupACartons\":2,\"groupBCartons\":0}"))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.totalCartons").value(2));
+
+        var differentOutput=product(ProductUsage.PRODUCTION_TO_WAREHOUSE,"盒");
+        var changedPlan=new ProductionTaskService.SaveRequest(null,null,task.plannedDate(),task.batchNo(),null,
+            List.of(new ProductionTaskService.TargetRequest(raw,20000),new ProductionTaskService.TargetRequest(inner,5000)),
+            differentOutput,task.output().targetQuantity(),task.name(),null,28,1,ProductionTask.OutputQuantityBasis.UNIT,raw);
+        assertThatThrownBy(()->tasks.update(task.id(),changedPlan)).hasMessageContaining("已有成品回仓记录");
+        tasks.delete(task.id());
+        assertThatThrownBy(()->dailyReports.list(task.id())).hasMessageContaining("找不到该生产任务");
     }
     @Test void quickLinkEndpointRequiresLogin() throws Exception {
         var task=tasks.create(plan(20000,1,ProductionTask.OutputQuantityBasis.UNIT));
