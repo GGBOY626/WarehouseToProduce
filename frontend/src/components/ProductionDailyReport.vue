@@ -6,6 +6,7 @@ import { today } from '../utils/time';
 import type { ProductionDailyReport } from '../types';
 
 const props=defineProps<{taskId:number;productName:string;authenticated:boolean}>();
+const idPrefix=`daily-report-fields-${props.taskId}`;
 const reports=ref<ProductionDailyReport[]>([]),reportDate=ref(today());
 const groupA=ref<number|''>(0),groupB=ref<number|''>(0);
 const loading=ref(false),saving=ref(false),notice=ref(''),error=ref('');
@@ -37,12 +38,12 @@ async function save(){
 onMounted(load);
 </script>
 <template>
-  <section class="daily-report section" aria-labelledby="daily-report-title">
-    <header class="section-head"><div><h2 id="daily-report-title" class="section-title">生产日报</h2><p class="hint">{{productName}} · 按实际生产箱数记录</p></div></header>
+  <section class="daily-report section" :aria-labelledby="`${idPrefix}-title`">
+    <header class="section-head"><div><h2 :id="`${idPrefix}-title`" class="section-title">生产日报</h2><p class="hint">{{productName}} · 按实际生产箱数记录</p></div></header>
     <form class="report-form" @submit.prevent="save">
-      <div class="field"><label for="daily-report-date">生产日期</label><input id="daily-report-date" v-model="reportDate" class="input" type="date" required :disabled="loading||saving" /></div>
-      <div class="field"><label for="daily-report-group-a">A组产量（箱）</label><input id="daily-report-group-a" v-model.number="groupA" class="input mono" type="number" min="0" max="9007199254740991" step="1" inputmode="numeric" required :disabled="loading||saving||!authenticated" /></div>
-      <div class="field"><label for="daily-report-group-b">B组产量（箱）</label><input id="daily-report-group-b" v-model.number="groupB" class="input mono" type="number" min="0" max="9007199254740991" step="1" inputmode="numeric" required :disabled="loading||saving||!authenticated" /></div>
+      <div class="field"><label :for="`${idPrefix}-date`">生产日期</label><input :id="`${idPrefix}-date`" v-model="reportDate" class="input" type="date" required :disabled="loading||saving" /></div>
+      <div class="field"><label :for="`${idPrefix}-group-a`">A组产量（箱）</label><input :id="`${idPrefix}-group-a`" v-model.number="groupA" class="input mono" type="number" min="0" max="9007199254740991" step="1" inputmode="numeric" required :disabled="loading||saving||!authenticated" /></div>
+      <div class="field"><label :for="`${idPrefix}-group-b`">B组产量（箱）</label><input :id="`${idPrefix}-group-b`" v-model.number="groupB" class="input mono" type="number" min="0" max="9007199254740991" step="1" inputmode="numeric" required :disabled="loading||saving||!authenticated" /></div>
       <button v-if="authenticated" class="btn btn-primary" :disabled="loading||saving||groupA===''||groupB===''">{{saving?'正在保存…':'保存日报'}}</button>
     </form>
     <p v-if="notice" class="notice" role="status">{{notice}}</p>

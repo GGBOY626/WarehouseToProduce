@@ -63,7 +63,7 @@ onBeforeUnmount(() => { mounted=false; clearInterval(refreshTimer); window.remov
         <ProductionTaskPreview v-for="task in previews" :key="task.id" :task="task" :authenticated="authenticated" @saved="previewSaved" @editing="previewEditing(task.id, $event)" />
       </div>
       <div v-else class="task-list">
-        <ProductionTaskCard v-for="task in group.tasks" :key="task.id" :task="task" :expanded="expandedTaskIds.includes(task.id)" @toggle="toggleShortages(task.id)" />
+        <ProductionTaskCard v-for="task in group.tasks" :key="task.id" :task="task" :expanded="expandedTaskIds.includes(task.id)" :authenticated="authenticated" @toggle="toggleShortages(task.id)" />
       </div>
     </section>
   </div>

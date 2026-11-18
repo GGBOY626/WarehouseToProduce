@@ -5,8 +5,9 @@ import { taskWarnings } from '../utils/taskAttention';
 import FinishedReceiptSummary from './FinishedReceiptSummary.vue';
 import { taskIssuedMaterials } from '../utils/taskIssuedMaterials';
 import PhotoLightbox from './PhotoLightbox.vue';
+import ProductionDailyReport from './ProductionDailyReport.vue';
 
-const props = defineProps<{ task: ProductionTask; expanded: boolean }>();
+const props = defineProps<{ task: ProductionTask; expanded: boolean; authenticated: boolean }>();
 const emit = defineEmits<{ toggle: [] }>();
 const labels: Record<ProductionTaskStatus, string> = {
   PREVIEW: '任务预告', PREPARING: '进行中', IN_PROGRESS: '进行中', COMPLETED: '已完成', CANCELLED: '已取消',
@@ -91,6 +92,9 @@ const photoLightbox = ref<InstanceType<typeof PhotoLightbox>>();
       </button>
     </section>
     <ul v-if="warnings.length" class="task-warnings" aria-label="其他需关注事项"><li v-for="warning in warnings" :key="warning"><span aria-hidden="true">!</span>{{ warning }}</li></ul>
+    <div v-if="task.output" :id="`daily-report-${task.id}`" class="daily-report-area" @click.stop>
+      <ProductionDailyReport :task-id="task.id" :product-name="task.output.productName" :authenticated="authenticated" />
+    </div>
     <PhotoLightbox ref="photoLightbox" :photos="task.photos || []" />
   </article>
 </template>
@@ -109,6 +113,7 @@ const photoLightbox = ref<InstanceType<typeof PhotoLightbox>>();
 .task-heading h3{margin:0;min-width:0;font-family:"Microsoft YaHei UI","PingFang SC",sans-serif;font-size:18px;font-weight:700;line-height:1.5;overflow-wrap:anywhere;text-wrap:pretty}
 .task-card-link{position:absolute;inset:0;z-index:1;border-radius:var(--radius);touch-action:manipulation}
 .task-card-link:focus-visible{outline:3px solid var(--blue2);outline-offset:3px}
+.daily-report-area{position:relative;z-index:2;margin-top:18px;padding-top:16px;border-top:1px solid var(--line)}
 .task-heading-end{display:flex;align-items:center;gap:14px;flex-shrink:0;padding-top:2px}
 .task-status{padding:4px 10px;border-radius:6px;font-size:12px;font-weight:650;line-height:1.5;color:var(--blue);background:var(--soft-blue);white-space:nowrap}
 .task-status.completed{color:var(--green);background:var(--soft-green)}
