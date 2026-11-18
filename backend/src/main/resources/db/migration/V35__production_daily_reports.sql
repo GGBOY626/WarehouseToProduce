@@ -1,9 +1,9 @@
 CREATE TABLE production_daily_report (
-    id BIGINT NOT NULL AUTO_INCREMENT,
-    production_task_id BIGINT NOT NULL,
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    production_task_id BIGINT UNSIGNED NOT NULL,
     report_date DATE NOT NULL,
-    group_a_cartons BIGINT NOT NULL,
-    group_b_cartons BIGINT NOT NULL,
+    group_a_cartons BIGINT UNSIGNED NOT NULL,
+    group_b_cartons BIGINT UNSIGNED NOT NULL,
     created_at TIMESTAMP NOT NULL,
     updated_at TIMESTAMP NOT NULL,
     PRIMARY KEY (id),
