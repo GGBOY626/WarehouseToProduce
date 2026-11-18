@@ -191,7 +191,7 @@ async function save(asPreview = false) {
         <button type="button" class="btn btn-secondary" :disabled="form.targets.length === 1" :aria-label="`移除物料 ${index + 1}`" @click="form.targets.splice(index, 1)">移除</button>
       </div>
       <button type="button" class="btn btn-secondary" @click="form.targets.push(newTarget())">＋ 添加所需物料</button>
-      <label class="output-choice"><input type="checkbox" v-model="outputEnabled" :disabled="hasReceipts" /> 关联出货物料（车间 → 仓库，可稍后设置）</label>
+      <label class="output-choice"><input type="checkbox" v-model="outputEnabled" :disabled="hasReceipts" /> 关联成品（车间 → 仓库，可稍后设置）</label>
       <div v-if="outputEnabled" class="output-plan">
         <fieldset :disabled="hasReceipts">
           <SearchPicker v-model="outputProductId" label="出货物料 / 成品" placeholder="选择车间送回仓库的物料" :load="loadOutputs" :display="p => `${p.name} · ${p.materialCode}`" @select="selectOutput" />
