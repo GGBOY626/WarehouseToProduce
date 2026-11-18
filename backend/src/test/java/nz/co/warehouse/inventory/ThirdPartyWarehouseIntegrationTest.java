@@ -31,11 +31,11 @@ class ThirdPartyWarehouseIntegrationTest {
         String code="M-"+UUID.randomUUID();
         return products.create(new ProductDtos.Request("原料-"+UUID.randomUUID(),code,null,"B-001",direction,null,"条",false,List.of(),multiple?List.of("B-002"):List.of(),List.of(),multiple?List.of("P-001","P-002"):List.of("P-001"),multiple?List.of(code,"M-SECOND"):List.of(code))).id();
     }
-    ThirdPartyWarehouseService.ItemRequest manual(){return new ThirdPartyWarehouseService.ItemRequest(null,"直接放外仓的货","MANUAL-CODE","MANUAL-P","MANUAL-B","条",null,3);}
+    ThirdPartyWarehouseService.ItemRequest manual(){return new ThirdPartyWarehouseService.ItemRequest(null,"直接放外仓的货","MANUAL-CODE","MANUAL-P","MANUAL-B","条",null,false,null,3);}
     ThirdPartyWarehouseService.StockRequest request(String number,Long version,ThirdPartyWarehouseService.ItemRequest... items){
         return new ThirdPartyWarehouseService.StockRequest(warehouse.id(),number,"直接存放或已发往外仓",List.of(items),version);
     }
-    ThirdPartyWarehouseService.ItemRequest linked(Long productId){return new ThirdPartyWarehouseService.ItemRequest(productId,null,null,null,null,null,100L,2);}
+    ThirdPartyWarehouseService.ItemRequest linked(Long productId){return new ThirdPartyWarehouseService.ItemRequest(productId,null,null,null,null,null,null,false,100L,2);}
     @Test void thirdPartyWarehouseWritesArePublic() throws Exception {
         mvc.perform(get(BASE)).andExpect(status().isOk());
         var created=mvc.perform(post(BASE+"/warehouses").contentType("application/json").content(json.writeValueAsString(new ThirdPartyWarehouseService.WarehouseRequest("Public warehouse","Area 1",null))))
@@ -69,10 +69,18 @@ class ThirdPartyWarehouseIntegrationTest {
         Long wrong=product(ProductUsage.PRODUCTION_TO_WAREHOUSE,false),multiple=product(ProductUsage.WAREHOUSE_TO_PRODUCTION,true);
         assertThatThrownBy(()->service.createStock(request("wrong",null,linked(wrong)))).hasMessageContaining("不适用于");
         assertThatThrownBy(()->service.createStock(request("multiple",null,linked(multiple)))).hasMessageContaining("多个物料编码");
-        var selected=new ThirdPartyWarehouseService.ItemRequest(multiple,null,"M-SECOND","P-002","B-002","条",50L,null);
+        var selected=new ThirdPartyWarehouseService.ItemRequest(multiple,null,"M-SECOND","P-002","B-002","条",null,false,50L,null);
         var stock=service.createStock(request("multiple",null,selected));
         assertThat(stock.items().getFirst().productionNumber()).isEqualTo("P-002");
         assertThat(stock.items().getFirst().materialBatch()).isEqualTo("B-002");
+    }
+    @Test void finishedStockStoresBatchAndUsesFinishedProductDirection(){
+        Long finishedProduct=product(ProductUsage.PRODUCTION_TO_WAREHOUSE,false);
+        var item=new ThirdPartyWarehouseService.ItemRequest(finishedProduct,null,null,null,null,null,"BATCH-88",true,42L,null);
+        var saved=service.createStock(request("finished",null,item));
+        assertThat(saved.items().getFirst().finished()).isTrue();
+        assertThat(saved.items().getFirst().batch()).isEqualTo("BATCH-88");
+        assertThat(saved.items().getFirst().quantity()).isEqualTo(42L);
     }
     @Test void warehouseNumberIsUniqueWithinWarehouseAndRetainedAsText(){
         var stock=service.createStock(request(" 00123-A ",null,manual()));
@@ -81,9 +89,13 @@ class ThirdPartyWarehouseIntegrationTest {
         var second=service.createWarehouse(new ThirdPartyWarehouseService.WarehouseRequest("另一个仓库","南区",null));
         assertThat(service.createStock(new ThirdPartyWarehouseService.StockRequest(second.id(),"00123-A",null,List.of(manual()),null)).warehouseId()).isEqualTo(second.id());
     }
+    @Test void warehouseNumberCanBeOmitted(){
+        var saved=service.createStock(request(" ",null,manual()));
+        assertThat(saved.warehouseNumber()).isNull();
+    }
     @Test void stockOnlyEditsAdvanceVersionAndKeepAuditSnapshots(){
         var stock=service.createStock(request("OLD-001",null,manual()));
-        var changed=new ThirdPartyWarehouseService.ItemRequest(null,"直接放外仓的货","NEW-CODE","NEW-P","NEW-B","条",99L,1);
+        var changed=new ThirdPartyWarehouseService.ItemRequest(null,"直接放外仓的货","NEW-CODE","NEW-P","NEW-B","条",null,false,99L,1);
         var edited=service.updateStock(stock.id(),request(stock.warehouseNumber(),stock.version(),changed));
         assertThat(edited.version()).isGreaterThan(stock.version());
         assertThatThrownBy(()->service.updateStock(stock.id(),request("stale",stock.version(),manual()))).hasMessageContaining("已被更新");
@@ -104,13 +116,12 @@ class ThirdPartyWarehouseIntegrationTest {
         assertThat(service.overview().stocks()).anySatisfy(s->{assertThat(s.id()).isEqualTo(stock.id());assertThat(s.warehouseLocation()).isEqualTo("新区");});
         service.deleteStock(stock.id(),stock.version());service.deleteWarehouse(warehouse.id(),edited.version());
     }
-    @Test void validatesRequiredNumberNamesCountsAndItemLimit() throws Exception {
+    @Test void validatesRequiredNamesCountsAndItemLimit() throws Exception {
         for(Object input:List.of(
-            request(" ",null,manual()),
             request("empty",null),
-            request("no-name",null,new ThirdPartyWarehouseService.ItemRequest(null," ",null,null,null,null,null,null)),
-            request("negative",null,new ThirdPartyWarehouseService.ItemRequest(null,"货",null,null,null,null,-1L,0)),
-            request("overflow",null,new ThirdPartyWarehouseService.ItemRequest(null,"货",null,null,null,null,9007199254740992L,0)),
+            request("no-name",null,new ThirdPartyWarehouseService.ItemRequest(null," ",null,null,null,null,null,false,null,null)),
+            request("negative",null,new ThirdPartyWarehouseService.ItemRequest(null,"货",null,null,null,null,null,false,-1L,0)),
+            request("overflow",null,new ThirdPartyWarehouseService.ItemRequest(null,"货",null,null,null,null,null,false,9007199254740992L,0)),
             new ThirdPartyWarehouseService.StockRequest(warehouse.id(),"too-many",null,Collections.nCopies(51,manual()),null)
         )){
             mvc.perform(post(BASE+"/stocks").session(session()).contentType("application/json").content(json.writeValueAsString(input))).andExpect(status().isBadRequest());

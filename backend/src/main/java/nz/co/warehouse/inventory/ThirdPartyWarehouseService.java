@@ -25,10 +25,11 @@ public class ThirdPartyWarehouseService {
     public record WarehouseResponse(Long id,String name,String location,long version) {}
     public record ItemRequest(Long productId,@Size(max=200) String productName,@Size(max=100) String materialCode,
                               @Size(max=100) String productionNumber,@Size(max=100) String materialBatch,@Size(max=20) String unit,
+                              @Size(max=100) String batch,Boolean finished,
                               @Positive @Max(9007199254740991L) Long quantity,@PositiveOrZero Integer cartons) {}
-    public record StockRequest(@NotNull Long warehouseId,@NotBlank @Size(max=100) String warehouseNumber,
+    public record StockRequest(@NotNull Long warehouseId,@Size(max=100) String warehouseNumber,
                                @Size(max=2000) String notes,@NotEmpty @Size(max=50) List<@NotNull @Valid ItemRequest> items,@PositiveOrZero Long version) {}
-    public record ItemResponse(Long productId,String productName,String materialCode,String productionNumber,String materialBatch,String unit,Long quantity,Integer cartons) {}
+    public record ItemResponse(Long productId,String productName,String materialCode,String productionNumber,String materialBatch,String unit,String batch,Boolean finished,Long quantity,Integer cartons) {}
     public record StockResponse(Long id,Long warehouseId,String warehouseName,String warehouseLocation,String warehouseNumber,
                                 String notes,List<ItemResponse> items,long version,Instant createdAt,Instant updatedAt) {}
     public record Overview(List<WarehouseResponse> warehouses,List<StockResponse> stocks) {}
@@ -69,24 +70,28 @@ public class ThirdPartyWarehouseService {
         audit("EXT_STOCK_DELETE","移除第三方库存 · "+before.warehouseName()+" · 仓库号 "+before.warehouseNumber(),before,null);stocks.delete(stock);stocks.flush();
     }
     private void apply(ThirdPartyStock stock,StockRequest r){
-        var w=warehouse(r.warehouseId());String number=r.warehouseNumber().trim();
-        if(stocks.existsByWarehouseIdAndWarehouseNumberIgnoreCaseAndIdNot(w.getId(),number,stock.getId()==null?-1:stock.getId()))
+        var w=warehouse(r.warehouseId());String number=blank(r.warehouseNumber());
+        if(number!=null&&stocks.existsByWarehouseIdAndWarehouseNumberIgnoreCaseAndIdNot(w.getId(),number,stock.getId()==null?-1:stock.getId()))
             throw conflict("WAREHOUSE_NUMBER_EXISTS","此第三方仓库已存在该仓库号，请编辑原记录添加物料。");
         var items=new ArrayList<ThirdPartyStock.Item>();
         for(var input:r.items()){
             var i=new ThirdPartyStock.Item();i.setStock(stock);
             if(input.productId()!=null){
-                var product=products.getForMovement(input.productId(),ProductUsage.WAREHOUSE_TO_PRODUCTION,true);
+                var usage=Boolean.TRUE.equals(input.finished())?ProductUsage.PRODUCTION_TO_WAREHOUSE:ProductUsage.WAREHOUSE_TO_PRODUCTION;
+                var product=products.getForMovement(input.productId(),usage,true);
                 i.setProduct(product);i.setProductName(product.getName());
                 i.setMaterialCode(resolve(input.materialCode(),product.availableMaterialCodes(),"物料编码"));
                 i.setProductionNumber(resolve(input.productionNumber(),product.getProductionNumbers(),"生产编号"));
                 i.setMaterialBatch(resolve(input.materialBatch(),product.availableBatches(),"物料批次"));
+                i.setBatch(blank(input.batch()));
                 i.setUnit(blank(input.unit())==null?product.getBaseUnit():input.unit().trim());
             }else{
                 if(blank(input.productName())==null)throw BusinessException.badRequest("PRODUCT_NAME_REQUIRED","请填写产品名称，或搜索并选择已有产品。");
                 i.setProductName(input.productName().trim());i.setMaterialCode(blank(input.materialCode()));
                 i.setProductionNumber(blank(input.productionNumber()));i.setMaterialBatch(blank(input.materialBatch()));i.setUnit(blank(input.unit()));
+                i.setBatch(blank(input.batch()));
             }
+            i.setFinished(input.finished());
             i.setQuantity(input.quantity());i.setCartons(input.cartons());items.add(i);
         }
         stock.setWarehouse(w);stock.setWarehouseNumber(number);stock.setNotes(blank(r.notes()));stock.getItems().clear();stock.getItems().addAll(items);
@@ -104,7 +109,7 @@ public class ThirdPartyWarehouseService {
     private WarehouseResponse response(ThirdPartyWarehouse w){return new WarehouseResponse(w.getId(),w.getName(),w.getLocation(),w.getVersion());}
     private StockResponse response(ThirdPartyStock stock){
         var w=stock.getWarehouse();return new StockResponse(stock.getId(),w.getId(),w.getName(),w.getLocation(),stock.getWarehouseNumber(),stock.getNotes(),
-            stock.getItems().stream().map(i->new ItemResponse(i.getProduct()==null?null:i.getProduct().canonicalId(),i.getProductName(),i.getMaterialCode(),i.getProductionNumber(),i.getMaterialBatch(),i.getUnit(),i.getQuantity(),i.getCartons())).toList(),
+            stock.getItems().stream().map(i->new ItemResponse(i.getProduct()==null?null:i.getProduct().canonicalId(),i.getProductName(),i.getMaterialCode(),i.getProductionNumber(),i.getMaterialBatch(),i.getUnit(),i.getBatch(),i.getFinished(),i.getQuantity(),i.getCartons())).toList(),
             stock.getVersion(),stock.getCreatedAt(),stock.getUpdatedAt());
     }
     private void audit(String action,String description,Object before,Object after){

@@ -26,6 +26,6 @@ export function filterThirdPartyStocks(stocks:ThirdPartyStock[],query:string,war
   const q=normalize(query);
   return stocks.filter(s=>(warehouseId===undefined||s.warehouseId===warehouseId)&&(!q||normalize([
     s.warehouseNumber,s.warehouseName,s.warehouseLocation,s.notes,
-    ...s.items.flatMap(i=>[i.productName,i.materialCode,i.productionNumber,i.materialBatch])
+    ...s.items.flatMap(i=>[i.productName,i.materialCode,i.productionNumber,i.materialBatch,i.batch])
   ].filter(Boolean).join(' ')).includes(q)));
 }
