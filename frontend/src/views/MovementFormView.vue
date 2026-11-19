@@ -208,12 +208,13 @@ function setTailBoxes(item: ItemInput, event: Event) {
 }
 watch(selectedTask, task => {
   if (!task || !isNewFinishedReceipt.value) return;
-  for (const item of draft.value.items) if (!item.id && item.productId === task.outputProductId && task.outputCartonUnits) {
-    item.unitsPerCarton = task.outputCartonUnits;
-    quantityChanged(item);
+  for (const item of draft.value.items) if (!item.id && item.productId === task.outputProductId) {
+    item.materialBatch = task.productBatch || '';
+    if(task.outputCartonUnits){item.unitsPerCarton = task.outputCartonUnits;quantityChanged(item)}
   }
 });
 function itemSelection(item: ItemInput) {
+  if(isNewFinishedReceipt.value)return undefined;
   const task = selectedTask.value;
   return isFinishedReceipt.value ? task?.output?.productId === item.productId ? task?.output : undefined : task?.targets?.find(target => target.productId === item.productId);
 }
@@ -287,11 +288,11 @@ function selectProduct(item: ItemInput, p?: Product) {
   item.tailCountTouched = false;
   item.tailSectionOpen = false;
   applyBoxPacking(item,initialBoxPacking(p));
-  item.batchNo = (p?.materialCodes?.length || 0) > 1 ? "" : p?.materialCode || "";
+  item.batchNo = isNewFinishedReceipt.value ? "" : (p?.materialCodes?.length || 0) > 1 ? "" : p?.materialCode || "";
   item.sku = p?.sku || "";
-  const batches = isFinishedReceipt.value ? (p?.productionNumbers || []) : (p?.materialBatches || (p?.materialBatch ? [p.materialBatch] : []));
+  const batches = isNewFinishedReceipt.value ? (selectedTask.value?.productBatch ? [selectedTask.value.productBatch] : []) : isFinishedReceipt.value ? (p?.productionNumbers || []) : (p?.materialBatches || (p?.materialBatch ? [p.materialBatch] : []));
   item.materialBatch = batches.length === 1 ? batches[0] : "";
-  const numbers = p?.productionNumbers || [];
+  const numbers = isNewFinishedReceipt.value ? [] : p?.productionNumbers || [];
   item.productionNumber = numbers.length === 1 ? numbers[0] : "";
   item.manualTotal = false;
   item.quantityUnknown = isNewFinishedReceipt.value ? false : !!p?.quantityUnknown;
@@ -358,8 +359,8 @@ function validate() {
     if (invalidQuantity) return `产品明细 ${i + 1}：${invalidQuantity}`;
     if (!x.productId) return `请选择产品明细 ${i + 1} 的产品。`;
     if ((!isNewFinishedReceipt.value && needsMaterialBatch.value || itemOptions(x).materialBatches.length > 1 || !!itemSelection(x)?.materialBatches?.length) && !x.materialBatch?.trim()) return `请选择产品明细 ${i + 1} 的具体物料批次。`;
-    if (itemOptions(x).productionNumbers.length > 1 && !x.productionNumber?.trim() && !x.id) return `请选择产品明细 ${i + 1} 的具体生产编号。`;
-    if (!x.batchNo.trim()) return `请填写产品明细 ${i + 1} 的物料编码。`;
+    if (!isNewFinishedReceipt.value && itemOptions(x).productionNumbers.length > 1 && !x.productionNumber?.trim() && !x.id) return `请选择产品明细 ${i + 1} 的具体生产编号。`;
+    if (!isNewFinishedReceipt.value && !x.batchNo.trim()) return `请填写产品明细 ${i + 1} 的物料编码。`;
     if (
       !quantity.quantityUnknown &&
       quantity.fullCartons <= 0 &&
@@ -649,18 +650,18 @@ onBeforeUnmount(() => {
           <SearchPicker
             v-model="item.productId"
             label="产品"
-            :placeholder="isNewFinishedReceipt ? '输入产品名或物料编码' : '输入产品名、物料编码或物料批次'"
+            :placeholder="isNewFinishedReceipt ? '输入成品名称或 SKU' : '输入产品名、物料编码或物料批次'"
             :load="(q) => loadProductChoices(q, item)"
             @select="(p) => selectProduct(item, p)"
           >
             <template #default="{ item: product }">
               <span class="product-option-name">{{ product.name }}</span>
-              <span class="product-option-meta">{{ (product.materialCodes?.length?product.materialCodes:[product.materialCode]).join(' / ') }} · {{ product.movementDirection === 'WAREHOUSE_TO_PRODUCTION' ? '物料' : product.movementDirection === 'PRODUCTION_TO_WAREHOUSE' ? '成品' : '未分类' }}</span>
+              <span v-if="!isNewFinishedReceipt" class="product-option-meta">{{ (product.materialCodes?.length?product.materialCodes:[product.materialCode]).join(' / ') }} · {{ product.movementDirection === 'WAREHOUSE_TO_PRODUCTION' ? '物料' : product.movementDirection === 'PRODUCTION_TO_WAREHOUSE' ? '成品' : '未分类' }}</span>
               <span v-if="product.duplicateName" class="product-option-warning">同名产品，请核对编码</span>
             </template>
           </SearchPicker>
           <small class="hint">未输入时只显示进行中任务的关联{{ productUsage === 'WAREHOUSE_TO_PRODUCTION' ? '物料' : '成品' }}；输入关键词可搜索其他产品。</small>
-          <div class="field">
+          <div v-if="!isNewFinishedReceipt" class="field">
             <label class="required">物料编码</label
             ><input
               class="input mono"
@@ -669,8 +670,9 @@ onBeforeUnmount(() => {
               placeholder="选择产品后自动带入"
             />
           </div>
-          <datalist :id="`material-codes-${index}`"><option v-for="code in itemOptions(item).materialCodes" :key="code" :value="code" /></datalist>
-          <MaterialBatchPicker v-if="!isNewFinishedReceipt || item.product?.productionNumbers?.length || itemOptions(item).materialBatches.length" v-model="item.materialBatch" :batches="isFinishedReceipt ? item.product?.productionNumbers : itemOptions(item).materialBatches" :required="needsMaterialBatch" />
+          <datalist v-if="!isNewFinishedReceipt" :id="`material-codes-${index}`"><option v-for="code in itemOptions(item).materialCodes" :key="code" :value="code" /></datalist>
+          <div v-if="isNewFinishedReceipt" class="field"><label :for="`finished-batch-${index}`">BATCH</label><input :id="`finished-batch-${index}`" class="input mono" maxlength="100" v-model.trim="item.materialBatch" placeholder="选择生产任务后自动填写产品批次" /></div>
+          <MaterialBatchPicker v-if="!isNewFinishedReceipt && (!isFinishedReceipt || item.product?.productionNumbers?.length || itemOptions(item).materialBatches.length)" v-model="item.materialBatch" :batches="isFinishedReceipt ? item.product?.productionNumbers : itemOptions(item).materialBatches" :required="needsMaterialBatch" />
           <ProductionNumberPicker v-if="!isFinishedReceipt" v-model="item.productionNumber" :numbers="itemOptions(item).productionNumbers" :allow-unspecified="!!item.id && !item.productionNumber" />
           <div v-if="isFinishedReceipt" class="field">
             <label :for="`sku-${index}`">SKU</label>

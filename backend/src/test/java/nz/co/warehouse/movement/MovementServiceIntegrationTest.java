@@ -120,6 +120,24 @@ class MovementServiceIntegrationTest {
         assertThat(inbound.productionTaskId()).isEqualTo(task.id());
     }
 
+    @Test void newFinishedReceiptUsesTaskProductBatchAndSkuWithoutLegacyCodeOrProductionNumber(){
+        var task=productionTasks.create(new ProductionTaskService.SaveRequest(product,1000L,LocalDate.of(2026,9,28),
+                "TASK-LOT",null,null,inboundProduct,1000L));
+        jdbc.update("UPDATE production_task SET product_batch=? WHERE id=?","PRODUCT-BATCH-42",task.id());
+        var item=new MovementDtos.ItemRequest(inboundProduct,"",2,0,null,false,null,List.of(),
+                null,0,null,null,null,"PRODUCT-BATCH-42",null,null,null,"OLD-PRODUCTION-NUMBER","FINISHED-SKU");
+        var receipt=movements.create(new MovementDtos.SaveRequest(UUID.randomUUID().toString(),
+                MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE,Instant.parse("2026-09-28T02:00:00Z"),
+                sender,receiver,null,false,task.id(),null,List.of(item)));
+
+        assertThat(receipt.items()).singleElement().satisfies(saved->{
+            assertThat(saved.batchNo()).isEmpty();
+            assertThat(saved.materialBatch()).isEqualTo("PRODUCT-BATCH-42");
+            assertThat(saved.productionNumber()).isNull();
+            assertThat(saved.sku()).isEqualTo("FINISHED-SKU");
+        });
+    }
+
     @Test void assignsSequentialPalletRangesOnlyToNewFinishedReceipts() throws Exception {
         var task=productionTasks.create(new ProductionTaskService.SaveRequest(product,1000L,LocalDate.of(2026,9,28),"PALLETS",null,null,inboundProduct,1000L));
         var day=LocalDate.of(2026,9,28);

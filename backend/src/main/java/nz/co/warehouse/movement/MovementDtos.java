@@ -9,7 +9,7 @@ public final class MovementDtos {
     private MovementDtos() {}
 
     public record IssueRequest(@NotNull MovementEnums.IssueType type,@Size(max=1000) String description) {}
-    public record ItemRequest(@NotNull Long productId,@NotBlank @Size(max=100) String batchNo,
+    public record ItemRequest(@NotNull Long productId,@Size(max=100) String batchNo,
                               @PositiveOrZero int fullCartons,@PositiveOrZero long looseUnits,
                               @PositiveOrZero Long totalUnits,boolean quantityUnknown,@Size(max=1000) String remarks,
                               @Valid List<IssueRequest> issues, @Positive Integer unitsPerCarton,

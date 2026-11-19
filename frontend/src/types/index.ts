@@ -166,7 +166,7 @@ export interface ProductionTaskOutput extends TaskMaterialSelection {
 }
 export interface ProductionTaskOption {
   targets?: TaskMaterialSelection[]; output?: TaskMaterialSelection;
-  name: string; id: number; productName: string; batchNo?: string | null; status: ProductionTaskStatus;
+  name: string; id: number; productName: string; batchNo?: string | null; productBatch?: string | null; status: ProductionTaskStatus;
   outputProductId?: number | null; outputBoxesPerCarton?: number | null; outputUnitsPerBox?: number | null;
   outputQuantityBasis?: 'BOX' | 'UNIT' | null; outputCartonUnits?: number | null;
   outputCartonsPerPallet?: number | null; outputPrimaryMaterialUnit?: string | null; nextPalletNo: number;

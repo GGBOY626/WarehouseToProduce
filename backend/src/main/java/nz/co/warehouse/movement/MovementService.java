@@ -193,16 +193,22 @@ public class MovementService {
         m.getItems().clear();int cartons=0;int order=0;long knownQuantity=0;
         ProductUsage expectedUsage=r.returnMovement()?ProductUsage.WAREHOUSE_TO_PRODUCTION
                 :(r.direction()==MovementEnums.Direction.WAREHOUSE_TO_PRODUCTION?ProductUsage.WAREHOUSE_TO_PRODUCTION:ProductUsage.PRODUCTION_TO_WAREHOUSE);
+        boolean finishedReceipt=r.direction()==MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE&&!r.returnMovement();
+        boolean newFinishedReceipt=finishedReceipt&&m.getId()==null;
         for(var input:r.items()){
             MovementItem original=input.id()==null?null:originals.get(input.id());
             if(input.id()!=null&&original==null)throw BusinessException.badRequest("ITEM_NOT_FOUND","明细不属于当前流转记录，请刷新后重试。");
             if(original!=null&&!original.getProduct().canonicalId().equals(products.getAny(input.productId()).canonicalId()))original=null;
             MovementItem item=buildItem(input,order++,existingProductIds.contains(input.productId()),expectedUsage,original);
+            if(!newFinishedReceipt&&(input.batchNo()==null||input.batchNo().isBlank()))
+                throw BusinessException.badRequest("MATERIAL_CODE_REQUIRED","请填写物料编码。");
+            if(newFinishedReceipt&&input.batchNo()!=null&&input.batchNo().length()>100)
+                throw BusinessException.badRequest("MATERIAL_CODE_INVALID","物料编码最多 100 个字符。");
             String requestedBatch=input.materialBatch()!=null?input.materialBatch():r.manufactureLot()!=null?r.manufactureLot():original==null?null:oldBatches.get(original.getId());
             boolean unchangedLegacy=original!=null&&Objects.equals(blank(requestedBatch),oldBatches.get(original.getId()));
-            String batch=unchangedLegacy?blank(requestedBatch):products.resolveBatch(item.getProduct(),requestedBatch,expectedUsage==ProductUsage.WAREHOUSE_TO_PRODUCTION);
+            String batch=newFinishedReceipt?blank(requestedBatch):unchangedLegacy?blank(requestedBatch):products.resolveBatch(item.getProduct(),requestedBatch,expectedUsage==ProductUsage.WAREHOUSE_TO_PRODUCTION);
             item.setMaterialBatch(batch==null?"":batch);
-            String number=original!=null&&input.productionNumber()==null?original.getProductionNumber()
+            String number=newFinishedReceipt?null:original!=null&&input.productionNumber()==null?original.getProductionNumber()
                     :original!=null&&original.getProductionNumber()==null&&blank(input.productionNumber())==null?null
                     :products.resolveProductionNumber(item.getProduct(),input.productionNumber());
             item.setProductionNumber(number);
@@ -218,7 +224,6 @@ public class MovementService {
                     (r.items().get(i.getSortOrder()).id()==null||!Objects.equals(originals.get(r.items().get(i.getSortOrder()).id()).getUnitsPerCartonSnapshot(),i.getUnitsPerCartonSnapshot()))))
                 throw BusinessException.badRequest("TASK_CARTON_SPEC_MISMATCH","满箱规格与任务包装设置不一致，请核对每箱盒数和每盒数量。");
         }
-        boolean finishedReceipt=r.direction()==MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE&&!r.returnMovement();
         if(!finishedReceipt){
             m.setPalletNo(null);m.setPalletCount(null);
         }else if(r.palletNo()!=null){
@@ -228,8 +233,10 @@ public class MovementService {
         }else{
             m.setPalletNo(null);m.setPalletCount(null);
         }
-        m.getItems().forEach(i->products.rememberBatch(i.getProduct(),i.effectiveMaterialBatch()));
-        m.getItems().forEach(i->products.rememberProductionNumber(i.getProduct(),i.getProductionNumber()));
+        if(!newFinishedReceipt){
+            m.getItems().forEach(i->products.rememberBatch(i.getProduct(),i.effectiveMaterialBatch()));
+            m.getItems().forEach(i->products.rememberProductionNumber(i.getProduct(),i.getProductionNumber()));
+        }
         var batches=m.getItems().stream().map(MovementItem::effectiveMaterialBatch).distinct().toList();
         m.setManufactureLot(batches.size()==1?batches.getFirst():null);
         m.setTotalCartons(cartons);
@@ -259,7 +266,7 @@ public class MovementService {
         if(original==null&&r.fullCartons()>0&&packedUnits==null&&r.unitsPerCarton()==null&&specs.size()>1)
             throw BusinessException.badRequest("CARTON_SPEC_REQUIRED","该产品有多种每箱数量，请选择本次完整箱规格。");
         Integer unitsPerCarton=packedUnits!=null?packedUnits:r.unitsPerCarton()!=null?r.unitsPerCarton():original!=null?original.getUnitsPerCartonSnapshot():specs.size()==1?specs.iterator().next():null;
-        MovementItem i=new MovementItem();i.setProduct(p);i.setProductNameSnapshot(original==null?p.getName():original.getProductNameSnapshot());String sku=r.sku()==null?(original==null?blank(p.getSku()):original.getSkuSnapshot()):blank(r.sku());i.setSkuSnapshot(sku);i.setUnitsPerCartonSnapshot(unitsPerCarton);i.setBatchNo(r.batchNo().trim());i.setSortOrder(order);i.setRemarks(blank(r.remarks()));
+        MovementItem i=new MovementItem();i.setProduct(p);i.setProductNameSnapshot(original==null?p.getName():original.getProductNameSnapshot());String sku=r.sku()==null?(original==null?blank(p.getSku()):original.getSkuSnapshot()):blank(r.sku());i.setSkuSnapshot(sku);i.setUnitsPerCartonSnapshot(unitsPerCarton);i.setBatchNo(r.batchNo()==null?"":r.batchNo().trim());i.setSortOrder(order);i.setRemarks(blank(r.remarks()));
         i.setBoxesPerCartonSnapshot(r.boxesPerCarton());i.setUnitsPerBoxSnapshot(r.unitsPerBox());
         // Older clients may omit the factors when editing notes/counts. Keep the
         // snapshot only when their quantities still match that original packing.

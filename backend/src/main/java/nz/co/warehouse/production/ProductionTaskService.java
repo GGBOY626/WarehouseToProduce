@@ -90,7 +90,7 @@ public class ProductionTaskService {
                                  Long primaryMaterialProductId,String primaryMaterialName,String primaryMaterialUnit,Long netIssuedQuantity,
                                  BigDecimal producedQuantity,BigDecimal receivedBoxes,BigDecimal productionPercent,BigDecimal lossPercent,boolean provisional,
                                  Integer cartonsPerPallet,List<String> materialBatches,List<String> materialCodes,List<String> productionNumbers) {}
-    public record LinkOption(Long id,String productName,String batchNo,ProductionTask.Status status,String name,Long outputProductId,
+    public record LinkOption(Long id,String productName,String batchNo,String productBatch,ProductionTask.Status status,String name,Long outputProductId,
                              Integer outputBoxesPerCarton,Integer outputUnitsPerBox,ProductionTask.OutputQuantityBasis outputQuantityBasis,
                              Integer outputCartonUnits,Integer outputCartonsPerPallet,String outputPrimaryMaterialUnit,int nextPalletNo,List<SelectionResponse> targets,SelectionResponse output) {}
     public record SelectionResponse(Long productId,List<String> materialBatches,List<String> materialCodes,List<String> productionNumbers) {}
@@ -155,7 +155,7 @@ public class ProductionTaskService {
         }).distinct().toList();
     }
     private LinkOption linkOption(ProductionTask task){
-        return new LinkOption(task.getId(),task.displayName(),task.getBatchNo(),task.getStatus(),task.displayName(),
+        return new LinkOption(task.getId(),task.displayName(),task.getBatchNo(),task.getProductBatch(),task.getStatus(),task.displayName(),
                 task.getOutputProduct()==null?null:task.getOutputProduct().canonicalId(),task.getOutputBoxesPerCarton(),task.getOutputUnitsPerBox(),
                 task.getOutputQuantityBasis(),task.outputCartonUnits(),task.getOutputCartonsPerPallet(),task.getPrimaryMaterial()==null?null:task.getPrimaryMaterial().getBaseUnit(),task.getNextPalletNo(),task.getTargets().stream().map(target->new SelectionResponse(target.getProduct().canonicalId(),List.copyOf(target.getMaterialBatches()),List.copyOf(target.getMaterialCodes()),List.copyOf(target.getProductionNumbers()))).toList(),
                 task.getOutputProduct()==null?null:new SelectionResponse(task.getOutputProduct().canonicalId(),List.copyOf(task.getOutputMaterialBatches()),List.copyOf(task.getOutputMaterialCodes()),List.copyOf(task.getOutputProductionNumbers())));
@@ -204,9 +204,10 @@ public class ProductionTaskService {
             Long id=products.getAny(i.productId()).canonicalId();
             if(direction==MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE&&!returned)
                 return t.getOutputProduct()!=null&&t.getOutputProduct().canonicalId().equals(id)
-                        && matchesSelection(t.getOutputMaterialBatches(),i.materialBatch())
-                        && matchesSelection(t.getOutputMaterialCodes(),i.materialCode())
-                        && matchesSelection(t.getOutputProductionNumbers(),i.productionNumber());
+                        && (blank(i.materialCode())==null&&Objects.equals(blank(i.materialBatch()),blank(t.getProductBatch()))
+                            || matchesSelection(t.getOutputMaterialBatches(),i.materialBatch())
+                            && matchesSelection(t.getOutputMaterialCodes(),i.materialCode())
+                            && matchesSelection(t.getOutputProductionNumbers(),i.productionNumber()));
             return t.getTargets().stream().anyMatch(x->x.getProduct().canonicalId().equals(id)&&matchesTargetSelection(x,i));
         });
     }
