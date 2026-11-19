@@ -92,6 +92,7 @@ async function save(continueEntry=false){
             <template #default="{item:p}">{{p.name}} · {{(p.materialCodes?.length?p.materialCodes:[p.materialCode]).join(' / ')}}</template>
           </SearchPicker>
           <template v-if="item.finished">
+            <div v-if="item.materialCodeOptions.length>1" class="field"><label :for="`stock-sku-choice-${item.key}`">SKU（可多选）</label><select :id="`stock-sku-choice-${item.key}`" class="select" :value="item.materialCode" @change="item.materialCode=($event.target as HTMLSelectElement).value"><option value="">选择 SKU</option><option v-for="option in item.materialCodeOptions" :key="option" :value="option">{{option}}</option></select></div>
             <div v-if="item.batchOptions.length>1" class="field"><label :for="`stock-batch-choice-${item.key}`">产品有多个编码，请选择 BATCH</label><select :id="`stock-batch-choice-${item.key}`" class="select" :value="item.batch" @change="item.batch=($event.target as HTMLSelectElement).value"><option value="">选择 BATCH…</option><option v-for="option in item.batchOptions" :key="option" :value="option">{{option}}</option></select></div>
             <div class="field"><label :for="`stock-batch-${item.key}`">BATCH（可选）</label><input :id="`stock-batch-${item.key}`" v-model="item.batch" class="input" maxlength="100" placeholder="填写 BATCH"></div>
             <div class="field"><label :for="`stock-sku-${item.key}`">SKU（可选）</label><input :id="`stock-sku-${item.key}`" v-model="item.materialCode" class="input" maxlength="100" placeholder="填写 SKU"></div>

@@ -289,7 +289,7 @@ function selectProduct(item: ItemInput, p?: Product) {
   applyBoxPacking(item,initialBoxPacking(p));
   item.batchNo = (p?.materialCodes?.length || 0) > 1 ? "" : p?.materialCode || "";
   item.sku = p?.sku || "";
-  const batches = p?.materialBatches || (p?.materialBatch ? [p.materialBatch] : []);
+  const batches = isFinishedReceipt.value ? (p?.productionNumbers || []) : (p?.materialBatches || (p?.materialBatch ? [p.materialBatch] : []));
   item.materialBatch = batches.length === 1 ? batches[0] : "";
   const numbers = p?.productionNumbers || [];
   item.productionNumber = numbers.length === 1 ? numbers[0] : "";
@@ -670,8 +670,8 @@ onBeforeUnmount(() => {
             />
           </div>
           <datalist :id="`material-codes-${index}`"><option v-for="code in itemOptions(item).materialCodes" :key="code" :value="code" /></datalist>
-          <MaterialBatchPicker v-if="!isNewFinishedReceipt || itemOptions(item).materialBatches.length" v-model="item.materialBatch" :batches="itemOptions(item).materialBatches" :required="needsMaterialBatch" />
-          <ProductionNumberPicker v-model="item.productionNumber" :numbers="itemOptions(item).productionNumbers" :allow-unspecified="!!item.id && !item.productionNumber" />
+          <MaterialBatchPicker v-if="!isNewFinishedReceipt || item.product?.productionNumbers?.length || itemOptions(item).materialBatches.length" v-model="item.materialBatch" :batches="isFinishedReceipt ? item.product?.productionNumbers : itemOptions(item).materialBatches" :required="needsMaterialBatch" />
+          <ProductionNumberPicker v-if="!isFinishedReceipt" v-model="item.productionNumber" :numbers="itemOptions(item).productionNumbers" :allow-unspecified="!!item.id && !item.productionNumber" />
           <div v-if="isFinishedReceipt" class="field">
             <label :for="`sku-${index}`">SKU</label>
             <input :id="`sku-${index}`" class="input mono" maxlength="100" v-model.trim="item.sku" placeholder="成品 SKU" />

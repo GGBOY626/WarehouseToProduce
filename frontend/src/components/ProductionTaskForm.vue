@@ -84,23 +84,23 @@ function selectMaterial(target: ReturnType<typeof newTarget>, p?: Product) {
 }
 function selectOutput(p?: Product) {
   outputUnit.value = p?.baseUnit || "";
-  outputBatchOptions.value = p?.materialBatches || (p?.materialBatch ? [p.materialBatch] : []);
-  outputCodeOptions.value = p?.materialCodes || [p?.materialCode].filter(Boolean) as string[];
-  outputNumberOptions.value = p?.productionNumbers || [];
+  outputBatchOptions.value = p?.productionNumbers || [];
+  outputCodeOptions.value = p?.sku && !(p.materialCodes || []).includes(p.sku) ? [p.sku] : p?.materialCodes || [p?.sku || p?.materialCode].filter(Boolean) as string[];
+  outputNumberOptions.value = [];
   outputMaterialBatches.value = outputBatchOptions.value.length === 1 ? [...outputBatchOptions.value] : [];
   outputMaterialCodes.value = outputCodeOptions.value.length === 1 ? [...outputCodeOptions.value] : [];
-  outputProductionNumbers.value = outputNumberOptions.value.length === 1 ? [...outputNumberOptions.value] : [];
+  outputProductionNumbers.value = [];
   quantityBasis.value = p?.baseUnit === '盒' ? 'BOX' : 'UNIT';
   const packing=initialBoxPacking(p);
   boxesPerCarton.value=packing?.boxesPerCarton;unitsPerBox.value=packing?.unitsPerBox;
   cartonsPerPallet.value=packing?.cartonsPerPallet??undefined;outputPackings.value=p?.boxPackings||[];packingChoice.value='';
 }
-const outputBatchOptions = ref<string[]>(props.task?.output?.materialBatches || (props.task?.output?.materialBatch ? [props.task.output.materialBatch] : []));
+const outputBatchOptions = ref<string[]>(props.task?.output?.productionNumbers || []);
 const outputCodeOptions = ref<string[]>(props.task?.output?.materialCodes || (props.task?.output?.materialCode ? [props.task.output.materialCode] : []));
-const outputNumberOptions = ref<string[]>(props.task?.output?.productionNumbers || []);
-const outputMaterialBatches = ref<string[]>([...(props.task?.output?.materialBatches || [])]);
+const outputNumberOptions = ref<string[]>([]);
+const outputMaterialBatches = ref<string[]>([...(props.task?.output?.materialBatches || props.task?.output?.productionNumbers || [])]);
 const outputMaterialCodes = ref<string[]>([...(props.task?.output?.materialCodes || [])]);
-const outputProductionNumbers = ref<string[]>([...(props.task?.output?.productionNumbers || [])]);
+const outputProductionNumbers = ref<string[]>([]);
 onMounted(async () => {
   if (!props.task) return;
   try {
@@ -114,9 +114,9 @@ onMounted(async () => {
     }
     const output = outputs.find(p => p.id === outputProductId.value);
     if (output) {
-      outputCodeOptions.value = output.materialCodes?.length ? output.materialCodes : [output.materialCode];
-      outputNumberOptions.value = output.productionNumbers || [];
-      outputBatchOptions.value = output.materialBatches || [];
+      outputCodeOptions.value = output.sku && !(output.materialCodes || []).includes(output.sku) ? [output.sku] : output.materialCodes?.length ? output.materialCodes : [output.sku || output.materialCode];
+      outputNumberOptions.value = [];
+      outputBatchOptions.value = output.productionNumbers || [];
     }
   } catch (error) { message.value = errorMessage(error); }
 });
@@ -196,9 +196,9 @@ async function save(asPreview = false) {
         <fieldset :disabled="hasReceipts">
           <SearchPicker v-model="outputProductId" label="出货物料 / 成品" placeholder="选择车间送回仓库的物料" :load="loadOutputs" :display="p => `${p.name} · ${p.materialCode}`" @select="selectOutput" />
         </fieldset>
-          <label v-if="outputCodeOptions.length" class="field"><span>物料编码（可多选）</span><select class="select" v-model="outputMaterialCodes" multiple><option v-for="code in outputCodeOptions" :key="code" :value="code">{{code}}</option></select></label>
+          <label v-if="outputCodeOptions.length" class="field"><span>SKU（可多选）</span><select class="select" v-model="outputMaterialCodes" multiple><option v-for="code in outputCodeOptions" :key="code" :value="code">{{code}}</option></select></label>
           <label v-if="outputNumberOptions.length" class="field"><span>生产编号（可多选）</span><select class="select" v-model="outputProductionNumbers" multiple><option v-for="number in outputNumberOptions" :key="number" :value="number">{{number}}</option></select></label>
-          <label v-if="outputBatchOptions.length" class="field"><span>物料批次（可多选）</span><select class="select" v-model="outputMaterialBatches" multiple><option v-for="batch in outputBatchOptions" :key="batch" :value="batch">{{batch}}</option></select></label>
+          <label v-if="outputBatchOptions.length" class="field"><span>BATCH（可多选）</span><select class="select" v-model="outputMaterialBatches" multiple><option v-for="batch in outputBatchOptions" :key="batch" :value="batch">{{batch}}</option></select></label>
         <label v-if="task?.output && !task.output.boxesPerCarton" class="output-choice"><input type="checkbox" v-model="packagingEnabled" /> 补充包装换算和生产完成度</label>
         <fieldset v-if="packagingEnabled" :disabled="packagingLocked">
           <label v-if="outputPackings.length>1" class="field"><span>使用成品包装规格</span><select class="select" v-model="packingChoice" @change="choosePacking"><option value="" disabled>选择规格或在下方手动填写</option><option v-for="(p,index) in outputPackings" :key="index" :value="String(index)">{{p.boxesPerCarton}} 盒/箱 × {{p.unitsPerBox}} {{outputUnit}}/盒{{p.cartonsPerPallet ? ` · ${p.cartonsPerPallet} 箱/托盘` : ''}}</option></select></label>

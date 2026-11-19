@@ -2,17 +2,19 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { warehouseProductDefaults } from '../src/utils/warehouseProductDefaults.ts';
 
-test('finished warehouse products map one catalog code to editable batch and SKU defaults', () => {
-  assert.deepEqual(warehouseProductDefaults({materialCode:'FG-01',materialCodes:['FG-01'],sku:'SKU-01'},true), {
-    materialCodeOptions:[],productionNumberOptions:[],rawMaterialBatchOptions:[],batchOptions:['FG-01'],
-    materialCode:'SKU-01',productionNumber:'',rawMaterialBatch:'',batch:'FG-01'
+test('finished warehouse products map production numbers to BATCH and SKU to the SKU field', () => {
+  assert.deepEqual(warehouseProductDefaults({materialCode:'SKU-01',materialCodes:['SKU-01'],sku:'SKU-01',productionNumbers:['BATCH-01']},true), {
+    materialCodeOptions:['SKU-01'],productionNumberOptions:[],rawMaterialBatchOptions:[],batchOptions:['BATCH-01'],
+    materialCode:'SKU-01',productionNumber:'',rawMaterialBatch:'',batch:'BATCH-01'
   });
 });
 
-test('multiple finished product codes remain unselected for the user to choose', () => {
-  const defaults=warehouseProductDefaults({materialCode:'FG-01',materialCodes:['FG-01','FG-02'],sku:'SKU-01'},true);
-  assert.deepEqual(defaults.batchOptions,['FG-01','FG-02']);
+test('multiple finished BATCH values and SKUs remain unselected for the user to choose', () => {
+  const defaults=warehouseProductDefaults({materialCode:'SKU-01',materialCodes:['SKU-01','SKU-02'],sku:'SKU-01',productionNumbers:['BATCH-01','BATCH-02']},true);
+  assert.deepEqual(defaults.batchOptions,['BATCH-01','BATCH-02']);
   assert.equal(defaults.batch,'');
+  assert.deepEqual(defaults.materialCodeOptions,['SKU-01','SKU-02']);
+  assert.equal(defaults.materialCode,'');
 });
 
 test('raw material fields auto-fill only unique values and expose ambiguous choices', () => {

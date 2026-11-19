@@ -46,7 +46,9 @@ function open(p?: Product) {
   editing.value = p;
   batchesText.value = (p?.materialBatches || (p?.materialBatch ? [p.materialBatch] : [])).join("\n");
   productionNumbersText.value = (p?.productionNumbers || []).join("\n");
-  materialCodesText.value = (p?.materialCodes || [p?.materialCode].filter(Boolean)).join("\n");
+  materialCodesText.value = (p?.movementDirection === "PRODUCTION_TO_WAREHOUSE"
+    ? (p?.sku && !(p.materialCodes || []).includes(p.sku) ? [p.sku] : (p?.materialCodes || [p?.sku || p?.materialCode].filter(Boolean)))
+    : (p?.materialCodes || [p?.materialCode].filter(Boolean))).join("\n");
   boxPackings.value=(p?.boxPackings||[]).map(x=>({...x}));
   cartonSpecsText.value = [p?.defaultUnitsPerCarton,...(p?.cartonSpecs||[])].filter((n):n is number=>n!=null).filter(n=>!boxPackings.value.some(x=>x.boxesPerCarton*x.unitsPerBox===n)).filter((n,i,a)=>a.indexOf(n)===i).join("、");
   form.value = p
@@ -99,7 +101,8 @@ async function save() {
     const materialCodes=materialCodesText.value.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
     if(materialCodes.length<1||materialCodes.length>100||materialCodes.some(s=>s.length>100)){message.value='物料编码须填写 1 至 100 项，每项最多 100 个字符。';return;}
     saving.value=true;
-    const payload = { ...form.value, materialCode:materialCodes[0], materialCodes, sku: form.value.sku.trim(), boxPackings:boxPackings.value, materialBatches: batchesText.value.split(/\r?\n/).map(s => s.trim()).filter(Boolean), productionNumbers, defaultUnitsPerCarton: !form.value.quantityUnknown && new Set(cartonSpecs).size === 1 ? cartonSpecs[0] : null, cartonSpecs: [...new Set(cartonSpecs)] };
+    const finished=form.value.movementDirection === "PRODUCTION_TO_WAREHOUSE";
+    const payload = { ...form.value, materialCode:materialCodes[0], materialCodes, sku: finished ? materialCodes[0] : form.value.sku.trim(), boxPackings:boxPackings.value, materialBatches: finished ? [] : batchesText.value.split(/\r?\n/).map(s => s.trim()).filter(Boolean), productionNumbers, defaultUnitsPerCarton: !form.value.quantityUnknown && new Set(cartonSpecs).size === 1 ? cartonSpecs[0] : null, cartonSpecs: [...new Set(cartonSpecs)] };
     if (editing.value) await productsApi.update(editing.value.id, payload);
     else await productsApi.create(payload);
     showEditor.value = false;
@@ -138,7 +141,15 @@ onMounted(load);
         @keyup.enter="load"
       /><button class="btn btn-secondary" @click="load">搜索</button>
     </div>
-    <section ref="editorSection" v-if="authenticated && showEditor" class="card card-pad stack editor">
+    <section ref="editorSection" v-if="authenticated && showEditor" class="card card-pad stack editor" :class="{ 'finished-product-editor': form.movementDirection === 'PRODUCTION_TO_WAREHOUSE' }">
+      <div v-if="form.movementDirection === 'PRODUCTION_TO_WAREHOUSE'" class="field">
+        <label for="finished-batches">BATCH（可选多个，每行一个）</label>
+        <textarea id="finished-batches" class="textarea mono" v-model="productionNumbersText" placeholder="BATCH-001&#10;BATCH-002" />
+      </div>
+      <div v-if="form.movementDirection === 'PRODUCTION_TO_WAREHOUSE'" class="field">
+        <label for="finished-skus">SKU（可选多个，每行一个）</label>
+        <textarea id="finished-skus" class="textarea mono" v-model="materialCodesText" placeholder="SKU-001&#10;SKU-002" />
+      </div>
       <div class="field">
         <label for="product-name" class="required">产品名称</label
         ><input id="product-name" name="product-name" class="input" v-model.trim="form.name" />
@@ -232,6 +243,10 @@ onMounted(load);
 </template>
 <style scoped>
 .editor .grid-2 { align-items: start; }
+.finished-product-editor .field:has(#product-code),
+.finished-product-editor .field:has(#product-production-numbers),
+.finished-product-editor .field:has(#product-batches),
+.finished-product-editor .field:has(#product-sku) { display: none; }
 .add {
   margin: 12px 0;
 }
