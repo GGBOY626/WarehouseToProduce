@@ -301,9 +301,11 @@ public class ProductionTaskService {
                 editing&&t.getOutputProduct()!=null&&t.getOutputProduct().canonicalId().equals(r.outputProductId()));
         if(output!=null&&output.isQuantityUnknown())throw BusinessException.badRequest("TASK_OUTPUT_UNIT_REQUIRED","成品产品须设置明确的数量单位。");
         if(output!=null){
-            validateSelection(r.outputMaterialBatches(),output.canonical().getProductionNumbers(),"BATCH");
+            var outputBatches=new java.util.HashSet<>(output.availableBatches());
+            outputBatches.addAll(output.canonical().getProductionNumbers());
+            validateSelection(r.outputMaterialBatches(),outputBatches,"BATCH");
             validateSelection(r.outputMaterialCodes(),output.availableMaterialCodes(),"物料编码");
-            validateSelection(r.outputProductionNumbers(),List.of(),"BATCH");
+            validateSelection(r.outputProductionNumbers(),output.canonical().getProductionNumbers(),"生产编号");
         }
         boolean sameOutput=output!=null&&t.getOutputProduct()!=null&&output.canonicalId().equals(t.getOutputProduct().canonicalId());
         replaceSelection(t.getOutputMaterialBatches(),output==null?List.of():r.outputMaterialBatches(),sameOutput);
