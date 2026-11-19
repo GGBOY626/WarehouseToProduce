@@ -5,6 +5,7 @@ import nz.co.warehouse.movement.MovementEnums;
 import nz.co.warehouse.movement.MovementItem;
 import nz.co.warehouse.movement.MovementRepository;
 import nz.co.warehouse.production.ProductionTask;
+import nz.co.warehouse.production.ProductionDailyReportService;
 import nz.co.warehouse.production.ProductionTaskService;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.text.PDFTextStripper;
@@ -16,6 +17,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -28,10 +30,13 @@ class PdfReportServiceTest {
         ProductionTaskService tasks=mock(ProductionTaskService.class);
         ProductionTaskService.Response task=mock(ProductionTaskService.Response.class);
         ProductionTaskService.Response historical=mock(ProductionTaskService.Response.class);
+        ProductionTaskService.Response withoutReport=mock(ProductionTaskService.Response.class);
         ProductionTaskService.OutputResponse output=mock(ProductionTaskService.OutputResponse.class);
+        ProductionDailyReportService dailyReports=mock(ProductionDailyReportService.class);
         LocalDate date=LocalDate.of(2026,10,21);
-        when(tasks.list(null)).thenReturn(List.of(task,historical));
+        when(tasks.list(null)).thenReturn(List.of(task,historical,withoutReport));
         when(task.status()).thenReturn(ProductionTask.Status.COMPLETED);
+        when(task.id()).thenReturn(10L);
         when(task.plannedDate()).thenReturn(date);
         when(task.startDate()).thenReturn(date.minusDays(2));
         when(task.endDate()).thenReturn(date);
@@ -42,17 +47,27 @@ class PdfReportServiceTest {
         when(task.output()).thenReturn(output);
         when(task.movements()).thenReturn(List.of());
         when(historical.status()).thenReturn(ProductionTask.Status.COMPLETED);
-        when(historical.plannedDate()).thenReturn(date);
+        when(historical.id()).thenReturn(11L);
+        when(historical.plannedDate()).thenReturn(date.minusDays(30));
         when(historical.name()).thenReturn("历史任务");
         when(historical.movements()).thenReturn(List.of());
+        when(withoutReport.id()).thenReturn(12L);
+        when(withoutReport.status()).thenReturn(ProductionTask.Status.COMPLETED);
+        when(withoutReport.plannedDate()).thenReturn(date);
+        when(withoutReport.name()).thenReturn("未填日报任务");
+        when(withoutReport.movements()).thenReturn(List.of());
         when(output.productName()).thenReturn("清肺饮");
         when(output.baseUnit()).thenReturn("个");
         when(output.targetQuantity()).thenReturn(3000L);
         when(output.receivedQuantity()).thenReturn(2700L);
-        PdfReportService service=new PdfReportService(repository,tasks);
+        when(dailyReports.listForTasks(List.of(10L,11L,12L))).thenReturn(Map.of(
+                10L,List.of(new ProductionDailyReportService.Response(1L,10L,LocalDate.of(2026,10,20),"清肺饮",12,8,20,Instant.parse("2026-10-20T10:00:00Z"))),
+                11L,List.of(new ProductionDailyReportService.Response(2L,11L,LocalDate.of(2026,10,19),"旧成品",4,6,10,Instant.parse("2026-10-19T10:00:00Z")))));
+        PdfReportService service=new PdfReportService(repository,tasks,dailyReports);
         ReflectionTestUtils.setField(service,"zone","Pacific/Auckland");
         String text=pdfText(service.generateProductionTasks(LocalDate.of(2026,10,12),date));
-        assertThat(text).contains("订单号","飞书号","产品批次","清肺饮生产","ORD-42","FS-88","BATCH-21","历史任务","已完成","3000","2700")
+        assertThat(text).contains("订单号","飞书号","产品批次","清肺饮生产","ORD-42","FS-88","BATCH-21","历史任务","未填日报任务","已完成","3000","2700",
+                        "生产日报","2026-10-20","2026-10-19","A组","B组","12","8","20","4","6","10")
                 .doesNotContain("null");
     }
     @Test void exportsPerItemMaterialBatchesInsteadOfTheSharedLegacyHeader() throws Exception {

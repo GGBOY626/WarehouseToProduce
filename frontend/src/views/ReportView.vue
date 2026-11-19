@@ -108,7 +108,7 @@ function downloadRange(start: string, end: string) {
 
 function downloadProductionTasks() {
   const end=today();
-  window.location.href=`/api/reports/pdf/production-tasks?${new URLSearchParams({from:previousMonday(end),to:end})}`;
+  window.location.href=`/api/reports/pdf/production-tasks?${new URLSearchParams({from:shiftDate(end,-13),to:end})}`;
 }
 
 function downloadPreset(kind: "today" | "yesterday" | "week" | "twoWeeks") {
@@ -181,7 +181,7 @@ function downloadCustom() {
         <button class="btn btn-secondary" @click="downloadPreset('week')">导出本周</button>
         <button class="btn btn-secondary" @click="downloadPreset('twoWeeks')">导出近两周</button>
       </div>
-      <button class="btn btn-secondary" @click="downloadProductionTasks">导出近两周生产任务记录（上周一至今天）</button>
+      <button class="btn btn-secondary" @click="downloadProductionTasks">导出近两周生产任务记录（含生产日报）</button>
       <hr class="divider" />
       <div class="field-label">自选导出日期</div>
       <div class="grid-2">

@@ -8,6 +8,7 @@ import nz.co.warehouse.movement.Movement;
 import nz.co.warehouse.movement.MovementEnums;
 import nz.co.warehouse.movement.MovementItem;
 import nz.co.warehouse.movement.MovementRepository;
+import nz.co.warehouse.production.ProductionDailyReportService;
 import nz.co.warehouse.production.ProductionTaskService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
@@ -29,11 +30,13 @@ public class PdfReportService {
     private static final DateTimeFormatter REPORT_DATE = DateTimeFormatter.ofPattern("yyyy/MM/dd");
     private final MovementRepository repository;
     private final ProductionTaskService productionTasks;
+    private final ProductionDailyReportService dailyReports;
     @org.springframework.beans.factory.annotation.Autowired
-    public PdfReportService(MovementRepository repository,ProductionTaskService productionTasks){
-        this.repository=repository;this.productionTasks=productionTasks;
+    public PdfReportService(MovementRepository repository,ProductionTaskService productionTasks,ProductionDailyReportService dailyReports){
+        this.repository=repository;this.productionTasks=productionTasks;this.dailyReports=dailyReports;
     }
-    public PdfReportService(MovementRepository repository){this(repository,null);}
+    public PdfReportService(MovementRepository repository,ProductionTaskService productionTasks){this(repository,productionTasks,null);}
+    public PdfReportService(MovementRepository repository){this(repository,null,null);}
     @Value("${app.business-zone:Pacific/Auckland}") private String zone;
 
     @Transactional(readOnly = true)
@@ -66,13 +69,17 @@ public class PdfReportService {
     public byte[] generateProductionTasks(LocalDate from, LocalDate to) {
         validateRange(from,to);
         ZoneId businessZone=ZoneId.of(zone);
-        List<ProductionTaskService.Response> rows=productionTasks.list(null).stream().filter(task ->
+        List<ProductionTaskService.Response> candidates=productionTasks.list(null).stream().filter(task ->
                 task.status()!=nz.co.warehouse.production.ProductionTask.Status.CANCELLED &&
-                task.status()!=nz.co.warehouse.production.ProductionTask.Status.PREVIEW && (
+                task.status()!=nz.co.warehouse.production.ProductionTask.Status.PREVIEW).toList();
+        Map<Long,List<ProductionDailyReportService.Response>> reportsByTask=dailyReports==null?Map.of():dailyReports.listForTasks(candidates.stream().map(ProductionTaskService.Response::id).toList());
+        List<ProductionTaskService.Response> rows=candidates.stream().filter(task ->
                 !task.plannedDate().isBefore(from)&&!task.plannedDate().isAfter(to) ||
                 task.movements().stream().anyMatch(m->m.status()==MovementEnums.Status.ACTIVE&&
                         !m.movementTime().atZone(businessZone).toLocalDate().isBefore(from)&&
-                        !m.movementTime().atZone(businessZone).toLocalDate().isAfter(to)))).toList();
+                        !m.movementTime().atZone(businessZone).toLocalDate().isAfter(to)) ||
+                reportsByTask.getOrDefault(task.id(),List.of()).stream().anyMatch(report->
+                        !report.reportDate().isBefore(from)&&!report.reportDate().isAfter(to))).toList();
         StringBuilder html=new StringBuilder("""
                 <!DOCTYPE html><html><head><meta charset="UTF-8"/><style>
                 @page{size:A4 landscape;margin:10mm;@bottom-center{content:"第 " counter(page) " 页";font-family:WarehouseCN;font-size:8px}}
@@ -93,6 +100,15 @@ public class PdfReportService {
                     .append(output==null?"—":output.receivedQuantity()+" "+e(output.baseUnit())).append("</td><td class='number'>")
                     .append(output==null||output.productionPercent()==null?"—":output.productionPercent()+"%")
                     .append("</td><td class='number'>").append(task.movements().size()).append(" 单</td></tr>");
+            List<ProductionDailyReportService.Response> taskReports=reportsByTask.getOrDefault(task.id(),List.of()).stream()
+                    .filter(report->!report.reportDate().isBefore(from)&&!report.reportDate().isAfter(to)).toList();
+            if(!taskReports.isEmpty()){
+                html.append("<tr><td colspan='12'><div><strong>生产日报 · ").append(e(task.output()==null?task.productName():task.output().productName())).append("</strong>")
+                        .append("<table><thead><tr><th>日期</th><th>A组（箱）</th><th>B组（箱）</th><th>合计（箱）</th></tr></thead><tbody>");
+                for(var report:taskReports)html.append("<tr><td>").append(report.reportDate()).append("</td><td class='number'>").append(report.groupACartons())
+                        .append("</td><td class='number'>").append(report.groupBCartons()).append("</td><td class='number'>").append(report.totalCartons()).append("</td></tr>");
+                html.append("</tbody></table></div></td></tr>");
+            }
         }
         if(rows.isEmpty())html.append("<tr><td colspan='12' class='empty'>日期范围内暂无生产任务</td></tr>");
         html.append("</tbody></table></body></html>");

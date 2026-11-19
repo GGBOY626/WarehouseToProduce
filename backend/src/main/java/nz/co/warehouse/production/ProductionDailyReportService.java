@@ -11,6 +11,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service @RequiredArgsConstructor
 public class ProductionDailyReportService {
@@ -28,6 +30,13 @@ public class ProductionDailyReportService {
     public List<Response> list(long taskId){
         task(taskId);
         return reports.findAllByTaskIdOrderByReportDateDescIdDesc(taskId).stream().map(this::response).toList();
+    }
+
+    @Transactional(readOnly=true)
+    public Map<Long,List<Response>> listForTasks(List<Long> taskIds){
+        if(taskIds.isEmpty())return Map.of();
+        return reports.findAllByTaskIdInOrderByTaskIdAscReportDateAsc(taskIds).stream().map(this::response)
+                .collect(Collectors.groupingBy(Response::taskId,java.util.LinkedHashMap::new,Collectors.toList()));
     }
 
     @Transactional
