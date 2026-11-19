@@ -13,8 +13,7 @@ public class ProductService {
 
     @Transactional(readOnly = true)
     public List<ProductDtos.Response> search(String q, boolean includeInactive, ProductUsage direction) {
-        // Keep the old request flag for clients; all canonical products are now available.
-        return repository.search(q == null ? "" : q.trim(), direction).stream()
+        return repository.search(q == null ? "" : q.trim(), direction, includeInactive).stream()
                 .map(p->ProductDtos.Response.from(p, repository.countConflictingNames(
                         p.getId(), p.getName(), p.getMaterialCode(), p.getMovementDirection()) > 0)).toList();
     }
@@ -32,19 +31,31 @@ public class ProductService {
     @Transactional
     public void delete(long id) {
         Product product = get(id);
-        if (repository.countByMergedIntoId(id) > 0 || repository.countMovementItems(id) > 0 || repository.countProductionTasks(id) > 0 || repository.countWarehouseItems(id) > 0 || repository.countThirdPartyStockItems(id) > 0)
-            throw new BusinessException("PRODUCT_IN_USE", "该产品已有流转记录、生产任务、在库托盘或第三方库存，不能删除。", HttpStatus.CONFLICT);
+        if (repository.countByMergedIntoId(id) > 0 || repository.countMovementItems(id) > 0 || repository.countProductionTasks(id) > 0 || repository.countWarehouseItems(id) > 0 || repository.countThirdPartyStockItems(id) > 0) {
+            product.setActive(false);
+            return;
+        }
         repository.delete(product);
     }
 
+    @Transactional public ProductDtos.Response setActive(long id, boolean active) {
+        Product product=get(id).canonical();
+        product.setActive(active);
+        return ProductDtos.Response.from(product);
+    }
+
     public Product getActive(long id) {
-        return get(id).canonical();
+        Product product=get(id).canonical();
+        if(!product.isActive())throw new BusinessException("PRODUCT_DISABLED", "该产品已停用。", HttpStatus.CONFLICT);
+        return product;
     }
     public Product getAny(long id) { return get(id); }
 
     public Product getForMovement(long id, ProductUsage expectedDirection, boolean allowInactive) {
         // The legacy flag is retained for existing callers; only classification restricts selection.
         Product product = get(id).canonical();
+        if(!product.isActive()&&!allowInactive)
+            throw new BusinessException("PRODUCT_DISABLED", "该产品已停用，不能用于新流转。", HttpStatus.CONFLICT);
         if (product.getMovementDirection() == null)
             throw BusinessException.badRequest("PRODUCT_DIRECTION_REQUIRED", "该产品尚未设置流转分类，请先到产品管理中补充。");
         if (product.getMovementDirection() != expectedDirection)
@@ -54,7 +65,9 @@ public class ProductService {
 
     private Product get(long id) { return repository.findById(id).orElseThrow(() -> BusinessException.notFound("PRODUCT_NOT_FOUND", "找不到该产品。")); }
     private void apply(Product p, ProductDtos.Request r) {
-        String name=r.name().trim(), materialCode=r.materialCode().trim();
+        String name=r.name().trim(), materialCode=r.materialCode()==null?"":r.materialCode().trim();
+        boolean finished=r.movementDirection()==ProductUsage.PRODUCTION_TO_WAREHOUSE;
+        if(!finished&&materialCode.isBlank())throw BusinessException.badRequest("MATERIAL_CODE_REQUIRED","原料产品必须填写物料编码。");
         boolean duplicate=p.getId()==null
                 ?repository.existsByNameIgnoreCaseAndMaterialCodeIgnoreCaseAndMovementDirectionAndMergedIntoIsNull(name,materialCode,r.movementDirection())
                 :repository.existsByNameIgnoreCaseAndMaterialCodeIgnoreCaseAndMovementDirectionAndMergedIntoIsNullAndIdNot(name,materialCode,r.movementDirection(),p.getId());
@@ -89,10 +102,14 @@ public class ProductService {
         var codes=new java.util.LinkedHashSet<String>();
         if(r.materialCodes()!=null)for(String code:r.materialCodes())if(code!=null&&!code.isBlank())codes.add(code.trim());
         if(!materialCode.isBlank())codes.add(materialCode);
-        if(codes.isEmpty())codes.add(materialCode);
+        if(finished&&codes.isEmpty()&&p.getId()!=null)codes.addAll(p.availableMaterialCodes());
+        if(codes.isEmpty()&&!finished&&!materialCode.isBlank())codes.add(materialCode);
         if(codes.size()>100||codes.stream().anyMatch(code->code.length()>100))throw BusinessException.badRequest("MATERIAL_CODES_INVALID","物料编码最多 100 项，每项最多 100 个字符。");
         p.getMaterialCodes().clear();p.getMaterialCodes().addAll(codes);
-        p.setName(name);p.setMaterialCode(codes.iterator().next());if(r.sku()!=null)p.setSku(blankToNull(r.sku()));p.setMaterialBatch(blankToNull(r.materialBatch()));p.setMovementDirection(r.movementDirection());p.setQuantityUnknown(r.quantityUnknown());p.setDefaultUnitsPerCarton(r.quantityUnknown()?null:r.defaultUnitsPerCarton());p.setBaseUnit(r.quantityUnknown()?null:r.baseUnit().trim());
+        p.setName(name);p.setMaterialCode(codes.isEmpty()?materialCode:codes.iterator().next());
+        p.setSku(finished?(r.sku()==null||r.sku().isBlank()?(r.materialCodes()==null||r.materialCodes().stream().noneMatch(code->code!=null&&!code.isBlank())?null:codes.iterator().next()):blankToNull(r.sku())):blankToNull(r.sku()));
+        p.setMaterialBatch(finished?null:blankToNull(r.materialBatch()));
+        p.setMovementDirection(r.movementDirection());p.setQuantityUnknown(r.quantityUnknown());p.setDefaultUnitsPerCarton(r.quantityUnknown()?null:r.defaultUnitsPerCarton());p.setBaseUnit(r.quantityUnknown()?null:r.baseUnit().trim());
     }
     public String resolveBatch(Product product,String value,boolean required) {
         String batch=blankToNull(value);

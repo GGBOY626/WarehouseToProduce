@@ -42,7 +42,7 @@ function appendToExisting(){
   activePallet.value=existing;code.value=existing.code;notes.value=[existing.notes,notes.value].filter(Boolean).join('\n');
   items.value=[...existing.items.map(draftItem),...additions,...(additions.length?[]:[blankItem()])];message.value='';
 }
-async function searchProducts(query:string,item:DraftItem){return productsApi.search(query,true,item.finished?'PRODUCTION_TO_WAREHOUSE':'WAREHOUSE_TO_PRODUCTION')}
+async function searchProducts(query:string,item:DraftItem){return productsApi.search(query,!!props.pallet,item.finished?'PRODUCTION_TO_WAREHOUSE':'WAREHOUSE_TO_PRODUCTION')}
 function changedProduct(item:DraftItem,selected?:Product){
   const p=selected||props.products.find(product=>product.id===item.productId);
   item.productName=p?.name||'';item.unit=p?.baseUnit||'';

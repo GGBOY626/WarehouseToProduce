@@ -1,5 +1,6 @@
 package nz.co.warehouse.product;
 
+import nz.co.warehouse.common.BusinessException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
@@ -47,9 +48,13 @@ class ProductNameConflictTest {
         var merged = add("原料", "ALIAS", ProductUsage.WAREHOUSE_TO_PRODUCTION);
         merged.setMergedInto(original);
         add("原料", "raw", ProductUsage.WAREHOUSE_TO_PRODUCTION);
-        assertThat(products.search("", false, null)).hasSize(3).allMatch(ProductDtos.Response::active);
-        assertThat(products.getForMovement(inactive.getId(), ProductUsage.WAREHOUSE_TO_PRODUCTION, false)).isSameAs(inactive);
-        assertThat(products.search("OLD", false, null)).singleElement().satisfies(p -> assertThat(p.duplicateName()).isTrue());
+        assertThat(products.search("", false, null)).hasSize(2).allMatch(ProductDtos.Response::active);
+        assertThat(products.search("", true, null)).hasSize(3).filteredOn(p -> !p.active()).hasSize(1);
+        assertThatThrownBy(() -> products.getForMovement(inactive.getId(), ProductUsage.WAREHOUSE_TO_PRODUCTION, false))
+                .isInstanceOfSatisfying(BusinessException.class, e -> assertThat(e.getCode()).isEqualTo("PRODUCT_DISABLED"));
+        assertThat(products.getForMovement(inactive.getId(), ProductUsage.WAREHOUSE_TO_PRODUCTION, true)).isSameAs(inactive);
+        assertThat(products.search("OLD", false, null)).isEmpty();
+        assertThat(products.search("OLD", true, null)).singleElement().satisfies(p -> assertThat(p.duplicateName()).isTrue());
         assertThatThrownBy(() -> products.create(new ProductDtos.Request("原料", "OLD", null,
                 ProductUsage.WAREHOUSE_TO_PRODUCTION, null, "个"))).hasMessageContaining("已有相同名称和物料编码的产品");
     }
@@ -63,6 +68,15 @@ class ProductNameConflictTest {
         add("同名同码", "SHARED", ProductUsage.PRODUCTION_TO_WAREHOUSE);
         add("同名同码", "SHARED", ProductUsage.WAREHOUSE_TO_PRODUCTION);
         assertThat(products.search("SHARED", false, null)).hasSize(2).allMatch(p -> !p.duplicateName());
+    }
+
+    @Test void finishedProductCanBeSavedWithoutSku() {
+        var saved=products.create(new ProductDtos.Request("Finished without SKU","",null,null,
+                ProductUsage.PRODUCTION_TO_WAREHOUSE,null,"unit",false,java.util.List.of(),java.util.List.of(),
+                java.util.List.of(),java.util.List.of("BATCH-1"),java.util.List.of()));
+        assertThat(saved.sku()).isNull();
+        assertThat(saved.materialCodes()).isEmpty();
+        assertThat(saved.productionNumbers()).containsExactly("BATCH-1");
     }
 
     @Test void unclassifiedProductsAreNotAssumedToBeMaterialsOrFinishedGoods() {

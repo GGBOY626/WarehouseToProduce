@@ -14,4 +14,5 @@ public class ProductController {
     @PostMapping public ProductDtos.Response create(@Valid @RequestBody ProductDtos.Request r) { return service.create(r); }
     @PutMapping("/{id}") public ProductDtos.Response update(@PathVariable long id, @Valid @RequestBody ProductDtos.Request r) { return service.update(id, r); }
     @DeleteMapping("/{id}") public void delete(@PathVariable long id) { service.delete(id); }
+    @PatchMapping("/{id}/status") public ProductDtos.Response status(@PathVariable long id,@RequestParam boolean active) { return service.setActive(id,active); }
 }

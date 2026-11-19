@@ -32,6 +32,10 @@ const materialCodesText = ref("");
 const selectedDirection = ref<ProductUsage | "">("WAREHOUSE_TO_PRODUCTION");
 const visibleRows = computed(() => rows.value.filter(p => (p.movementDirection || "") === selectedDirection.value));
 const editorSection = ref<HTMLElement>();
+function skuText(p:Product){
+  if(!p.sku)return '待核对';
+  return (p.materialCodes?.includes(p.sku)?p.materialCodes:[p.sku]).join(' / ');
+}
 async function load() {
   const current=++requestId;loading.value=true;message.value='';
   try{const result=await productsApi.search(q.value,true);if(current===requestId)rows.value=result}
@@ -47,7 +51,7 @@ function open(p?: Product) {
   batchesText.value = (p?.materialBatches || (p?.materialBatch ? [p.materialBatch] : [])).join("\n");
   productionNumbersText.value = (p?.productionNumbers || []).join("\n");
   materialCodesText.value = (p?.movementDirection === "PRODUCTION_TO_WAREHOUSE"
-    ? (p?.sku && !(p.materialCodes || []).includes(p.sku) ? [p.sku] : (p?.materialCodes || [p?.sku || p?.materialCode].filter(Boolean)))
+    ? (p?.sku ? ((p.materialCodes || []).includes(p.sku) ? p.materialCodes! : [p.sku]) : [])
     : (p?.materialCodes || [p?.materialCode].filter(Boolean))).join("\n");
   boxPackings.value=(p?.boxPackings||[]).map(x=>({...x}));
   cartonSpecsText.value = [p?.defaultUnitsPerCarton,...(p?.cartonSpecs||[])].filter((n):n is number=>n!=null).filter(n=>!boxPackings.value.some(x=>x.boxesPerCarton*x.unitsPerBox===n)).filter((n,i,a)=>a.indexOf(n)===i).join("、");
@@ -85,6 +89,7 @@ async function save() {
     return;
   }
   try {
+    const finished=form.value.movementDirection === "PRODUCTION_TO_WAREHOUSE";
     const cartonSpecs = cartonSpecsText.value.split(/[,，、\s]+/).filter(Boolean).map(Number);
     if (cartonSpecs.length > 50 || cartonSpecs.some(n => !Number.isInteger(n) || n <= 0 || n > 2147483647)) {
       message.value = "常用规格最多 50 项，请输入正整数，用逗号或空格分隔。"; return;
@@ -97,12 +102,11 @@ async function save() {
     }
     if(new Set(boxPackings.value.map(p=>`${p.boxesPerCarton}:${p.unitsPerBox}`)).size!==boxPackings.value.length){message.value='同一箱规请只填写一次。';return;}
     const productionNumbers=productionNumbersText.value.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
-    if(productionNumbers.length>100||productionNumbers.some(s=>s.length>100)){message.value='生产编号最多 100 项，每项最多 100 个字符。';return;}
+    if(productionNumbers.length>100||productionNumbers.some(s=>s.length>100)){message.value=finished?'BATCH 最多 100 项，每项最多 100 个字符。':'生产编号最多 100 项，每项最多 100 个字符。';return;}
     const materialCodes=materialCodesText.value.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
-    if(materialCodes.length<1||materialCodes.length>100||materialCodes.some(s=>s.length>100)){message.value='物料编码须填写 1 至 100 项，每项最多 100 个字符。';return;}
+    if((!finished&&!materialCodes.length)||materialCodes.length>100||materialCodes.some(s=>s.length>100)){message.value=finished?'SKU 最多 100 项，每项最多 100 个字符。':'物料编码须填写 1 至 100 项，每项最多 100 个字符。';return;}
     saving.value=true;
-    const finished=form.value.movementDirection === "PRODUCTION_TO_WAREHOUSE";
-    const payload = { ...form.value, materialCode:materialCodes[0], materialCodes, sku: finished ? materialCodes[0] : form.value.sku.trim(), boxPackings:boxPackings.value, materialBatches: finished ? [] : batchesText.value.split(/\r?\n/).map(s => s.trim()).filter(Boolean), productionNumbers, defaultUnitsPerCarton: !form.value.quantityUnknown && new Set(cartonSpecs).size === 1 ? cartonSpecs[0] : null, cartonSpecs: [...new Set(cartonSpecs)] };
+    const payload = { ...form.value, materialCode:materialCodes[0] || "", materialCodes, sku: finished ? materialCodes[0] || "" : form.value.sku.trim(), boxPackings:boxPackings.value, materialBatches: finished ? [] : batchesText.value.split(/\r?\n/).map(s => s.trim()).filter(Boolean), productionNumbers, defaultUnitsPerCarton: !form.value.quantityUnknown && new Set(cartonSpecs).size === 1 ? cartonSpecs[0] : null, cartonSpecs: [...new Set(cartonSpecs)] };
     if (editing.value) await productsApi.update(editing.value.id, payload);
     else await productsApi.create(payload);
     showEditor.value = false;
@@ -112,10 +116,10 @@ async function save() {
     message.value = errorMessage(e);
   } finally {saving.value=false;}
 }
-async function remove(p: Product) {
-  if(busyId.value!=null || !confirm(`确定永久删除产品“${p.name}”吗？删除后无法恢复。`))return;
+async function toggleActive(p:Product) {
+  if(busyId.value!=null || !confirm(`${p.active?'停用':'启用'}产品“${p.name}”？`))return;
   busyId.value=p.id;message.value='';success.value='';
-  try{await productsApi.delete(p.id);await load();success.value='产品已删除'}
+  try{await productsApi.status(p.id,!p.active);await load();success.value=p.active?'产品已停用':'产品已启用'}
   catch(e){message.value=errorMessage(e)}finally{busyId.value=undefined}
 }
 function productMenu(event:Event){
@@ -228,13 +232,13 @@ onMounted(load);
     <div v-else class="stack list">
       <article v-for="p in visibleRows" :key="p.id" class="card product-card">
         <component :is="authenticated ? 'button' : 'div'" class="product-main" :type="authenticated ? 'button' : undefined" :aria-label="authenticated ? `编辑 ${p.name}` : undefined" @click="authenticated && open(p)">
-          <div class="product-title"><strong>{{p.name}}</strong></div>
-        <span class="material-code">编码 {{(p.materialCodes?.length ? p.materialCodes : [p.materialCode]).join(' / ')}}</span><span v-if="p.movementDirection === 'PRODUCTION_TO_WAREHOUSE' && p.sku" class="material-code">SKU {{p.sku}}</span>
+          <div class="product-title"><strong>{{p.name}}</strong><span v-if="!p.active" class="inactive-tag">已停用</span></div>
+        <span v-if="p.movementDirection !== 'PRODUCTION_TO_WAREHOUSE'" class="material-code">编码 {{(p.materialCodes?.length ? p.materialCodes : [p.materialCode]).join(' / ')}}</span><span v-if="p.movementDirection === 'PRODUCTION_TO_WAREHOUSE' && p.sku" class="material-code">SKU {{skuText(p)}}</span>
           <span v-for="(line,index) in productPackagingLines(p)" :key="line" class="product-spec" :class="{ 'primary-spec': index === 0 }">{{ line }}</span>
           <span v-if="p.quantityUnknown" class="product-spec">数量不确定</span>
           <span v-if="p.duplicateName" class="duplicate-warning">同名产品，请核对编码</span><span v-if="!p.movementDirection" class="duplicate-warning">未分类，请编辑</span>
         </component>
-        <details v-if="authenticated" class="product-menu" @toggle="productMenu" @keydown.esc="($event.currentTarget as HTMLDetailsElement).removeAttribute('open')"><summary :aria-label="`${p.name}的更多操作`">⋯</summary><div class="product-menu-actions"><button class="danger-action" :disabled="busyId!=null" @click="remove(p)">删除产品</button></div></details>
+        <details v-if="authenticated" class="product-menu" @toggle="productMenu" @keydown.esc="($event.currentTarget as HTMLDetailsElement).removeAttribute('open')"><summary :aria-label="`${p.name}的更多操作`">⋯</summary><div class="product-menu-actions"><button class="status-action" :disabled="busyId!=null" @click="toggleActive(p)">{{p.active?'停用产品':'启用产品'}}</button></div></details>
         <details v-if="p.movementDirection !== 'PRODUCTION_TO_WAREHOUSE' && (p.materialBatches?.length || p.materialBatch)" class="product-batches"><summary>物料批次 · {{p.materialBatches?.length || 1}} 项</summary><p>{{p.materialBatches?.length ? p.materialBatches.join(' / ') : p.materialBatch}}</p></details>
         <details v-if="p.productionNumbers?.length" class="product-batches"><summary>生产编号 · {{p.productionNumbers.length}} 项</summary><p>{{p.productionNumbers.join(' / ')}}</p></details>
       </article>

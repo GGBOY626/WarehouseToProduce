@@ -19,7 +19,7 @@ const warehouseNumber=ref(props.stock?.warehouseNumber??''),notes=ref(props.stoc
 const items=ref<DraftItem[]>(props.stock?.items.map(i=>({...blank(),...i,finished:i.finished??false}))??[blank()]);
 const busy=ref(false),message=ref('');
 function setFinished(item:DraftItem,value:boolean){item.finished=value;item.productId=null;item.productName='';item.materialCode='';item.productionNumber='';item.materialBatch='';item.batch='';item.unit='';delete options.value[item.key]}
-async function searchProducts(query:string,item:DraftItem){return productsApi.search(query,true,item.finished?'PRODUCTION_TO_WAREHOUSE':'WAREHOUSE_TO_PRODUCTION')}
+async function searchProducts(query:string,item:DraftItem){return productsApi.search(query,!!props.stock,item.finished?'PRODUCTION_TO_WAREHOUSE':'WAREHOUSE_TO_PRODUCTION')}
 function changedProduct(item:DraftItem,p?:Product){item.productName=p?.name||item.productName;item.unit=p?.baseUnit||'';const d=warehouseProductDefaults(p,item.finished===true);options.value[item.key]=d;item.productId=p?.id;item.materialCode=d.materialCode;item.batch=d.batch;item.materialBatch=d.rawMaterialBatch;item.productionNumber=d.productionNumber}
 async function save(){
   if(busy.value)return;message.value='';

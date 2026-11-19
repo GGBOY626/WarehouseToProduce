@@ -85,7 +85,7 @@ function selectMaterial(target: ReturnType<typeof newTarget>, p?: Product) {
 function selectOutput(p?: Product) {
   outputUnit.value = p?.baseUnit || "";
   outputBatchOptions.value = p?.productionNumbers || [];
-  outputCodeOptions.value = p?.sku && !(p.materialCodes || []).includes(p.sku) ? [p.sku] : p?.materialCodes || [p?.sku || p?.materialCode].filter(Boolean) as string[];
+  outputCodeOptions.value = p?.sku ? ((p.materialCodes || []).includes(p.sku) ? p.materialCodes! : [p.sku]) : [];
   outputNumberOptions.value = [];
   outputMaterialBatches.value = outputBatchOptions.value.length === 1 ? [...outputBatchOptions.value] : [];
   outputMaterialCodes.value = outputCodeOptions.value.length === 1 ? [...outputCodeOptions.value] : [];
@@ -114,7 +114,7 @@ onMounted(async () => {
     }
     const output = outputs.find(p => p.id === outputProductId.value);
     if (output) {
-      outputCodeOptions.value = output.sku && !(output.materialCodes || []).includes(output.sku) ? [output.sku] : output.materialCodes?.length ? output.materialCodes : [output.sku || output.materialCode];
+      outputCodeOptions.value = output.sku ? ((output.materialCodes || []).includes(output.sku) ? output.materialCodes! : [output.sku]) : [];
       outputNumberOptions.value = [];
       outputBatchOptions.value = output.productionNumbers || [];
     }

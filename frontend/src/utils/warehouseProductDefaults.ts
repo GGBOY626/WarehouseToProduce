@@ -7,8 +7,8 @@ function values(items?:string[],fallback?:string){
 
 export function warehouseProductDefaults(product:Product|undefined,finished:boolean){
   const catalogCodes=values(product?.materialCodes,product?.materialCode);
-  const codes=finished&&product?.sku
-    ? (catalogCodes.includes(product.sku)?catalogCodes:[product.sku])
+  const codes=finished
+    ? product?.sku ? (catalogCodes.includes(product.sku)?catalogCodes:[product.sku]) : []
     : catalogCodes;
   const productionNumbers=finished?[]:values(product?.productionNumbers);
   const materialBatches=finished?[]:values(product?.materialBatches,product?.materialBatch);
