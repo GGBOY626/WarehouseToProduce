@@ -109,7 +109,10 @@ public class ProductService {
         p.setName(name);p.setMaterialCode(codes.isEmpty()?materialCode:codes.iterator().next());
         p.setSku(finished?(r.sku()==null||r.sku().isBlank()?(r.materialCodes()==null||r.materialCodes().stream().noneMatch(code->code!=null&&!code.isBlank())?null:codes.iterator().next()):blankToNull(r.sku())):blankToNull(r.sku()));
         p.setMaterialBatch(finished?null:blankToNull(r.materialBatch()));
-        p.setMovementDirection(r.movementDirection());p.setQuantityUnknown(r.quantityUnknown());p.setDefaultUnitsPerCarton(r.quantityUnknown()?null:r.defaultUnitsPerCarton());p.setBaseUnit(r.quantityUnknown()?null:r.baseUnit().trim());
+        p.setMovementDirection(r.movementDirection());
+        p.setMaterialCategory(r.movementDirection()==ProductUsage.WAREHOUSE_TO_PRODUCTION && r.materialCategory()!=null
+                ? r.materialCategory() : ProductMaterialCategory.OTHER);
+        p.setQuantityUnknown(r.quantityUnknown());p.setDefaultUnitsPerCarton(r.quantityUnknown()?null:r.defaultUnitsPerCarton());p.setBaseUnit(r.quantityUnknown()?null:r.baseUnit().trim());
     }
     public String resolveBatch(Product product,String value,boolean required) {
         String batch=blankToNull(value);

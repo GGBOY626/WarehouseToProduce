@@ -79,6 +79,22 @@ class ProductNameConflictTest {
         assertThat(saved.productionNumbers()).containsExactly("BATCH-1");
     }
 
+    @Test void warehouseMaterialsDefaultToOtherAndCanBeCategorized() {
+        var defaulted = products.create(new ProductDtos.Request("旧物料", "OLD", null,
+                ProductUsage.WAREHOUSE_TO_PRODUCTION, null, "个"));
+        assertThat(defaulted.materialCategory()).isEqualTo(ProductMaterialCategory.OTHER);
+
+        var categorized = products.create(new ProductDtos.Request("外盒", "BOX", null, null,
+                ProductUsage.WAREHOUSE_TO_PRODUCTION, null, "个", false, java.util.List.of(), java.util.List.of(),
+                null, null, java.util.List.of("BOX"), ProductMaterialCategory.OUTER_BOX));
+        assertThat(categorized.materialCategory()).isEqualTo(ProductMaterialCategory.OUTER_BOX);
+
+        var finished = products.create(new ProductDtos.Request("成品", "FIN", null, null,
+                ProductUsage.PRODUCTION_TO_WAREHOUSE, null, "个", false, java.util.List.of(), java.util.List.of(),
+                null, null, java.util.List.of("FIN"), ProductMaterialCategory.PRIMARY));
+        assertThat(finished.materialCategory()).isEqualTo(ProductMaterialCategory.OTHER);
+    }
+
     @Test void unclassifiedProductsAreNotAssumedToBeMaterialsOrFinishedGoods() {
         add("旧产品", "UNKNOWN-1", null);
         add("旧产品", "RAW", ProductUsage.WAREHOUSE_TO_PRODUCTION);
