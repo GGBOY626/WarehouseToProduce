@@ -44,6 +44,8 @@ public class Product extends PersistentEntity {
         return codes;
     }
     @Enumerated(EnumType.STRING) @Column(name = "movement_direction", length = 40) private ProductUsage movementDirection;
+    @Enumerated(EnumType.STRING) @Column(name = "material_category", nullable = false, length = 20)
+    private ProductMaterialCategory materialCategory = ProductMaterialCategory.OTHER;
     @Column(name = "default_units_per_carton") private Integer defaultUnitsPerCarton;
     @ElementCollection
     @CollectionTable(name="product_carton_spec",joinColumns=@JoinColumn(name="product_id"))

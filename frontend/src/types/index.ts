@@ -1,5 +1,6 @@
 export type Direction = "WAREHOUSE_TO_PRODUCTION" | "PRODUCTION_TO_WAREHOUSE";
 export type ProductUsage = Direction;
+export type ProductMaterialCategory = "PRIMARY" | "OUTER_BOX" | "LINER" | "INNER_BOX" | "OTHER";
 export type MovementStatus = "ACTIVE" | "VOID";
 export type ProductionTaskStatus = "PREVIEW" | "PREPARING" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED";
 export type IssueType =
@@ -25,6 +26,7 @@ export interface Product {
   baseUnit?: string;
   quantityUnknown: boolean;
   movementDirection?: ProductUsage;
+  materialCategory?: ProductMaterialCategory;
   active: boolean;
   duplicateName?: boolean;
 }

@@ -14,7 +14,7 @@ Gemini 只读业务助手已接入独立 Python FastAPI 服务，支持库存、
 4. 前端：进入 `frontend`，运行 `npm install` 和 `npm run dev`。
 5. 打开 `http://localhost:5173`。
 
-Flyway 会按版本执行 `db/migration` 中尚未应用的迁移，仓库管理使用 V17，手动物料、原料批号、照片及 A 排过道升级使用 V18。正式环境使用 `ddl-auto=validate`，不要修改已经执行过的 Migration。
+Flyway 会按版本执行 `db/migration` 中尚未应用的迁移，仓库管理使用 V17，手动物料、原料批号、照片及 A 排过道升级使用 V18，产品物料类别使用 V36。正式环境使用 `ddl-auto=validate`，不要修改已经执行过的 Migration。
 
 ## 生产部署
 

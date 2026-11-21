@@ -2,7 +2,7 @@
 import { computed, nextTick, onMounted, ref } from "vue";
 import { productsApi } from "../api";
 import { errorMessage } from "../api/http";
-import type { Product, ProductUsage, BoxPacking } from "../types";
+import type { Product, ProductUsage, ProductMaterialCategory, BoxPacking } from "../types";
 import { availableCartonSpecs } from "../utils/cartonSpecs";
 import { productPackagingLines } from "../utils/productPackaging";
 import { packingError } from "../utils/boxPacking";
@@ -18,6 +18,7 @@ const rows = ref<Product[]>([]),
     sku: "",
     materialBatch: "",
     movementDirection: "" as ProductUsage | "",
+    materialCategory: "OTHER" as ProductMaterialCategory,
     baseUnit: "个",
     quantityUnknown: false,
   }),
@@ -30,7 +31,14 @@ const batchesText = ref("");
 const productionNumbersText = ref("");
 const materialCodesText = ref("");
 const selectedDirection = ref<ProductUsage | "">("WAREHOUSE_TO_PRODUCTION");
-const visibleRows = computed(() => rows.value.filter(p => (p.movementDirection || "") === selectedDirection.value));
+const selectedMaterialCategory = ref<ProductMaterialCategory | "ALL">("ALL");
+const materialCategories: { value: ProductMaterialCategory; label: string }[] = [
+  { value: "PRIMARY", label: "主料" }, { value: "OUTER_BOX", label: "外盒" },
+  { value: "LINER", label: "内衬" }, { value: "INNER_BOX", label: "内盒" }, { value: "OTHER", label: "其他" },
+];
+const categoryLabel = (category?: ProductMaterialCategory) => materialCategories.find(item => item.value === category)?.label || "其他";
+const visibleRows = computed(() => rows.value.filter(p => (p.movementDirection || "") === selectedDirection.value
+  && (selectedDirection.value !== "WAREHOUSE_TO_PRODUCTION" || selectedMaterialCategory.value === "ALL" || (p.materialCategory || "OTHER") === selectedMaterialCategory.value)));
 const editorSection = ref<HTMLElement>();
 function skuText(p:Product){
   if(!p.sku)return '待核对';
@@ -62,6 +70,7 @@ function open(p?: Product) {
         sku: p.sku || "",
         materialBatch: p.materialBatch || "",
         movementDirection: p.movementDirection || "",
+        materialCategory: p.materialCategory || "OTHER",
         baseUnit: p.baseUnit || "",
         quantityUnknown: p.quantityUnknown,
       }
@@ -71,6 +80,7 @@ function open(p?: Product) {
         sku: "",
         materialBatch: "",
         movementDirection: selectedDirection.value,
+        materialCategory: "OTHER",
         baseUnit: "个",
         quantityUnknown: false,
       };
@@ -158,6 +168,12 @@ onMounted(load);
         <label for="product-name" class="required">产品名称</label
         ><input id="product-name" name="product-name" class="input" v-model.trim="form.name" />
       </div>
+      <div v-if="form.movementDirection === 'WAREHOUSE_TO_PRODUCTION'" class="field">
+        <label for="product-material-category" class="required">物料类别</label>
+        <select id="product-material-category" class="select" v-model="form.materialCategory" required>
+          <option v-for="category in materialCategories" :key="category.value" :value="category.value">{{category.label}}</option>
+        </select>
+      </div>
       <div class="field">
         <label for="product-code" class="required">物料编码（可选多个，每行一个）</label>
         <textarea id="product-code" name="product-code" spellcheck="false" class="textarea mono" v-model="materialCodesText" placeholder="MAT001&#10;MAT002" />
@@ -227,12 +243,17 @@ onMounted(load);
       <button type="button" :aria-pressed="selectedDirection==='PRODUCTION_TO_WAREHOUSE'" :class="{active:selectedDirection==='PRODUCTION_TO_WAREHOUSE'}" @click="selectedDirection='PRODUCTION_TO_WAREHOUSE'">生产车间 → 仓库</button>
       <button v-if="rows.some(p => !p.movementDirection)" type="button" :class="{active:selectedDirection===''}" @click="selectedDirection=''">待分类</button>
     </div>
+    <div v-if="selectedDirection==='WAREHOUSE_TO_PRODUCTION'" class="usage-choice" role="group" aria-label="按物料类别查看产品">
+      <button type="button" :aria-pressed="selectedMaterialCategory==='ALL'" :class="{active:selectedMaterialCategory==='ALL'}" @click="selectedMaterialCategory='ALL'">全部</button>
+      <button v-for="category in materialCategories" :key="category.value" type="button" :aria-pressed="selectedMaterialCategory===category.value" :class="{active:selectedMaterialCategory===category.value}" @click="selectedMaterialCategory=category.value">{{category.label}}</button>
+    </div>
     <p v-if="loading" class="card empty" role="status">正在读取产品…</p>
     <p v-else-if="!visibleRows.length" class="card empty">暂无符合条件的产品，可调整搜索或新增产品。</p>
     <div v-else class="stack list">
       <article v-for="p in visibleRows" :key="p.id" class="card product-card">
         <component :is="authenticated ? 'button' : 'div'" class="product-main" :type="authenticated ? 'button' : undefined" :aria-label="authenticated ? `编辑 ${p.name}` : undefined" @click="authenticated && open(p)">
           <div class="product-title"><strong>{{p.name}}</strong><span v-if="!p.active" class="inactive-tag">已停用</span></div>
+          <span v-if="p.movementDirection === 'WAREHOUSE_TO_PRODUCTION'" class="product-spec primary-spec">{{categoryLabel(p.materialCategory)}}</span>
         <span v-if="p.movementDirection !== 'PRODUCTION_TO_WAREHOUSE'" class="material-code">编码 {{(p.materialCodes?.length ? p.materialCodes : [p.materialCode]).join(' / ')}}</span><span v-if="p.movementDirection === 'PRODUCTION_TO_WAREHOUSE' && p.sku" class="material-code">SKU {{skuText(p)}}</span>
           <span v-for="(line,index) in productPackagingLines(p)" :key="line" class="product-spec" :class="{ 'primary-spec': index === 0 }">{{ line }}</span>
           <span v-if="p.quantityUnknown" class="product-spec">数量不确定</span>
