@@ -3,7 +3,7 @@ import { computed, nextTick, onMounted, ref } from 'vue';
 import { productsApi } from '../api';
 import { warehouseApi } from '../api/warehouse';
 import { errorMessage } from '../api/http';
-import { areaLanes, laneLabels, rackOrder, emptyWarehouseFilters, filterWarehousePallets, selectWarehouseLocation, changeWarehouseScope } from '../utils/warehouse';
+import { areaLanes, laneLabels, rackOrder, emptyWarehouseFilters, filterWarehousePallets, sortWarehousePallets, selectWarehouseLocation, changeWarehouseScope } from '../utils/warehouse';
 import { showDateTime } from '../utils/time';
 import type { Product } from '../types';
 import type { WarehousePallet, WarehouseOverview } from '../types/warehouse';
@@ -23,7 +23,7 @@ const rackData=computed<WarehouseOverview>(()=>{const areas=data.value.areas.fil
 const selectedArea=computed(()=>rackData.value.areas.find(a=>a.id===areaId.value));
 const racks=computed(()=>rackData.value.areas);
 const orderedAreas=computed(()=>racks.value);
-const visible=computed(()=>filterWarehousePallets(rackData.value.pallets,rackData.value.areas,filters.value).sort((a,b)=>a.areaId-b.areaId||areaLanes(rackData.value.areas.find(area=>area.id===a.areaId)).indexOf(a.lane)-areaLanes(rackData.value.areas.find(area=>area.id===b.areaId)).indexOf(b.lane)||a.position-b.position));
+const visible=computed(()=>sortWarehousePallets(filterWarehousePallets(rackData.value.pallets,rackData.value.areas,filters.value),rackData.value.areas));
 const viewMode=ref<'pallet'|'material'>('pallet');
 const materials=computed(()=>summarizeWarehouse(rackData.value.pallets,rackData.value.areas,filters.value));
 const detailDialog=ref<HTMLDialogElement>(),detailPallet=ref<WarehousePallet>();

@@ -38,6 +38,12 @@ export function filterWarehousePallets(pallets:WarehousePallet[],areas:Warehouse
   return filterPallets(typed,filters.query,filters.areaId,filters.lane,filters.unknownOnly)
     .filter(p=>(!filters.kind||p.kind===filters.kind)&&(!filters.row||warehouseRow(areaById.get(p.areaId))===filters.row));
 }
+export function sortWarehousePallets(pallets:WarehousePallet[],areas:WarehouseArea[]) {
+  const areaById=new Map(areas.map(area=>[area.id,area]));
+  return [...pallets].sort((a,b)=>a.areaId-b.areaId
+    || areaLanes(areaById.get(a.areaId)).indexOf(a.lane)-areaLanes(areaById.get(b.areaId)).indexOf(b.lane)
+    || b.position-a.position);
+}
 // Pending is a separate dimension, never an additional location count.
 export function warehouseStats(pallets:WarehousePallet[]) {
   return {

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { areaLanes, rackOrder, rackStart, nextPosition, filterPallets, emptyWarehouseFilters, filterWarehousePallets, warehouseStats, selectWarehouseLocation, changeWarehouseScope } from '../src/utils/warehouse.ts';
+import { areaLanes, rackOrder, rackStart, nextPosition, filterPallets, emptyWarehouseFilters, filterWarehousePallets, sortWarehousePallets, warehouseStats, selectWarehouseLocation, changeWarehouseScope } from '../src/utils/warehouse.ts';
 const pallets=[
   {id:1,areaId:1,lane:'UPPER',position:1,code:'TP-1',location:'A 排 / 上层 / 01 号',items:[{productName:'外盒',materialCode:'BOX',batch:'22334',quantity:2000}]},
   {id:2,areaId:1,lane:'UPPER',position:3,code:'TP-2',location:'A 排 / 上层 / 03 号',items:[{productName:'外盒',materialCode:'BOX',batch:'22335',quantity:null}]},
@@ -80,6 +80,15 @@ test('rack order and sequence starts match the physical rack layout',()=>{
   assert.equal(nextPosition(Array.from({length:18},(_,index)=>({areaId:8,lane:'LOWER',position:index+1})),8,'LOWER',1,18),1);
   assert.equal(nextPosition([{areaId:8,lane:'LOWER',position:17}],8,'LOWER',5),5);
   assert.equal(nextPosition([{areaId:8,lane:'LOWER',position:1}],8,'LOWER',1),2);
+});
+test('warehouse pallet view orders positions in reverse within each rack lane',()=>{
+  const areas=[{id:1,name:'A',kind:'RACK',lanes:3}];
+  const rows=[
+    {id:1,areaId:1,lane:'UPPER',position:5},
+    {id:2,areaId:1,lane:'UPPER',position:18},
+    {id:3,areaId:1,lane:'MIDDLE',position:7}
+  ];
+  assert.deepEqual(sortWarehousePallets(rows,areas).map(row=>row.id),[2,1,3]);
 });
 test('batch, product, location and unknown filters combine without mixing locations',()=>{
   assert.deepEqual(filterPallets(pallets,'22334').map(p=>p.id),[1,3]);
