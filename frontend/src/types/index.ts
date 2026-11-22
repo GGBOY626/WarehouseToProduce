@@ -30,6 +30,28 @@ export interface Product {
   active: boolean;
   duplicateName?: boolean;
 }
+export interface ProductionRecipeItem {
+  productId: number;
+  productName: string;
+  materialCode: string;
+  baseUnit: string;
+  materialCategory: ProductMaterialCategory;
+  quantityPerOutput: number;
+  primary: boolean;
+}
+export interface ProductionRecipe {
+  id: number;
+  outputProductId: number;
+  outputProductName: string;
+  name: string;
+  primaryMaterialProductId: number;
+  items: ProductionRecipeItem[];
+}
+export interface ProductionRecipeInput {
+  name: string;
+  primaryMaterialProductId: number;
+  items: { productId: number; quantityPerOutput: number }[];
+}
 export interface Person {
   id: number;
   name: string;

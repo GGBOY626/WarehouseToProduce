@@ -27,6 +27,8 @@ public class ProductionTask extends PersistentEntity {
     @Column(length=100) private String name;
     @Column(length=1000) private String remarks;
     @ManyToOne(fetch=FetchType.LAZY) @JoinColumn(name="output_product_id") private Product outputProduct;
+    @ManyToOne(fetch=FetchType.LAZY) @JoinColumn(name="recipe_id") private ProductionRecipe recipe;
+    @Column(name="recipe_name_snapshot", length=100) private String recipeNameSnapshot;
     @Column(name="output_boxes_per_carton") private Integer outputBoxesPerCarton;
     @Column(name="output_units_per_box") private Integer outputUnitsPerBox;
     @Column(name="output_cartons_per_pallet") private Integer outputCartonsPerPallet;
