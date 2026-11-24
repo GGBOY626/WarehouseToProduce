@@ -68,6 +68,17 @@ class TaskYieldIntegrationTest {
         historicalVoid(voided.id(),"test");
         assertThatThrownBy(()->movements.linkTask(voided.id(),task.id()));
     }
+    @Test void outputCanBeUnlinkedAfterMaterialMovementsButNotAfterFinishedReceipt(){
+        var task=tasks.create(plan(20000,1,ProductionTask.OutputQuantityBasis.UNIT));
+        move(task.id(),raw,"22677",1200,false);
+        var unlinked=tasks.unlinkOutput(task.id());
+        assertThat(unlinked.output()).isNull();
+
+        var receivedTask=tasks.create(plan(20000,1,ProductionTask.OutputQuantityBasis.UNIT));
+        movement(receivedTask.id(),output,"22677",0,0,null,1000,null,false);
+        assertThatThrownBy(()->tasks.unlinkOutput(receivedTask.id())).hasMessageContaining("已有车间到仓库的入库记录");
+        assertThat(tasks.detail(receivedTask.id()).output()).isNotNull();
+    }
     @Test void dailyReportStoresExactGroupCartonsAndUpdatesOneEntryPerTaskAndDate() throws Exception {
         var task=tasks.create(plan(20000,1,ProductionTask.OutputQuantityBasis.UNIT));
         var date=LocalDate.of(2026,11,18);

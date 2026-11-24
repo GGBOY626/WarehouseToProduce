@@ -85,7 +85,7 @@ function selectMaterial(target: ReturnType<typeof newTarget>, p?: Product) {
 function selectOutput(p?: Product) {
   outputUnit.value = p?.baseUnit || "";
   outputBatchOptions.value = p?.productionNumbers || [];
-  outputCodeOptions.value = p?.sku ? ((p.materialCodes || []).includes(p.sku) ? p.materialCodes! : [p.sku]) : [];
+  outputCodeOptions.value = p?.materialCodes || [];
   outputNumberOptions.value = [];
   outputMaterialBatches.value = outputBatchOptions.value.length === 1 ? [...outputBatchOptions.value] : [];
   outputMaterialCodes.value = outputCodeOptions.value.length === 1 ? [...outputCodeOptions.value] : [];
@@ -114,9 +114,11 @@ onMounted(async () => {
     }
     const output = outputs.find(p => p.id === outputProductId.value);
     if (output) {
-      outputCodeOptions.value = output.sku ? ((output.materialCodes || []).includes(output.sku) ? output.materialCodes! : [output.sku]) : [];
+      outputCodeOptions.value = output.materialCodes || [];
+      outputMaterialCodes.value = outputMaterialCodes.value.filter(code => outputCodeOptions.value.includes(code));
       outputNumberOptions.value = [];
       outputBatchOptions.value = output.productionNumbers || [];
+      outputMaterialBatches.value = outputMaterialBatches.value.filter(batch => outputBatchOptions.value.includes(batch));
     }
   } catch (error) { message.value = errorMessage(error); }
 });
@@ -194,7 +196,7 @@ async function save(asPreview = false) {
       <label class="output-choice"><input type="checkbox" v-model="outputEnabled" :disabled="hasReceipts" /> 关联成品（车间 → 仓库，可稍后设置）</label>
       <div v-if="outputEnabled" class="output-plan">
         <fieldset :disabled="hasReceipts">
-          <SearchPicker v-model="outputProductId" label="出货物料 / 成品" placeholder="选择车间送回仓库的物料" :load="loadOutputs" :display="p => `${p.name} · ${p.materialCode}`" @select="selectOutput" />
+          <SearchPicker v-model="outputProductId" label="出货物料 / 成品" placeholder="选择车间送回仓库的物料" :load="loadOutputs" :display="p => `${p.name} · ${p.sku || p.materialCode || ''}`" @select="selectOutput" />
         </fieldset>
           <label v-if="outputCodeOptions.length" class="field"><span>SKU（可多选）</span><select class="select" v-model="outputMaterialCodes" multiple><option v-for="code in outputCodeOptions" :key="code" :value="code">{{code}}</option></select></label>
           <label v-if="outputNumberOptions.length" class="field"><span>生产编号（可多选）</span><select class="select" v-model="outputProductionNumbers" multiple><option v-for="number in outputNumberOptions" :key="number" :value="number">{{number}}</option></select></label>

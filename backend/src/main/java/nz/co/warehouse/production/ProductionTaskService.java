@@ -108,6 +108,18 @@ public class ProductionTaskService {
     @Transactional public Response createPreview(SaveRequest r){return create(r,ProductionTask.Status.PREVIEW);}
     private Response create(SaveRequest r,ProductionTask.Status status){ProductionTask t=new ProductionTask();t.setStatus(status);apply(t,r,false);return response(tasks.saveAndFlush(t));}
     @Transactional public Response update(long id,SaveRequest r){ProductionTask t=get(id);apply(t,r,true);return response(t);}
+    @Transactional public Response unlinkOutput(long id){
+        ProductionTask task=get(id);
+        if(task.getOutputProduct()==null)throw BusinessException.badRequest("TASK_OUTPUT_NOT_LINKED","该任务尚未关联成品。");
+        boolean hasInboundMovement=movements.findByProductionTaskIdOrderByMovementTimeAsc(id).stream().anyMatch(m->
+                m.getStatus()==MovementEnums.Status.ACTIVE&&m.getDirection()==MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE);
+        if(hasInboundMovement)throw BusinessException.badRequest("TASK_OUTPUT_IN_USE","已有车间到仓库的入库记录，不能取消关联。");
+        task.setOutputProduct(null);task.setOutputMaterialBatch(null);task.getOutputMaterialBatches().clear();
+        task.getOutputMaterialCodes().clear();task.getOutputProductionNumbers().clear();task.setTargetOutputQuantity(null);
+        task.setOutputBoxesPerCarton(null);task.setOutputUnitsPerBox(null);task.setOutputQuantityBasis(null);
+        task.setOutputCartonsPerPallet(null);task.setPrimaryMaterial(null);
+        return response(task);
+    }
     @Transactional public void delete(long id){
         ProductionTask task=get(id);
         // Preserve original movement records, including voided records and their photos.

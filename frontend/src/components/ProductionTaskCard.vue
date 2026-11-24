@@ -1,14 +1,14 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import type { ProductionTask, ProductionTaskStatus } from '../types';
-import { taskWarnings } from '../utils/taskAttention';
+import { activeTask, taskWarnings } from '../utils/taskAttention';
 import FinishedReceiptSummary from './FinishedReceiptSummary.vue';
 import { taskIssuedMaterials } from '../utils/taskIssuedMaterials';
 import PhotoLightbox from './PhotoLightbox.vue';
 import ProductionDailyReport from './ProductionDailyReport.vue';
 
 const props = defineProps<{ task: ProductionTask; expanded: boolean; authenticated: boolean }>();
-const emit = defineEmits<{ toggle: [] }>();
+const emit = defineEmits<{ toggle: []; associateOutput: []; unlinkOutput: [] }>();
 const labels: Record<ProductionTaskStatus, string> = {
   PREVIEW: '任务预告', PREPARING: '进行中', IN_PROGRESS: '进行中', COMPLETED: '已完成', CANCELLED: '已取消',
 };
@@ -18,6 +18,7 @@ const warnings = computed(() => taskWarnings(props.task));
 // Keep the list's existing eligibility and precision for production progress.
 const productionPercent = computed(() => props.task.output?.quantityBasis ? props.task.output.productionPercent : null);
 const issued = computed(() => taskIssuedMaterials(props.task));
+const hasInboundMovement = computed(() => props.task.movements.some(movement => movement.status === 'ACTIVE' && movement.direction === 'PRODUCTION_TO_WAREHOUSE'));
 const visiblePhotos = computed(() => (props.task.photos || []).slice(0, 4));
 const hiddenPhotoCount = computed(() => Math.max(0, (props.task.photos?.length || 0) - visiblePhotos.value.length));
 const photoLightbox = ref<InstanceType<typeof PhotoLightbox>>();
@@ -36,6 +37,12 @@ const photoLightbox = ref<InstanceType<typeof PhotoLightbox>>();
       </div>
     </header>
     <p class="task-dates">开始日期 {{ task.startDate || '暂无发料记录' }}<template v-if="task.status==='COMPLETED'"> · 结束日期 {{ task.endDate || '暂无成品回仓记录' }}</template></p>
+    <div v-if="activeTask(task) && authenticated" class="task-output-control" @click.stop>
+      <span v-if="task.output" class="task-output-label">关联成品：{{ task.output.productName }}</span>
+      <button v-if="!task.output" type="button" class="text-button" @click="emit('associateOutput')">关联成品</button>
+      <button v-else type="button" class="text-button danger" :disabled="hasInboundMovement" :title="hasInboundMovement ? '已有车间到仓库的入库记录，无法取消关联' : undefined" @click="emit('unlinkOutput')">取消关联</button>
+      <small v-if="task.output && hasInboundMovement" class="task-output-note">已有车间到仓库的流转记录，不能取消关联</small>
+    </div>
     <div v-if="visiblePhotos.length" class="task-photos" aria-label="生产照片">
       <button v-for="(photo, index) in visiblePhotos" :key="photo.id" type="button" :aria-label="`查看照片 ${index + 1}：${photo.originalName}`" @click.stop="photoLightbox?.open(index, $event.currentTarget as HTMLElement)">
         <img :src="photo.url" :alt="photo.originalName" loading="lazy" width="92" height="72" />
@@ -110,6 +117,7 @@ const photoLightbox = ref<InstanceType<typeof PhotoLightbox>>();
 .task-photos>span{color:var(--muted);font-size:11px}
 .task-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
 .task-dates{margin:8px 0 14px;color:var(--muted);font-size:12px}
+.task-output-control{position:relative;z-index:2;display:flex;align-items:center;flex-wrap:wrap;gap:4px 12px;margin:-4px 0 14px;font-size:12px}.task-output-label{color:var(--muted);overflow-wrap:anywhere}.task-output-note{flex-basis:100%;color:var(--muted);font-size:11px}.text-button{min-height:36px;padding:6px 8px;border:0;border-radius:5px;background:transparent;color:var(--blue);font-size:12px;font-weight:650;cursor:pointer}.text-button:hover{background:var(--soft-blue)}.text-button:disabled{color:var(--muted);cursor:not-allowed;background:transparent}.text-button.danger{color:var(--red)}
 .task-heading h3{margin:0;min-width:0;font-family:"Microsoft YaHei UI","PingFang SC",sans-serif;font-size:18px;font-weight:700;line-height:1.5;overflow-wrap:anywhere;text-wrap:pretty}
 .task-card-link{position:absolute;inset:0;z-index:1;border-radius:var(--radius);touch-action:manipulation}
 .task-card-link:focus-visible{outline:3px solid var(--blue2);outline-offset:3px}

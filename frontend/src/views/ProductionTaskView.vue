@@ -20,6 +20,7 @@ function toggleShortages(id: number) {
 const { authenticated } = useAuth();
 const loading=ref(true);
 const tasks = ref<ProductionTask[]>([]), message = ref(""), showForm = ref(false);
+const editingTask = ref<ProductionTask>(), editDialog = ref<HTMLDialogElement>();
 const editingPreviewIds = ref<number[]>([]);
 function previewEditing(id: number, editing: boolean) {
   editingPreviewIds.value = editing ? [...new Set([...editingPreviewIds.value, id])] : editingPreviewIds.value.filter(value => value !== id);
@@ -35,9 +36,16 @@ const showFinished = ref(false);
 const showPreviews = ref(false);
 const groups = computed(() => [showPreviews.value ? { title: '任务预告', tasks: previews.value } : showFinished.value ? { title: '已完成的任务', tasks: finished.value } : { title: '进行中的任务', tasks: active.value }]);
 async function load() { try { const loaded = await productionTasksApi.list(); tasks.value = loaded.map(task => editingPreviewIds.value.includes(task.id) ? tasks.value.find(value => value.id === task.id) ?? task : task); message.value=""; } catch (e) { message.value = errorMessage(e); } finally { loading.value=false; } }
-function taskSaved(task:ProductionTask){showForm.value=false;showFinished.value=false;showPreviews.value=task.status==='PREVIEW';void load()}
+function closeTaskEditor(){editDialog.value?.close();editingTask.value=undefined}
+async function editTaskOutput(task:ProductionTask){editingTask.value=task;await nextTick();if(!editDialog.value?.open)editDialog.value?.showModal()}
+function taskSaved(task:ProductionTask){closeTaskEditor();showForm.value=false;showFinished.value=false;showPreviews.value=task.status==='PREVIEW';void load()}
+async function unlinkTaskOutput(task:ProductionTask){
+  if(!confirm(`确定取消任务“${task.name}”的成品关联吗？`))return;
+  try{const updated=await productionTasksApi.unlinkOutput(task.id);tasks.value=tasks.value.map(value=>value.id===task.id?updated:value);message.value=""}
+  catch(error){message.value=errorMessage(error)}
+}
 let refreshTimer: ReturnType<typeof setInterval>;
-function refreshVisible(){ if(document.visibilityState === 'visible' && !showForm.value && !editingPreviewIds.value.length) void load(); }
+function refreshVisible(){ if(document.visibilityState === 'visible' && !showForm.value && !editingTask.value && !editingPreviewIds.value.length) void load(); }
 onBeforeRouteLeave(() => { saveTaskListState({ scrollY: window.scrollY, expandedTaskIds: expandedTaskIds.value }); });
 let mounted = true;
 onMounted(async () => { if(overviewEntry)await router.replace({query:{...route.query,status:undefined,attention:undefined}}); await load(); if (!mounted) return; await nextTick(); window.scrollTo({ top: overviewEntry ? 0 : savedListState.scrollY, behavior: 'instant' }); refreshTimer=setInterval(refreshVisible,15000); window.addEventListener('focus',refreshVisible); });
@@ -48,6 +56,10 @@ onBeforeUnmount(() => { mounted=false; clearInterval(refreshTimer); window.remov
     <div class="page-heading"><div><h1 class="page-title">生产任务</h1><p class="page-lead">查看任务备料情况、分批回仓产量及生产完成率。</p></div><button v-if="authenticated" class="btn btn-primary" @click="showForm = !showForm">{{ showForm ? '收起' : '＋ 新建任务' }}</button></div>
     <p v-if="message" class="form-alert" role="alert">{{ message }}</p>
     <ProductionTaskForm v-if="showForm && authenticated" @saved="taskSaved" @cancel="showForm = false" />
+    <dialog ref="editDialog" class="task-edit-dialog" aria-labelledby="edit-task-title" @close="editingTask=undefined" @click.self="closeTaskEditor">
+      <header><h2 id="edit-task-title">编辑生产任务</h2><button type="button" class="btn btn-secondary" @click="closeTaskEditor">关闭</button></header>
+      <ProductionTaskForm v-if="editingTask" :key="editingTask.id" :task="editingTask" @saved="taskSaved" @cancel="closeTaskEditor" />
+    </dialog>
     <div class="task-toolbar">
       <div class="task-filter" role="group" aria-label="任务状态">
         <button type="button" :aria-pressed="!showFinished&&!showPreviews" @click="showFinished=false;showPreviews=false">进行中 <span>{{ active.length }}</span></button>
@@ -63,7 +75,7 @@ onBeforeUnmount(() => { mounted=false; clearInterval(refreshTimer); window.remov
         <ProductionTaskPreview v-for="task in previews" :key="task.id" :task="task" :authenticated="authenticated" @saved="previewSaved" @editing="previewEditing(task.id, $event)" />
       </div>
       <div v-else class="task-list">
-        <ProductionTaskCard v-for="task in group.tasks" :key="task.id" :task="task" :expanded="expandedTaskIds.includes(task.id)" :authenticated="authenticated" @toggle="toggleShortages(task.id)" />
+        <ProductionTaskCard v-for="task in group.tasks" :key="task.id" :task="task" :expanded="expandedTaskIds.includes(task.id)" :authenticated="authenticated" @toggle="toggleShortages(task.id)" @associate-output="editTaskOutput(task)" @unlink-output="unlinkTaskOutput(task)" />
       </div>
     </section>
   </div>
@@ -83,5 +95,6 @@ onBeforeUnmount(() => { mounted=false; clearInterval(refreshTimer); window.remov
 .task-filter button:focus-visible{outline:2px solid var(--blue2);outline-offset:2px}
 .task-section{margin-top:24px}.section-head{margin-bottom:12px}.section-title{font-size:15px;font-weight:650}.task-count{color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums}
 .task-list,.preview-list{display:grid;gap:10px}.form-alert{color:var(--red)}
+.task-edit-dialog{width:min(900px,calc(100vw - 24px));max-height:90dvh;overflow:auto;padding:16px;border:1px solid var(--line);border-radius:8px;color:var(--ink);background:var(--panel);box-shadow:0 12px 40px #17212633}.task-edit-dialog::backdrop{background:#17212680}.task-edit-dialog>header{position:sticky;top:-16px;z-index:3;display:flex;align-items:center;justify-content:space-between;gap:12px;margin:-16px -16px 12px;padding:12px 16px;background:var(--panel);border-bottom:1px solid var(--line)}.task-edit-dialog h2{margin:0;font-size:18px}.task-edit-dialog :deep(.task-form){margin-top:0}
 @media(max-width:600px){.task-page{padding-top:20px}.page-heading{gap:10px;margin-bottom:18px}.page-title{font-size:23px}.page-heading>.btn{min-height:44px;padding:8px 12px;font-size:13px}.page-lead{max-width:28em;font-size:12px}.task-toolbar{padding:10px 12px;gap:5px}.task-filter{width:100%}.task-filter button{flex:1;min-height:42px;padding-inline:8px;gap:5px;font-size:12px}.task-section{margin-top:20px}.task-list{gap:12px}}
 </style>
