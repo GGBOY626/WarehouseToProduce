@@ -138,6 +138,7 @@ export interface MovementItem {
   remarks?: string;
   issues: { id: number; type: IssueType; description?: string }[];
 }
+export interface MovementListItem extends MaterialSummary { id:number; sku?:string | null; quantityUnknown:boolean }
 export interface MovementDetail {
   materials: (MaterialSummary & { id: number; unknownItemCount: number })[];
   id: number;
@@ -265,7 +266,7 @@ export interface MovementSummary {
   photoCount: number;
   hasIssues: boolean;
   hasUnknownQuantity: boolean;
-  items: (MaterialSummary & { id: number; quantityUnknown: boolean })[];
+  items: MovementListItem[];
 }
 export interface MovementPage {
   content: MovementSummary[];

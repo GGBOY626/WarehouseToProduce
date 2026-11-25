@@ -7,7 +7,10 @@ withDefaults(defineProps<{
   productName: string;
   materialCode: string;
   showMaterialCode?: boolean;
+  materialCodeLabel?: string;
   showMaterialBatch?: boolean;
+  materialBatchLabel?: string;
+  showSubBatch?: boolean;
   materialBatch?: string | null;
   subBatch?: string | null;
   baseUnit: string;
@@ -20,17 +23,17 @@ withDefaults(defineProps<{
   totalQuantity?: number | null;
   unknownItemCount?: number;
   quantityUnknown?: boolean;
-}>(), { showMaterialCode: true, showMaterialBatch: true });
+}>(), { showMaterialCode: true, materialCodeLabel: '物料编码', showMaterialBatch: true, materialBatchLabel: '批次', showSubBatch: true });
 const number = (value: number) => value.toLocaleString('zh-CN');
 </script>
 <template>
   <div class="material-summary" :class="{compact}">
     <div class="identity">
       <strong class="material-name">{{ productName }}</strong>
-      <div v-if="showMaterialCode || (showMaterialBatch && materialBatch?.trim()) || subBatch?.trim()" class="material-identifiers">
-        <span v-if="showMaterialCode">物料编码 <b class="mono">{{ materialCode }}</b></span>
-        <span v-if="subBatch?.trim()">区分批次 <b class="mono">{{ subBatch }}</b></span>
-        <span v-if="showMaterialBatch && materialBatch?.trim()">批次 <b class="mono">{{ materialBatch }}</b></span>
+      <div v-if="showMaterialCode || (showMaterialBatch && materialBatch?.trim()) || (showSubBatch && subBatch?.trim())" class="material-identifiers">
+        <span v-if="showMaterialCode">{{ materialCodeLabel }} <b class="mono">{{ materialCode }}</b></span>
+        <span v-if="showSubBatch && subBatch?.trim()">区分批次 <b class="mono">{{ subBatch }}</b></span>
+        <span v-if="showMaterialBatch && materialBatch?.trim()">{{ materialBatchLabel }} <b class="mono">{{ materialBatch }}</b></span>
       </div>
     </div>
     <div class="material-quantities">

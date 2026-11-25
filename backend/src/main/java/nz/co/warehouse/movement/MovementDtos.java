@@ -67,7 +67,7 @@ public final class MovementDtos {
                                String senderName,String receiverName,boolean returnMovement,boolean finished,int totalCartons,long totalQuantity,MovementEnums.Status status,
                                List<String> productNames,int itemCount,int photoCount,boolean hasIssues,boolean hasUnknownQuantity,List<ListItemResponse> items,Long productionTaskId,String productionTaskName,Integer palletNo,Integer palletCount) {}
     // batchNo remains the material code; per-item materialBatch takes precedence over the legacy header.
-    public record ListItemResponse(Long id,String productName,String materialCode,String materialBatch,String baseUnit,
+    public record ListItemResponse(Long id,String productName,String materialCode,String sku,String materialBatch,String baseUnit,
                                    long fullCartons,long looseUnits,Long totalQuantity,boolean quantityUnknown,long tailCartons,long totalCartons,long unknownItemCount,List<MaterialQuantity.Packaging> packaging,String subBatch,Long totalBoxes) {}
     public record PageResponse(List<ListResponse> content,int page,int size,long totalElements,int totalPages) {}
     public record StatMovementResponse(Long id,String recordNo,Instant movementTime,MovementEnums.Direction direction,
@@ -94,7 +94,7 @@ public final class MovementDtos {
         return MaterialQuantity.group(m.getItems()).values().stream().map(items->{
             MovementItem first=items.getFirst();MaterialQuantity totals=MaterialQuantity.of(items);
             boolean allUnknown=totals.unknownItemCount()==items.size();
-            return new ListItemResponse(first.getId(),first.getProductNameSnapshot(),first.getBatchNo(),first.effectiveMaterialBatch(),first.getBaseUnitSnapshot(),
+            return new ListItemResponse(first.getId(),first.getProductNameSnapshot(),first.getBatchNo(),first.getSkuSnapshot(),first.effectiveMaterialBatch(),first.getBaseUnitSnapshot(),
                     totals.fullCartons(),totals.looseUnits(),allUnknown?null:totals.totalQuantity(),allUnknown,totals.tailCartons(),totals.totalCartons(),totals.unknownItemCount(),totals.packaging(),first.getSubBatch(),m.getDirection()==MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE&&!m.isReturnMovement()?totals.totalBoxes():null);
         }).toList();
     }

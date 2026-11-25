@@ -39,7 +39,7 @@ async function saveLink(){
       <time :datetime="movement.movementTime">{{ showDate ? showDateTime(movement.movementTime) : showTime(movement.movementTime) }}</time>
     </div>
     <div class="movement-items">
-      <MaterialSummary compact v-for="item in movement.items" :key="item.id" v-bind="item" :show-material-code="movement.direction === 'PRODUCTION_TO_WAREHOUSE' && !movement.returnMovement" :show-material-batch="true" />
+      <MaterialSummary compact v-for="item in movement.items" :key="item.id" v-bind="item" :show-material-code="movement.direction !== 'PRODUCTION_TO_WAREHOUSE' || movement.returnMovement" :material-code-label="movement.direction === 'PRODUCTION_TO_WAREHOUSE' && !movement.returnMovement ? 'SKU' : '物料编码'" :material-code="movement.direction === 'PRODUCTION_TO_WAREHOUSE' && !movement.returnMovement ? item.sku||'未录入' : item.materialCode" :show-sub-batch="movement.direction !== 'PRODUCTION_TO_WAREHOUSE' || movement.returnMovement" :show-material-batch="true" :material-batch-label="movement.direction === 'PRODUCTION_TO_WAREHOUSE' ? '物料批次' : '批次'" />
     </div>
   </RouterLink>
     <footer class="record-footer">

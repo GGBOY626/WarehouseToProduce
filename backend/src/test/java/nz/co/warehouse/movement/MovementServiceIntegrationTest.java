@@ -32,6 +32,7 @@ class MovementServiceIntegrationTest {
     @Autowired org.springframework.test.web.servlet.MockMvc mvc;
     @Autowired com.fasterxml.jackson.databind.ObjectMapper objectMapper;
     Long sender,receiver,product,inboundProduct;
+    String materialCode,inboundMaterialCode,inboundSku;
 
     // Legacy VOID rows still exist even though the public operation is now delete.
     private void historicalVoid(long id,String reason){
@@ -41,8 +42,10 @@ class MovementServiceIntegrationTest {
         String suffix=UUID.randomUUID().toString().substring(0,8);
         sender=persons.create(new PersonDtos.Request("仓库人员-"+suffix,null)).id();
         receiver=persons.create(new PersonDtos.Request("生产人员-"+suffix,null)).id();
-        product=products.create(new ProductDtos.Request("测试产品-"+suffix,"MAT-"+suffix,"LOT-"+suffix,ProductUsage.WAREHOUSE_TO_PRODUCTION,30,"个")).id();
-        inboundProduct=products.create(new ProductDtos.Request("入库产品-"+suffix,"IN-"+suffix,null,ProductUsage.PRODUCTION_TO_WAREHOUSE,30,"个")).id();
+        materialCode="MAT-"+suffix;inboundMaterialCode="IN-"+suffix;
+        product=products.create(new ProductDtos.Request("测试产品-"+suffix,materialCode,"LOT-"+suffix,ProductUsage.WAREHOUSE_TO_PRODUCTION,30,"个")).id();
+        inboundSku="SKU-"+suffix;
+        inboundProduct=products.create(new ProductDtos.Request("入库产品-"+suffix,inboundMaterialCode,inboundSku,null,ProductUsage.PRODUCTION_TO_WAREHOUSE,30,"个",false,null,null,null,null,null)).id();
     }
 
     @Test void finishedFilterSeparatesReceiptsFromReturnsAndMatchesStatistics() throws Exception {
@@ -62,6 +65,7 @@ class MovementServiceIntegrationTest {
         var finished=movements.search(day,day,null,null,null,null,batch,0,1,true);
         assertThat(finished.totalElements()).isEqualTo(1);
         assertThat(finished.content()).extracting(MovementDtos.ListResponse::id).containsExactly(receipt.id());
+        assertThat(finished.content().getFirst().items()).extracting(MovementDtos.ListItemResponse::sku).containsExactly(inboundSku);
         assertThat(movements.search(day,day,null,null,null,null,batch,0,100,false).content())
                 .extracting(MovementDtos.ListResponse::id).containsExactlyInAnyOrder(returned.id(),outbound.id());
         var stats=movements.queryStats(day,day,null,null,null,null,batch,true);
@@ -74,6 +78,7 @@ class MovementServiceIntegrationTest {
                 MovementEnums.Status.ACTIVE,null,null,batch,0,1,null,true);
         assertThat(returns.totalElements()).isEqualTo(1);
         assertThat(returns.content()).extracting(MovementDtos.ListResponse::id).containsExactly(returned.id());
+        assertThat(returns.content().getFirst().items()).extracting(MovementDtos.ListItemResponse::materialCode).containsExactly(batch);
         assertThat(movements.search(day.minusDays(1),day.minusDays(1),MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE,
                 MovementEnums.Status.ACTIVE,null,null,batch,0,10,null,true).totalElements()).isZero();
         var returnStats=movements.queryStats(day,day,MovementEnums.Direction.PRODUCTION_TO_WAREHOUSE,

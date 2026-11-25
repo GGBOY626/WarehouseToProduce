@@ -7,7 +7,7 @@ import { resolve, extname, sep } from 'node:path';
 const dist = resolve(fileURLToPath(new URL('../../dist/', import.meta.url)));
 const outbound = 'WAREHOUSE_TO_PRODUCTION', inbound = 'PRODUCTION_TO_WAREHOUSE';
 const material = (id, name, unknown = false) => ({
-  id, productId: id, productName: name, materialCode: `QA-${id}`, materialBatch: '20261020-A',
+  id, productId: id, productName: name, materialCode: `QA-${id}`, sku: `SKU-${id}`, materialBatch: '20261020-A',
   baseUnit: '个', fullCartons: 24, tailCartons: 0, totalCartons: 24, looseUnits: 0,
   totalQuantity: unknown ? null : 120000, quantityUnknown: unknown, packaging: [],
 });
