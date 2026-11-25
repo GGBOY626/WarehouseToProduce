@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import type { WarehousePallet } from '../types/warehouse';
-const props=withDefaults(defineProps<{pallet:WarehousePallet;busy:boolean;interactive?:boolean}>(),{interactive:true});
+const props=withDefaults(defineProps<{pallet:WarehousePallet;busy:boolean;interactive?:boolean;collapseItems?:boolean}>(),{interactive:true,collapseItems:false});
 const emit=defineEmits<{detail:[];append:[];edit:[];remove:[]}>();
 const pending=computed(()=>props.pallet.items.some(item=>item.quantity==null));
+const expanded=ref(false);
+const visibleItems=computed(()=>props.collapseItems&&!expanded.value?props.pallet.items.slice(0,2):props.pallet.items);
 </script>
 <template>
   <article class="pallet-card card" :class="{clickable:interactive!==false}">
@@ -11,7 +13,7 @@ const pending=computed(()=>props.pallet.items.some(item=>item.quantity==null));
     <header><strong class="location-tag">{{pallet.location}}</strong><span class="status" :class="pending?'neutral':'ok'">{{pending?'待盘点':'已盘点'}}</span></header>
     <p v-if="pallet.items.length>1" class="pallet-code">{{pallet.items.length}} 项物料</p>
     <div class="material-list">
-      <section v-for="(item,index) in pallet.items" :key="index" class="stored-item">
+      <section v-for="(item,index) in visibleItems" :key="index" class="stored-item">
         <a v-if="item.photoUrl" :href="item.photoUrl" target="_blank" rel="noopener" class="stock-photo" :aria-label="`查看${item.productName}照片（新窗口）`"><img :src="item.photoUrl" :alt="`${item.productName}照片`" width="56" height="56" loading="lazy"></a>
         <div class="material-content">
           <div class="material-heading"><h3>{{item.productName}} <small v-if="item.finished" class="finished-tag">成品</small></h3><div class="item-quantity"><strong v-if="item.quantity!=null">{{item.quantity.toLocaleString()}}<small v-if="item.unit"> {{item.unit}}</small></strong><span v-else class="unknown-quantity">数量未知</span></div></div>
@@ -19,6 +21,7 @@ const pending=computed(()=>props.pallet.items.some(item=>item.quantity==null));
         </div>
       </section>
     </div>
+    <button v-if="collapseItems&&pallet.items.length>2" class="items-toggle" type="button" :aria-expanded="expanded" @click="expanded=!expanded">{{expanded?'收起物料':`查看更多（另有 ${pallet.items.length-2} 种）`}}</button>
     <p v-if="pallet.notes" class="pallet-notes">备注：{{pallet.notes}}</p>
     <footer><div class="card-actions"><button class="text-button" :disabled="busy" @click="emit('append')">继续追加货物</button><button class="text-button edit-button" :disabled="busy" @click="emit('edit')">编辑/移位</button><button class="text-button danger" :disabled="busy" @click="emit('remove')">移除托盘</button></div></footer>
   </article>
@@ -27,3 +30,4 @@ const pending=computed(()=>props.pallet.items.some(item=>item.quantity==null));
 .pallet-card{position:relative;padding:10px 12px;min-width:0;align-self:start}.card-detail{position:absolute;inset:0;border:0;border-radius:inherit;background:transparent;cursor:pointer}.card-detail:focus-visible{outline:2px solid var(--blue);outline-offset:2px}.clickable:hover{border-color:#9bbaca}.stock-photo,.card-actions{position:relative;z-index:1}.pallet-card header{display:flex;align-items:center;justify-content:space-between;gap:8px}.location-tag{font-size:13px;color:var(--blue);overflow-wrap:anywhere}.status{flex-shrink:0}.pallet-code{display:flex;justify-content:space-between;gap:8px;font-size:11px;color:var(--muted);margin:4px 0 7px;overflow-wrap:anywhere}.pallet-code>span:last-child{white-space:nowrap}.material-list{display:grid;gap:7px}.stored-item{display:flex;gap:10px;min-width:0}.stored-item+.stored-item{border-top:1px solid #edf0f2;padding-top:7px}.stock-photo{flex-shrink:0}.stock-photo img{display:block;object-fit:cover;border-radius:6px;border:1px solid var(--line)}.material-content{min-width:0;flex:1}.material-heading{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}.material-heading h3{min-width:0;font-size:15px;line-height:1.5;margin:0;overflow-wrap:anywhere}.item-quantity{max-width:100%;overflow-wrap:anywhere;display:flex;flex-direction:column;align-items:flex-end;gap:3px;flex-shrink:0;font-variant-numeric:tabular-nums}.item-quantity strong{font-size:17px;color:var(--blue)}.item-quantity small{font-size:12px;font-weight:400}.unknown-quantity,.cartons{font-size:11px;color:var(--muted);line-height:1.8}.item-identity{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:5px;font-size:11px;color:var(--muted);line-height:1.6;overflow-wrap:anywhere}.pallet-notes{font-size:12px;color:var(--muted);margin:10px 0;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.6}.pallet-card footer{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:2px 8px;border-top:1px solid var(--line);margin-top:7px;padding-top:3px}.pallet-card time{font-size:11px;color:var(--muted)}.card-actions{display:flex;align-items:center;gap:2px;margin-left:auto}.text-button,.more-actions summary{min-height:40px;border:0;background:transparent;padding:10px 8px;color:var(--blue);font-size:12px;cursor:pointer;border-radius:5px}.edit-button{font-weight:700;background:var(--soft-blue);margin-inline:2px}.more-actions{position:relative}.more-actions summary{color:var(--muted);list-style:none}.more-actions summary::-webkit-details-marker{display:none}.more-actions[open] summary{background:#edf0f2}.more-actions>div{position:absolute;right:0;top:100%;z-index:4;min-width:110px;padding:4px;background:white;border:1px solid var(--line);border-radius:8px;box-shadow:0 5px 18px #17212618}.more-actions>div button{width:100%;min-height:44px}.danger{color:var(--red)}@media(max-width:420px){.pallet-card{padding:12px}.material-heading{flex-wrap:wrap;gap:3px}.item-quantity{flex-direction:row;align-items:baseline;gap:8px}.text-button,.more-actions summary{min-height:44px}.item-identity{gap:3px 8px}}
 </style>
 <style scoped>.finished-tag{display:inline-block;margin-left:4px;padding:1px 5px;border-radius:4px;background:#e7f4ed;color:#216b45;font-size:10px;font-weight:700;vertical-align:middle}.material-batch{background:#fff3c4;color:#8a5b00;padding:1px 4px;border-radius:3px}</style>
+<style scoped>.items-toggle{position:relative;z-index:1;min-height:38px;margin-top:5px;padding:4px 0;border:0;background:transparent;color:var(--blue);font-size:12px;text-decoration:underline;text-underline-offset:3px;cursor:pointer}</style>

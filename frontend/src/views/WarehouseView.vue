@@ -24,6 +24,7 @@ const selectedArea=computed(()=>rackData.value.areas.find(a=>a.id===areaId.value
 const racks=computed(()=>rackData.value.areas);
 const orderedAreas=computed(()=>racks.value);
 const visible=computed(()=>sortWarehousePallets(filterWarehousePallets(rackData.value.pallets,rackData.value.areas,filters.value),rackData.value.areas));
+const palletsByLane=computed(()=>Object.fromEntries(['UPPER','MIDDLE','LOWER'].map(lane=>[lane,visible.value.filter(p=>p.lane===lane)])) as Record<string,WarehousePallet[]>);
 const viewMode=ref<'pallet'|'material'>('pallet');
 const materials=computed(()=>summarizeWarehouse(rackData.value.pallets,rackData.value.areas,filters.value));
 const detailDialog=ref<HTMLDialogElement>(),detailPallet=ref<WarehousePallet>();
@@ -102,7 +103,12 @@ onMounted(async()=>{await load();await openLinkedPallet()});
       <div v-else-if="!loaded" class="card empty"><strong>暂时无法读取仓库数据</strong><p>请检查网络后重试。</p><button class="btn btn-secondary" :disabled="loading" @click="load">重新加载</button></div>
       <div v-else-if="viewMode==='pallet'?!visible.length:!materials.length" class="card empty"><strong>{{hasFilters?'当前条件下没有托盘':'仓库还没有录入托盘'}}</strong><p>{{hasFilters?'该货位可能尚未录入，或托盘不符合其他筛选条件。':'可直接录入第一个托盘。'}}</p><button v-if="hasFilters" class="btn btn-secondary" @click="clearFilters">清除全部筛选</button></div>
       <WarehouseMaterialSummary v-else-if="viewMode==='material'" :materials="materials"/>
-      <div v-else class="pallet-grid"><WarehousePalletCard v-for="p in visible" :key="p.id" :pallet="p" :busy="busy||loading" @detail="openDetail(p)" @append="openForm(p,true)" @edit="openForm(p)" @remove="requestRemove(p)"/></div>
+      <div v-else class="pallet-columns">
+        <section v-for="laneName in ['UPPER','MIDDLE','LOWER']" :key="laneName" class="pallet-column" :aria-label="laneLabels[laneName]">
+          <h3>{{laneLabels[laneName]}} <span>{{palletsByLane[laneName]?.length||0}} 托</span></h3>
+          <div class="pallet-column-list"><WarehousePalletCard v-for="p in palletsByLane[laneName]" :key="p.id" :pallet="p" :busy="busy||loading" collapse-items @detail="openDetail(p)" @append="openForm(p,true)" @edit="openForm(p)" @remove="requestRemove(p)"/></div>
+        </section>
+      </div>
     </section>
     <dialog ref="detailDialog" @close="clearPalletLink" class="warehouse-dialog" aria-labelledby="pallet-detail-title"><header class="dialog-heading"><h2 id="pallet-detail-title">托盘详情</h2><button class="btn btn-secondary" @click="detailDialog?.close()">关闭</button></header><WarehousePalletCard v-if="detailPallet" :pallet="detailPallet" :busy="busy||loading" :interactive="false" @append="detailDialog?.close();openForm(detailPallet,true)" @edit="detailDialog?.close();openForm(detailPallet)" @remove="detailDialog?.close();requestRemove(detailPallet)"/></dialog>
     <dialog ref="removeDialog" class="warehouse-dialog remove-dialog" aria-labelledby="remove-title" aria-describedby="remove-description" @cancel="busy&&$event.preventDefault()">
@@ -124,3 +130,11 @@ onMounted(async()=>{await load();await openLinkedPallet()});
 @media(max-width:900px){.stock-filters{grid-template-columns:minmax(0,1fr) 1fr 1fr}.search-field{grid-column:1/-1}.unknown-filter{justify-content:flex-end}}@media(max-width:650px){.warehouse-heading{align-items:flex-start}.warehouse-heading .btn{font-size:12px;padding:9px}.warehouse-heading .page-lead{max-width:230px}.metrics-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.metric-card{padding:12px}.metric-card strong{font-size:26px}.warehouse-toolbar{flex-wrap:wrap;gap:0}.toolbar-actions{margin-left:auto}.pallet-grid{grid-template-columns:1fr}.stock-filters{gap:10px;padding:12px;grid-template-columns:repeat(2,minmax(0,1fr))}.unknown-filter{grid-column:1/-1;justify-content:flex-start}.warehouse-dialog{padding:16px}.results-heading h2 span{display:block;margin:5px 0 0}.active-filters button{min-height:44px}}
 </style>
 <style scoped>.metrics-grid{grid-template-columns:repeat(3,minmax(0,1fr))}</style>
+<style scoped>
+.pallet-columns{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;align-items:start}
+.pallet-column{min-width:0}
+.pallet-column>h3{display:flex;justify-content:space-between;align-items:center;margin:0 0 8px;padding:9px 10px;border-bottom:2px solid var(--line);font-size:14px}
+.pallet-column>h3 span{font-size:11px;color:var(--muted);font-weight:400}
+.pallet-column-list{display:grid;gap:8px}
+@media(max-width:900px){.pallet-columns{grid-template-columns:1fr}}
+</style>

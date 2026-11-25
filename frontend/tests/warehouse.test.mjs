@@ -86,9 +86,17 @@ test('warehouse pallet view orders positions in reverse within each rack lane',(
   const rows=[
     {id:1,areaId:1,lane:'UPPER',position:5},
     {id:2,areaId:1,lane:'UPPER',position:18},
-    {id:3,areaId:1,lane:'MIDDLE',position:7}
+    {id:3,areaId:1,lane:'MIDDLE',position:7},
+    {id:4,areaId:1,lane:'LOWER',position:18},
+    {id:5,areaId:1,lane:'LOWER',position:2},
+    {id:6,areaId:1,lane:'MIDDLE',position:16}
   ];
-  assert.deepEqual(sortWarehousePallets(rows,areas).map(row=>row.id),[2,1,3]);
+  const sorted=sortWarehousePallets(rows,areas);
+  assert.deepEqual(sorted.map(row=>row.id),[2,1,6,3,4,5]);
+  for(const lane of ['UPPER','MIDDLE','LOWER']) {
+    const positions=sorted.filter(row=>row.lane===lane).map(row=>row.position);
+    assert.deepEqual(positions,[...positions].sort((a,b)=>b-a));
+  }
 });
 test('batch, product, location and unknown filters combine without mixing locations',()=>{
   assert.deepEqual(filterPallets(pallets,'22334').map(p=>p.id),[1,3]);
