@@ -2,6 +2,7 @@ import type { WarehouseArea, WarehousePallet } from '../types/warehouse';
 export const laneLabels:Record<string,string>={UPPER:'上层',MIDDLE:'中层',LOWER:'下层',LEFT_1:'左一',LEFT_2:'左二',RIGHT_1:'右一',RIGHT_2:'右二'};
 export const rackOrder=['AA','BB','CC','EE','FF','HH','KK','LL','RR','SS'];
 export const rackStart=(name?:string)=>name&&['AA','BB','CC','EE','RR','SS'].includes(name)?5:1;
+export const rackEnd=16;
 export function areaLanes(area?:WarehouseArea):string[]{
   if(!area)return [];
   return area.kind==='RACK'?['UPPER','MIDDLE','LOWER']:area.lanes===4?['LEFT_1','LEFT_2','RIGHT_1','RIGHT_2']:['LEFT_1','RIGHT_1'];

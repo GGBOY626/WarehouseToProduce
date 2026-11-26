@@ -116,6 +116,8 @@ class WarehouseIntegrationTest {
     }
     @Test void occupiedLocationAndIllegalLanesAreRejected(){
         service.create(request(rack.getId(),"LOWER",5,null));
+        service.create(request(rack.getId(),"LOWER",16,null));
+        assertThatThrownBy(()->service.create(request(rack.getId(),"LOWER",17,null))).hasMessageContaining("货架位置");
         assertThatThrownBy(()->service.create(request(rack.getId(),"LOWER",5,null))).hasMessageContaining("已有托盘");
         assertThatThrownBy(()->service.create(request(rack.getId(),"LEFT_1",5,null))).hasMessageContaining("货架位置");
         var aisle=service.createAisle(new WarehouseService.AreaRequest("Aisle-"+UUID.randomUUID(),2,null));

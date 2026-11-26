@@ -4,7 +4,7 @@ import { warehouseApi } from '../api/warehouse';
 import { productsApi } from '../api';
 import { errorMessage } from '../api/http';
 import { createUuid } from '../utils/uuid';
-import { areaLanes, laneLabels, nextPosition, rackStart } from '../utils/warehouse';
+import { areaLanes, laneLabels, nextPosition, rackEnd, rackStart } from '../utils/warehouse';
 import SearchPicker from './SearchPicker.vue';
 import type { Product } from '../types';
 import { warehouseProductDefaults } from '../utils/warehouseProductDefaults';
@@ -14,7 +14,7 @@ const emit=defineEmits<{saved:[pallet:WarehousePallet,continueEntry:boolean];can
 const activePallet=ref(props.pallet&&!props.duplicate?props.pallet:undefined),pallet=computed(()=>activePallet.value);
 const code=ref(props.pallet&&!props.duplicate?props.pallet.code:`TP-${createUuid().slice(0,8).toUpperCase()}`),areaId=ref(props.pallet?.areaId||props.initialAreaId||props.areas[0]?.id),lane=ref(props.pallet?.lane||props.initialLane||'LOWER');
 const initialArea=props.areas.find(a=>a.id===areaId.value);
-const position=ref(props.pallet?.position||nextPosition(props.pallets,areaId.value!,lane.value,initialArea?.kind==='RACK'?rackStart(initialArea.name):1,initialArea?.kind==='RACK'?18:9999)),notes=ref(props.pallet?.notes||'');
+const position=ref(props.pallet?.position||nextPosition(props.pallets,areaId.value!,lane.value,initialArea?.kind==='RACK'?rackStart(initialArea.name):1,initialArea?.kind==='RACK'?rackEnd:9999)),notes=ref(props.pallet?.notes||'');
 type DraftItem={key:number;productId:number|undefined;productName:string;materialCode:string;productionNumber:string;unit:string;rawMaterialBatch:string;batch:string;materialCodeOptions:string[];productionNumberOptions:string[];rawMaterialBatchOptions:string[];batchOptions:string[];quantity:number|null|'';cartons:number|null|'';unitsPerCarton:number|null|'';boxesPerCarton:number|null|'';unitsPerBox:number|null|'';finished:boolean|null;photoId?:number|null;photoUrl?:string|null};
 let key=0;
 function blankItem():DraftItem{return {key:key++,productId:undefined,productName:'',materialCode:'',productionNumber:'',unit:'',rawMaterialBatch:'',batch:'',materialCodeOptions:[],productionNumberOptions:[],rawMaterialBatchOptions:[],batchOptions:[],quantity:null,cartons:null,unitsPerCarton:'',boxesPerCarton:'',unitsPerBox:'',finished:null}}
@@ -26,11 +26,11 @@ const area=computed(()=>props.areas.find(a=>a.id===areaId.value));
 const lanes=computed(()=>areaLanes(area.value));
 const customPosition=ref(false);
 const positionStart=computed(()=>area.value?.kind==='RACK'?rackStart(area.value.name):1);
-const rackPositions=computed(()=>Array.from({length:19-positionStart.value},(_,index)=>positionStart.value+index));
+const rackPositions=computed(()=>Array.from({length:rackEnd-positionStart.value+1},(_,index)=>positionStart.value+index));
 const occupiedPallet=computed(()=>props.pallets.find(p=>p.id!==activePallet.value?.id&&p.areaId===areaId.value&&p.lane===lane.value&&p.position===position.value));
 const occupied=computed(()=>Boolean(occupiedPallet.value));
 function changeArea(){lane.value=area.value?.kind==='RACK'?'LOWER':'LEFT_1';customPosition.value=false;suggestPosition()}
-function suggestPosition(){customPosition.value=false;position.value=nextPosition(props.pallets,areaId.value!,lane.value,area.value?.kind==='RACK'?rackStart(area.value.name):1,area.value?.kind==='RACK'?18:9999)}
+function suggestPosition(){customPosition.value=false;position.value=nextPosition(props.pallets,areaId.value!,lane.value,area.value?.kind==='RACK'?rackStart(area.value.name):1,area.value?.kind==='RACK'?rackEnd:9999)}
 function setFinished(item:DraftItem,finished:boolean){
   item.finished=finished;
   item.productId=undefined;item.productName='';item.unit='';item.materialCode='';item.productionNumber='';item.rawMaterialBatch='';item.batch='';
@@ -64,7 +64,7 @@ async function save(continueEntry=false){
     emit('saved',saved,continueEntry&&!activePallet.value);
     if(continueEntry&&!activePallet.value){
       activePallet.value=undefined;code.value=`TP-${createUuid().slice(0,8).toUpperCase()}`;notes.value='';items.value=[blankItem()];message.value='托盘已保存，请录入下一托盘。';
-      position.value=nextPosition([...props.pallets,saved],areaId.value!,lane.value,area.value?.kind==='RACK'?rackStart(area.value.name):1,area.value?.kind==='RACK'?18:9999);customPosition.value=false;
+      position.value=nextPosition([...props.pallets,saved],areaId.value!,lane.value,area.value?.kind==='RACK'?rackStart(area.value.name):1,area.value?.kind==='RACK'?rackEnd:9999);customPosition.value=false;
     }
   }catch(e){message.value=errorMessage(e)}finally{busy.value=false}
 }
@@ -77,11 +77,11 @@ async function save(continueEntry=false){
       <div v-if="!props.append" class="location-fields">
         <div class="field"><label for="pallet-area">库区</label><select id="pallet-area" v-model="areaId" class="select" required @change="changeArea"><option v-for="a in areas" :key="a.id" :value="a.id">{{a.rackRow?`${a.rackRow} 排旁 · `:''}}{{a.name}}{{a.kind==='RACK'?' 排':''}}</option></select></div>
         <div class="field"><label for="pallet-lane">{{area?.kind==='RACK'?'层位':'排位'}}</label><select id="pallet-lane" v-model="lane" class="select" required @change="suggestPosition"><option v-for="l in lanes" :key="l" :value="l">{{laneLabels[l]}}</option></select></div>
-        <div class="field"><label for="pallet-position">位置序号</label><template v-if="area?.kind==='RACK'"><select v-if="!customPosition" id="pallet-position" v-model.number="position" class="select" required><option v-for="number in rackPositions" :key="number" :value="number">{{String(number).padStart(2,'0')}}</option></select><input v-else id="pallet-position" v-model.number="position" class="input" type="number" :min="positionStart" max="18" step="1" required><button class="text-button" type="button" @click="customPosition=!customPosition">{{customPosition?'从序号列表选择':'手动输入序号'}}</button></template><input v-else id="pallet-position" v-model.number="position" class="input" type="number" min="1" max="9999" step="1" required></div>
+        <div class="field"><label for="pallet-position">位置序号</label><template v-if="area?.kind==='RACK'"><select v-if="!customPosition" id="pallet-position" v-model.number="position" class="select" required><option v-for="number in rackPositions" :key="number" :value="number">{{String(number).padStart(2,'0')}}</option></select><input v-else id="pallet-position" v-model.number="position" class="input" type="number" :min="positionStart" :max="rackEnd" step="1" required><button class="text-button" type="button" @click="customPosition=!customPosition">{{customPosition?'从序号列表选择':'手动输入序号'}}</button></template><input v-else id="pallet-position" v-model.number="position" class="input" type="number" min="1" max="9999" step="1" required></div>
       </div>
       <p v-if="!props.append" class="location-preview" :class="{conflict:occupied}">{{area?.kind==='RACK'?`${area.name}-${String(position).padStart(2,'0')}`:`${area?.name} / ${position} 号`}} / {{laneLabels[lane]}} <b v-if="occupied">· 已有托盘</b></p>
       <div v-if="!props.append&&occupiedPallet" class="append-warning" role="alert"><span>{{props.duplicate?'该库位已有货物，请更换库位。':'该位置已有托盘。一个托盘可以登记多种产品，是否继续追加到现有托盘？'}}</span><button v-if="!props.duplicate" class="btn btn-danger" type="button" @click="appendToExisting">继续追加</button></div>
-      <p v-if="!props.append" class="hint">AA、BB、CC、EE 排从 05 编至 18；FF、HH、KK、LL、RR、SS 排从 01 编至 18。</p>
+      <p v-if="!props.append" class="hint">AA、BB、CC、EE、RR、SS 排从 05 编至 16；FF、HH、KK、LL 排从 01 编至 16。</p>
       <div class="section-head"><h3>托盘上的物料</h3><button class="btn btn-secondary" type="button" :disabled="items.length>=50" @click="items.push(blankItem())">＋ 添加物料</button></div>
       <p class="hint">产品名称可直接填写，也可搜索并选择产品管理中的已有产品；数量留空表示未知。</p>
       <section v-for="(item,index) in items" :key="item.key" class="stock-line">

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { areaLanes, rackOrder, rackStart, nextPosition, filterPallets, emptyWarehouseFilters, filterWarehousePallets, sortWarehousePallets, warehouseStats, selectWarehouseLocation, changeWarehouseScope } from '../src/utils/warehouse.ts';
+import { areaLanes, rackOrder, rackStart, rackEnd, nextPosition, filterPallets, emptyWarehouseFilters, filterWarehousePallets, sortWarehousePallets, warehouseStats, selectWarehouseLocation, changeWarehouseScope } from '../src/utils/warehouse.ts';
 const pallets=[
   {id:1,areaId:1,lane:'UPPER',position:1,code:'TP-1',location:'A 排 / 上层 / 01 号',items:[{productName:'外盒',materialCode:'BOX',batch:'22334',quantity:2000}]},
   {id:2,areaId:1,lane:'UPPER',position:3,code:'TP-2',location:'A 排 / 上层 / 03 号',items:[{productName:'外盒',materialCode:'BOX',batch:'22335',quantity:null}]},
@@ -76,9 +76,11 @@ test('rack order and sequence starts match the physical rack layout',()=>{
   assert.deepEqual(rackOrder,['AA','BB','CC','EE','FF','HH','KK','LL','RR','SS']);
   for(const rack of ['AA','BB','CC','EE','RR','SS'])assert.equal(rackStart(rack),5);
   for(const rack of ['FF','HH','KK','LL'])assert.equal(rackStart(rack),1);
+  assert.equal(rackEnd,16);
   assert.equal(nextPosition([{areaId:8,lane:'LOWER',position:1}],8,'LOWER',1,18),2);
   assert.equal(nextPosition(Array.from({length:18},(_,index)=>({areaId:8,lane:'LOWER',position:index+1})),8,'LOWER',1,18),1);
   assert.equal(nextPosition([{areaId:8,lane:'LOWER',position:17}],8,'LOWER',5),5);
+  assert.equal(nextPosition([{areaId:8,lane:'LOWER',position:16}],8,'LOWER',5,rackEnd),5);
   assert.equal(nextPosition([{areaId:8,lane:'LOWER',position:1}],8,'LOWER',1),2);
 });
 test('warehouse pallet view orders positions in reverse within each rack lane',()=>{
