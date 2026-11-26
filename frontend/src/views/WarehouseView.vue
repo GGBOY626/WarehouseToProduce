@@ -137,4 +137,13 @@ onMounted(async()=>{await load();await openLinkedPallet()});
 .pallet-column>h3 span{font-size:11px;color:var(--muted);font-weight:400}
 .pallet-column-list{display:grid;gap:8px}
 @media(max-width:900px){.pallet-columns{grid-template-columns:1fr}}
+@media(max-width:650px){
+  .pallet-columns{gap:18px}
+  .pallet-column{padding-top:8px;border-top:3px solid var(--blue)}
+  .pallet-column:nth-child(2){border-top-color:#267566}
+  .pallet-column:nth-child(3){border-top-color:#b66a24}
+  .pallet-column>h3{font-size:16px;margin:0 0 10px;padding:6px 2px 10px}
+  .pallet-column>h3 span{font-size:13px}
+  .pallet-column-list{gap:10px}
+}
 </style>
