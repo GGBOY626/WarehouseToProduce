@@ -9,10 +9,10 @@ import SearchPicker from './SearchPicker.vue';
 import type { Product } from '../types';
 import { warehouseProductDefaults } from '../utils/warehouseProductDefaults';
 import type { WarehouseArea, WarehousePallet, PalletInput, StockItem } from '../types/warehouse';
-const props=defineProps<{areas:WarehouseArea[];pallets:WarehousePallet[];products:Product[];pallet?:WarehousePallet;append?:boolean;initialAreaId?:number;initialLane?:string}>();
+const props=defineProps<{areas:WarehouseArea[];pallets:WarehousePallet[];products:Product[];pallet?:WarehousePallet;append?:boolean;duplicate?:boolean;initialAreaId?:number;initialLane?:string}>();
 const emit=defineEmits<{saved:[pallet:WarehousePallet,continueEntry:boolean];cancel:[]}>();
-const activePallet=ref(props.pallet),pallet=computed(()=>activePallet.value);
-const code=ref(props.pallet?.code || `TP-${createUuid().slice(0,8).toUpperCase()}`),areaId=ref(props.pallet?.areaId||props.initialAreaId||props.areas[0]?.id),lane=ref(props.pallet?.lane||props.initialLane||'LOWER');
+const activePallet=ref(props.pallet&&!props.duplicate?props.pallet:undefined),pallet=computed(()=>activePallet.value);
+const code=ref(props.pallet&&!props.duplicate?props.pallet.code:`TP-${createUuid().slice(0,8).toUpperCase()}`),areaId=ref(props.pallet?.areaId||props.initialAreaId||props.areas[0]?.id),lane=ref(props.pallet?.lane||props.initialLane||'LOWER');
 const initialArea=props.areas.find(a=>a.id===areaId.value);
 const position=ref(props.pallet?.position||nextPosition(props.pallets,areaId.value!,lane.value,initialArea?.kind==='RACK'?rackStart(initialArea.name):1,initialArea?.kind==='RACK'?18:9999)),notes=ref(props.pallet?.notes||'');
 type DraftItem={key:number;productId:number|undefined;productName:string;materialCode:string;productionNumber:string;unit:string;rawMaterialBatch:string;batch:string;materialCodeOptions:string[];productionNumberOptions:string[];rawMaterialBatchOptions:string[];batchOptions:string[];quantity:number|null|'';cartons:number|null|'';unitsPerCarton:number|null|'';boxesPerCarton:number|null|'';unitsPerBox:number|null|'';finished:boolean|null;photoId?:number|null;photoUrl?:string|null};
@@ -71,7 +71,7 @@ async function save(continueEntry=false){
 </script>
 <template>
   <form class="pallet-form" @submit.prevent="save()">
-    <header><div><span class="hint">{{pallet ? '库存与货位' : '现场录入'}}</span><h2>{{pallet ? (props.append?'继续追加货物':'编辑 / 移位托盘') : '录入托盘'}}</h2></div><button class="btn btn-secondary" type="button" :disabled="busy" @click="cancel">关闭</button></header>
+    <header><div><span class="hint">{{props.duplicate?'复制托盘':pallet ? '库存与货位' : '现场录入'}}</span><h2>{{props.duplicate?'复制托盘':pallet ? (props.append?'继续追加货物':'编辑 / 移位托盘') : '录入托盘'}}</h2></div><button class="btn btn-secondary" type="button" :disabled="busy" @click="cancel">关闭</button></header>
     <p v-if="message" class="error-text" role="alert">{{message}}</p>
     <fieldset :disabled="busy"><legend class="sr-only">托盘资料</legend>
       <div v-if="!props.append" class="location-fields">
@@ -80,7 +80,7 @@ async function save(continueEntry=false){
         <div class="field"><label for="pallet-position">位置序号</label><template v-if="area?.kind==='RACK'"><select v-if="!customPosition" id="pallet-position" v-model.number="position" class="select" required><option v-for="number in rackPositions" :key="number" :value="number">{{String(number).padStart(2,'0')}}</option></select><input v-else id="pallet-position" v-model.number="position" class="input" type="number" :min="positionStart" max="18" step="1" required><button class="text-button" type="button" @click="customPosition=!customPosition">{{customPosition?'从序号列表选择':'手动输入序号'}}</button></template><input v-else id="pallet-position" v-model.number="position" class="input" type="number" min="1" max="9999" step="1" required></div>
       </div>
       <p v-if="!props.append" class="location-preview" :class="{conflict:occupied}">{{area?.kind==='RACK'?`${area.name}-${String(position).padStart(2,'0')}`:`${area?.name} / ${position} 号`}} / {{laneLabels[lane]}} <b v-if="occupied">· 已有托盘</b></p>
-      <div v-if="!props.append&&occupiedPallet" class="append-warning" role="alert"><span>该位置已有托盘。一个托盘可以登记多种产品，是否继续追加到现有托盘？</span><button class="btn btn-danger" type="button" @click="appendToExisting">继续追加</button></div>
+      <div v-if="!props.append&&occupiedPallet" class="append-warning" role="alert"><span>{{props.duplicate?'该库位已有货物，请更换库位。':'该位置已有托盘。一个托盘可以登记多种产品，是否继续追加到现有托盘？'}}</span><button v-if="!props.duplicate" class="btn btn-danger" type="button" @click="appendToExisting">继续追加</button></div>
       <p v-if="!props.append" class="hint">AA、BB、CC、EE 排从 05 编至 18；FF、HH、KK、LL、RR、SS 排从 01 编至 18。</p>
       <div class="section-head"><h3>托盘上的物料</h3><button class="btn btn-secondary" type="button" :disabled="items.length>=50" @click="items.push(blankItem())">＋ 添加物料</button></div>
       <p class="hint">产品名称可直接填写，也可搜索并选择产品管理中的已有产品；数量留空表示未知。</p>
@@ -110,7 +110,7 @@ async function save(continueEntry=false){
       </section>
       <div class="field"><label for="pallet-notes">备注</label><textarea id="pallet-notes" v-model="notes" class="textarea" maxlength="2000" placeholder="如：靠门一侧、待核对标签、零散尾箱"/></div>
     </fieldset>
-    <footer><button class="btn btn-secondary" type="button" :disabled="busy" @click="cancel">取消</button><button v-if="!pallet" class="btn btn-secondary" type="button" :disabled="busy||occupied" @click="save(true)">{{busy?'正在处理…':'保存并录入下一托盘'}}</button><button class="btn btn-primary" :disabled="busy||occupied">{{busy?'正在处理…':pallet?(props.append?'保存追加':'保存修改'):'保存托盘'}}</button></footer>
+    <footer><button class="btn btn-secondary" type="button" :disabled="busy" @click="cancel">取消</button><button v-if="!pallet&&!props.duplicate" class="btn btn-secondary" type="button" :disabled="busy||occupied" @click="save(true)">{{busy?'正在处理…':'保存并录入下一托盘'}}</button><button class="btn btn-primary" :disabled="busy||occupied">{{busy?'正在处理…':pallet?(props.append?'保存追加':'保存修改'):props.duplicate?'保存副本':'保存托盘'}}</button></footer>
   </form>
 </template>
 <style scoped>

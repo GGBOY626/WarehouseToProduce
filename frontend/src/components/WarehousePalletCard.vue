@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue';
 import type { WarehousePallet } from '../types/warehouse';
 const props=withDefaults(defineProps<{pallet:WarehousePallet;busy:boolean;interactive?:boolean;collapseItems?:boolean}>(),{interactive:true,collapseItems:false});
-const emit=defineEmits<{detail:[];append:[];edit:[];remove:[]}>();
+const emit=defineEmits<{detail:[];append:[];duplicate:[];edit:[];remove:[]}>();
 const pending=computed(()=>props.pallet.items.some(item=>item.quantity==null));
 const expanded=ref(false);
 const visibleItems=computed(()=>props.collapseItems&&!expanded.value?props.pallet.items.slice(0,2):props.pallet.items);
@@ -23,7 +23,7 @@ const visibleItems=computed(()=>props.collapseItems&&!expanded.value?props.palle
     </div>
     <button v-if="collapseItems&&pallet.items.length>2" class="items-toggle" type="button" :aria-expanded="expanded" @click="expanded=!expanded">{{expanded?'收起物料':`查看更多（另有 ${pallet.items.length-2} 种）`}}</button>
     <p v-if="pallet.notes" class="pallet-notes">备注：{{pallet.notes}}</p>
-    <footer><div class="card-actions"><button class="text-button" :disabled="busy" @click="emit('append')">继续追加货物</button><button class="text-button edit-button" :disabled="busy" @click="emit('edit')">编辑/移位</button><button class="text-button danger" :disabled="busy" @click="emit('remove')">移除托盘</button></div></footer>
+    <footer><div class="card-actions"><button class="text-button" :disabled="busy" @click="emit('append')">继续追加货物</button><button class="text-button" :disabled="busy" @click="emit('duplicate')">复制</button><button class="text-button edit-button" :disabled="busy" @click="emit('edit')">编辑/移位</button><button class="text-button danger" :disabled="busy" @click="emit('remove')">移除托盘</button></div></footer>
   </article>
 </template>
 <style scoped>

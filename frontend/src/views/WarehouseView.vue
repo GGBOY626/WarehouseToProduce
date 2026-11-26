@@ -46,12 +46,12 @@ async function load(){
   }catch(e){message.value=errorMessage(e)}finally{loading.value=false}
 }
 
-const formDialog=ref<HTMLDialogElement>(),formKey=ref(0),editing=ref<WarehousePallet>(),appendMode=ref(false),initialArea=ref<number>(),initialLane=ref('LOWER');
-async function openForm(pallet?:WarehousePallet,append=false){
+const formDialog=ref<HTMLDialogElement>(),formKey=ref(0),editing=ref<WarehousePallet>(),appendMode=ref(false),duplicateMode=ref(false),initialArea=ref<number>(),initialLane=ref('LOWER');
+async function openForm(pallet?:WarehousePallet,append=false,duplicate=false){
   if(pallet)pallet=rackData.value.pallets.find(row=>row.id===pallet!.id)??pallet;
   if(busy.value)return;busy.value=true;message.value='';
   try{products.value=await productsApi.search('',true)}catch{products.value=[];notice.value='已有产品列表暂时无法读取，仍可手动填写产品名称。'}
-  editing.value=pallet;appendMode.value=append;initialArea.value=pallet?.areaId||areaId.value||racks.value[0]?.id;initialLane.value=pallet?.lane||lane.value||'LOWER';formKey.value++;await nextTick();formDialog.value?.showModal();busy.value=false;
+  editing.value=pallet;appendMode.value=append;duplicateMode.value=duplicate;initialArea.value=pallet?.areaId||areaId.value||racks.value[0]?.id;initialLane.value=pallet?.lane||lane.value||'LOWER';formKey.value++;await nextTick();formDialog.value?.showModal();busy.value=false;
 }
 async function saved(pallet:WarehousePallet,continueEntry=false){
   const index=data.value.pallets.findIndex(p=>p.id===pallet.id);if(index<0)data.value.pallets.push(pallet);else data.value.pallets[index]=pallet;
@@ -106,11 +106,11 @@ onMounted(async()=>{await load();await openLinkedPallet()});
       <div v-else class="pallet-columns">
         <section v-for="laneName in ['UPPER','MIDDLE','LOWER']" :key="laneName" class="pallet-column" :aria-label="laneLabels[laneName]">
           <h3>{{laneLabels[laneName]}} <span>{{palletsByLane[laneName]?.length||0}} 托</span></h3>
-          <div class="pallet-column-list"><WarehousePalletCard v-for="p in palletsByLane[laneName]" :key="p.id" :pallet="p" :busy="busy||loading" collapse-items @detail="openDetail(p)" @append="openForm(p,true)" @edit="openForm(p)" @remove="requestRemove(p)"/></div>
+          <div class="pallet-column-list"><WarehousePalletCard v-for="p in palletsByLane[laneName]" :key="p.id" :pallet="p" :busy="busy||loading" collapse-items @detail="openDetail(p)" @append="openForm(p,true)" @duplicate="openForm(p,false,true)" @edit="openForm(p)" @remove="requestRemove(p)"/></div>
         </section>
       </div>
     </section>
-    <dialog ref="detailDialog" @close="clearPalletLink" class="warehouse-dialog" aria-labelledby="pallet-detail-title"><header class="dialog-heading"><h2 id="pallet-detail-title">托盘详情</h2><button class="btn btn-secondary" @click="detailDialog?.close()">关闭</button></header><WarehousePalletCard v-if="detailPallet" :pallet="detailPallet" :busy="busy||loading" :interactive="false" @append="detailDialog?.close();openForm(detailPallet,true)" @edit="detailDialog?.close();openForm(detailPallet)" @remove="detailDialog?.close();requestRemove(detailPallet)"/></dialog>
+    <dialog ref="detailDialog" @close="clearPalletLink" class="warehouse-dialog" aria-labelledby="pallet-detail-title"><header class="dialog-heading"><h2 id="pallet-detail-title">托盘详情</h2><button class="btn btn-secondary" @click="detailDialog?.close()">关闭</button></header><WarehousePalletCard v-if="detailPallet" :pallet="detailPallet" :busy="busy||loading" :interactive="false" @append="detailDialog?.close();openForm(detailPallet,true)" @duplicate="detailDialog?.close();openForm(detailPallet,false,true)" @edit="detailDialog?.close();openForm(detailPallet)" @remove="detailDialog?.close();requestRemove(detailPallet)"/></dialog>
     <dialog ref="removeDialog" class="warehouse-dialog remove-dialog" aria-labelledby="remove-title" aria-describedby="remove-description" @cancel="busy&&$event.preventDefault()">
       <h2 id="remove-title">移除这个托盘？</h2>
       <div v-if="removing" class="remove-summary"><p>{{removing.location}}</p><ul><li v-for="(item,index) in removing.items" :key="index">{{item.productName}} · {{item.quantity==null?'数量未知':`${item.quantity.toLocaleString()} ${item.unit||''}`}}</li></ul></div>
@@ -119,7 +119,7 @@ onMounted(async()=>{await load();await openLinkedPallet()});
       <div class="confirm-actions"><button autofocus class="btn btn-secondary" :disabled="busy" @click="removeDialog?.close()">取消</button><button class="btn btn-danger" :disabled="busy" @click="remove">{{busy?'正在移除…':'确认移除托盘'}}</button></div>
     </dialog>
 
-    <dialog ref="formDialog" class="warehouse-dialog" aria-label="托盘录入与编辑" @cancel.prevent><WarehousePalletForm :key="formKey" :areas="orderedAreas" :pallets="rackData.pallets" :products="products" :pallet="editing" :append="appendMode" :initial-area-id="initialArea" :initial-lane="initialLane" @saved="saved" @cancel="formDialog?.close()"/></dialog>
+    <dialog ref="formDialog" class="warehouse-dialog" aria-label="托盘录入与编辑" @cancel.prevent><WarehousePalletForm :key="formKey" :areas="orderedAreas" :pallets="rackData.pallets" :products="products" :pallet="editing" :append="appendMode" :duplicate="duplicateMode" :initial-area-id="initialArea" :initial-lane="initialLane" @saved="saved" @cancel="formDialog?.close()"/></dialog>
   </div>
 </template>
 <style scoped>
