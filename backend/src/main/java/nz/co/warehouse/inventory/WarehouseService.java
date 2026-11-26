@@ -89,7 +89,7 @@ public class WarehouseService {
     private void apply(WarehousePallet p,SaveRequest r){
         var a=area(r.areaId());
         var allowed=a.getKind()==WarehouseArea.Kind.RACK?List.of("UPPER","MIDDLE","LOWER"):a.getLanes()==2?List.of("LEFT_1","RIGHT_1"):List.of("LEFT_1","LEFT_2","RIGHT_1","RIGHT_2");
-        int rackStart=Set.of("AA","BB","CC","EE").contains(a.getName())?5:1;
+        int rackStart=Set.of("AA","BB","CC","EE","RR","SS").contains(a.getName())?5:1;
         if(!allowed.contains(r.lane())||(a.getKind()==WarehouseArea.Kind.RACK&&(r.position()<rackStart||r.position()>18)))throw BusinessException.badRequest("LOCATION_INVALID",a.getKind()==WarehouseArea.Kind.RACK?"货架位置超出该排允许范围。":"过道位置无效。");
         if(pallets.existsByAreaIdAndLaneAndPositionAndIdNot(a.getId(),r.lane(),r.position(),p.getId()==null?-1:p.getId()))throw conflict("LOCATION_OCCUPIED","这个位置已有托盘，请选择其他位置，或编辑原托盘添加物料。");
         var existing=new HashMap<Long,WarehousePallet.StockItem>();p.getItems().stream().filter(i->i.getProduct()!=null).forEach(i->existing.put(i.getProduct().canonicalId(),i));

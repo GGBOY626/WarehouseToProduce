@@ -74,8 +74,8 @@ test('continuous entry suggests the first unused position in exactly one lane',(
 });
 test('rack order and sequence starts match the physical rack layout',()=>{
   assert.deepEqual(rackOrder,['AA','BB','CC','EE','FF','HH','KK','LL','RR','SS']);
-  for(const rack of ['AA','BB','CC','EE'])assert.equal(rackStart(rack),5);
-  for(const rack of ['FF','HH','KK','LL','RR','SS'])assert.equal(rackStart(rack),1);
+  for(const rack of ['AA','BB','CC','EE','RR','SS'])assert.equal(rackStart(rack),5);
+  for(const rack of ['FF','HH','KK','LL'])assert.equal(rackStart(rack),1);
   assert.equal(nextPosition([{areaId:8,lane:'LOWER',position:1}],8,'LOWER',1,18),2);
   assert.equal(nextPosition(Array.from({length:18},(_,index)=>({areaId:8,lane:'LOWER',position:index+1})),8,'LOWER',1,18),1);
   assert.equal(nextPosition([{areaId:8,lane:'LOWER',position:17}],8,'LOWER',5),5);
